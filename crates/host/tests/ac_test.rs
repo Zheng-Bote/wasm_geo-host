@@ -203,7 +203,9 @@ fn test_ac7_duplicate_and_timeline() {
 // wasm-geo-host AC-8: SQLite persistence schema and configurable pipeline orchestration
 #[test]
 fn test_ac8_sqlite_storage_and_persistence() {
-    let storage = Storage::new("media_test.db");
+    let db_path = std::env::temp_dir().join(format!("media_test_{}.db", uuid_simple()));
+    let db_path_str = db_path.to_str().unwrap();
+    let storage = Storage::new(db_path_str);
     storage.init_schema().expect("Schema init failed");
 
     let doc = UnifiedDocument::new(
@@ -221,13 +223,16 @@ fn test_ac8_sqlite_storage_and_persistence() {
     let retrieved = storage.get_document("doc-test-8").expect("Document not found");
     assert_eq!(retrieved.id, "doc-test-8");
     assert_eq!(retrieved.file.size_bytes, 9999);
+    let _ = std::fs::remove_file(&db_path);
 }
 
 // wasm-geo-host AC-9: Observability, end-to-end media pipeline execution and validation
 #[test]
 fn test_ac9_end_to_end_pipeline() {
+    let db_path = std::env::temp_dir().join(format!("media_e2e_{}.db", uuid_simple()));
+    let db_path_str = db_path.to_str().unwrap();
     let config = AppConfig::default();
-    let storage = Arc::new(Storage::new("media_e2e.db"));
+    let storage = Arc::new(Storage::new(db_path_str));
     storage.init_schema().unwrap();
 
     let mut runtime = PluginRuntime::new(config.clone());
@@ -264,4 +269,12 @@ fn test_ac9_end_to_end_pipeline() {
     let stored = storage.get_document("doc-e2e-final").expect("Stored doc missing");
     assert_eq!(stored.id, "doc-e2e-final");
     assert_eq!(stored.country.unwrap().country_code, "DE");
+    let _ = std::fs::remove_file(&db_path);
+}
+
+fn uuid_simple() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
 }

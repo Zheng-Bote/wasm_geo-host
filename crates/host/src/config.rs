@@ -158,7 +158,7 @@ impl AppConfig {
             }
             if let Some((k, v)) = trimmed.split_once(':') {
                 let k = k.trim();
-                let v = v.trim();
+                let v = v.trim().trim_matches('"').trim_matches('\'').trim();
                 if k == "database_path" {
                     cfg.database_path = v.to_string();
                 }
