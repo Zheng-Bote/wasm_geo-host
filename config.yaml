@@ -1,0 +1,51 @@
+database_path: "media.db"
+
+resource_limits:
+  max_memory_bytes: 268435456
+  timeout_ms: 10000
+
+pipeline:
+  - metadata
+  - reversegeo
+  - countryflag
+  - thumbnail
+  - ai-tagging
+  - duplicate
+  - timeline
+
+plugins:
+  metadata:
+    enabled: true
+    capabilities:
+      - filesystem
+
+  reversegeo:
+    enabled: true
+    capabilities:
+      - http
+      - kv
+
+  countryflag:
+    enabled: true
+    capabilities: []
+
+  thumbnail:
+    enabled: true
+    capabilities:
+      - filesystem
+
+  ai-tagging:
+    enabled: true
+    capabilities:
+      - filesystem
+
+  duplicate:
+    enabled: true
+    capabilities:
+      - filesystem
+      - kv
+
+  timeline:
+    enabled: true
+    capabilities:
+      - filesystem

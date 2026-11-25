@@ -1,0 +1,9 @@
+[package]
+name = "flagme-plugin-timeline"
+version = "0.1.0"
+edition = "2021"
+description = "Temporal Normalization and Conflict Resolution Plugin for WASM Geo Host"
+
+[dependencies]
+flagme-sdk = { path = "../../crates/sdk" }
+chrono = { version = "0.4", features = ["serde"] }

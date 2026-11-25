@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/models",
+    "crates/sdk",
+    "crates/host",
+    "plugins/metadata",
+    "plugins/reversegeo",
+    "plugins/countryflag",
+    "plugins/thumbnail",
+    "plugins/ai-tagging",
+    "plugins/duplicate",
+    "plugins/timeline",
+]

@@ -1,0 +1,475 @@
+You are a principal software architect, systems engineer, and Rust expert.
+
+Design and implement a complete production-ready media processing platform called:
+
+    WASM Geo Host
+
+The entire solution must be written in Rust.
+
+The architecture shall be based on:
+
+- WASI
+- WebAssembly Components
+- Wasmtime
+- WIT interfaces
+- Plugin Host Architecture
+- Capability-based Security
+- SQLite
+- JSON-based plugin pipeline
+
+Do NOT generate simplified examples.
+
+Generate production-quality code and architecture.
+
+====================================================
+HIGH LEVEL ARCHITECTURE
+====================================================
+
+Workspace:
+
+    wasm_geo-host/
+
+containing:
+
+    crates/
+        host/
+        sdk/
+        models/
+
+    plugins/
+        metadata/
+        reversegeo/
+        countryflag/
+        thumbnail/
+        ai-tagging/
+        duplicate/
+        timeline/
+
+    wit/
+
+The host must dynamically load plugins.
+
+All plugins are WASM Components.
+
+All communication must happen through WIT interfaces.
+
+No plugin may know implementation details of any other plugin.
+
+====================================================
+PLUGIN HOST
+====================================================
+
+Implement:
+
+    flagme-host
+
+Responsibilities:
+
+- Plugin discovery
+- Plugin loading
+- Plugin execution
+- Capability management
+- Configuration loading
+- Resource limits
+- Pipeline orchestration
+- Structured logging
+- Error handling
+
+Use:
+
+    wasmtime
+    wasmtime-wasi
+
+Capabilities:
+
+- filesystem
+- http
+- sqlite
+- kv-store
+- secrets
+
+Implement capability grants per plugin.
+
+Example:
+
+{
+  "plugin": "metadata",
+  "capabilities": [
+    "filesystem"
+  ]
+}
+
+{
+  "plugin": "reversegeo",
+  "capabilities": [
+    "http",
+    "kv"
+  ]
+}
+
+====================================================
+UNIFIED DOCUMENT MODEL
+====================================================
+
+Create:
+
+UnifiedDocument
+
+which is passed through the whole pipeline.
+
+Example:
+
+{
+  "file": {
+    ...
+  },
+  "metadata": {
+    ...
+  },
+  "location": {
+    ...
+  },
+  "country": {
+    ...
+  },
+  "thumbnail": {
+    ...
+  },
+  "ai": {
+    ...
+  }
+}
+
+Strong typing is required.
+
+Use Rust structs and Serde.
+
+====================================================
+PLUGIN SDK
+====================================================
+
+Generate:
+
+flagme-sdk
+
+Provide:
+
+- plugin trait
+- WIT bindings
+- helper functions
+- logging abstraction
+- error abstraction
+- document model
+
+Every plugin must depend only on sdk.
+
+====================================================
+PLUGIN:
+metadata.wasm
+====================================================
+
+Purpose:
+
+Extract all metadata.
+
+Input:
+
+image path
+
+Output:
+
+UnifiedDocument enriched with:
+
+- EXIF
+- IPTC
+- XMP
+
+Requirements:
+
+Prefer pure Rust.
+
+Use:
+
+revelo
+
+Extract:
+
+- all tags and values
+
+Store all remaining tags inside:
+
+metadata.raw_tags
+
+No metadata loss is allowed.
+
+====================================================
+PLUGIN:
+reversegeo.wasm
+====================================================
+
+Input:
+
+latitude
+longitude
+
+Output:
+
+country
+country code
+region
+county
+city
+
+Implement:
+
+A) Online geocoder
+
+AND
+
+B) Offline geocoder
+
+Design offline support using:
+
+Natural Earth
+GeoBoundaries
+OSM extracts
+
+Create geospatial lookup abstraction.
+
+Add cache support.
+
+====================================================
+PLUGIN:
+countryflag.wasm
+====================================================
+
+Input:
+
+country code
+
+Output:
+
+{
+  "country_code": "DE",
+  "country_name": "Germany",
+  "flag_emoji": "🇩🇪",
+  "continent": "Europe",
+  "region": "Western Europe"
+}
+
+Generate country database.
+
+No external calls allowed.
+
+====================================================
+PLUGIN:
+thumbnail.wasm
+====================================================
+
+Generate thumbnails.
+
+Support:
+
+JPEG
+PNG
+WebP
+TIFF
+HEIC
+AVIF
+
+Create:
+
+128px
+512px
+1024px
+
+Use deterministic cache paths.
+
+Output:
+
+thumbnail metadata.
+
+====================================================
+PLUGIN:
+ai-tagging.wasm
+====================================================
+
+Implement AI tagging abstraction.
+
+Support:
+
+ONNX Runtime
+
+Create interfaces for:
+
+- MobileNet
+- CLIP
+- OpenCLIP
+
+Output:
+
+{
+  "tags": [],
+  "description": ""
+}
+
+Design for model replacement.
+
+Models must not be hardcoded.
+
+====================================================
+PLUGIN:
+duplicate.wasm
+====================================================
+
+Implement:
+
+- SHA256
+- perceptual hash
+- duplicate detection
+
+Output:
+
+{
+  "sha256": "...",
+  "phash": "...",
+  "duplicates": []
+}
+
+====================================================
+PLUGIN:
+timeline.wasm
+====================================================
+
+Normalize temporal information.
+
+Input:
+
+EXIF
+XMP
+filesystem timestamps
+
+Output:
+
+{
+  "taken_at": "...",
+  "imported_at": "...",
+  "modified_at": "..."
+}
+
+Create conflict resolution strategy.
+
+====================================================
+SQLITE STORAGE
+====================================================
+
+Generate schema.
+
+Tables:
+
+photos
+metadata
+locations
+countries
+thumbnails
+ai_tags
+duplicates
+
+Provide migrator.
+
+Use sqlx.
+
+====================================================
+CONFIGURATION
+====================================================
+
+Generate:
+
+config.yaml
+
+Example:
+
+plugins:
+  metadata:
+    enabled: true
+
+  reversegeo:
+    enabled: true
+
+  countryflag:
+    enabled: true
+
+  thumbnail:
+    enabled: true
+
+  ai-tagging:
+    enabled: true
+
+====================================================
+PIPELINE EXECUTION
+====================================================
+
+Implement:
+
+photo
+ -> metadata
+ -> reversegeo
+ -> countryflag
+ -> thumbnail
+ -> ai-tagging
+ -> duplicate
+ -> timeline
+ -> sqlite
+
+Pipeline must be configurable.
+
+====================================================
+OBSERVABILITY
+====================================================
+
+Use:
+
+tracing
+tracing-subscriber
+
+Generate:
+
+- structured logs
+- metrics
+- execution timings
+
+====================================================
+TESTING
+====================================================
+
+Generate:
+
+- unit tests
+- integration tests
+- plugin contract tests
+- sample images
+- benchmark suite
+
+====================================================
+DELIVERABLES
+====================================================
+
+Generate:
+
+1. Full workspace structure
+2. Every Cargo.toml
+3. Every WIT file
+4. Every Rust source file
+5. Database schema
+6. Configuration files
+7. Test suite
+8. Build instructions
+9. Deployment guide
+10. Plugin development guide
+
+Output code file by file.
+
+Do not omit any implementation details.
+Do not produce pseudocode.
+Generate production-ready Rust code.
+English Markdown documentation for each Plugin

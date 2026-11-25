@@ -1,0 +1,8 @@
+[package]
+name = "flagme-plugin-countryflag"
+version = "0.1.0"
+edition = "2021"
+description = "Offline Country Database and Flag Emoji Plugin for WASM Geo Host"
+
+[dependencies]
+flagme-sdk = { path = "../../crates/sdk" }

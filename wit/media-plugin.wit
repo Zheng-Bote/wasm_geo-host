@@ -1,0 +1,101 @@
+package wasmgeohost:media;
+
+interface types {
+    record file-info {
+        path: string,
+        filename: string,
+        size-bytes: u64,
+        mime-type: string,
+        sha256: option<string>,
+    }
+
+    record metadata-info {
+        camera-make: option<string>,
+        camera-model: option<string>,
+        lens-model: option<string>,
+        iso: option<u32>,
+        focal-length: option<f32>,
+        f-number: option<f32>,
+        exposure-time: option<string>,
+        raw-tags: list<tuple<string, string>>,
+    }
+
+    record location-info {
+        latitude: option<f64>,
+        longitude: option<f64>,
+        altitude: option<f64>,
+        country: option<string>,
+        country-code: option<string>,
+        region: option<string>,
+        county: option<string>,
+        city: option<string>,
+    }
+
+    record country-info {
+        country-code: string,
+        country-name: string,
+        flag-emoji: string,
+        continent: string,
+        region: string,
+    }
+
+    record thumbnail-entry {
+        size-label: string,
+        width: u32,
+        height: u32,
+        path: string,
+        cache-key: string,
+    }
+
+    record ai-tag {
+        label: string,
+        confidence: f32,
+        model: string,
+    }
+
+    record duplicate-info {
+        sha256: string,
+        phash: string,
+        duplicate-ids: list<string>,
+    }
+
+    record timeline-info {
+        taken-at: option<string>,
+        imported-at: string,
+        modified-at: option<string>,
+        resolution-source: string,
+    }
+
+    record document {
+        id: string,
+        file: file-info,
+        metadata: option<metadata-info>,
+        location: option<location-info>,
+        country: option<country-info>,
+        thumbnails: list<thumbnail-entry>,
+        ai-tags: list<ai-tag>,
+        duplicate: option<duplicate-info>,
+        timeline: option<timeline-info>,
+        custom-json: string,
+    }
+}
+
+interface host-capabilities {
+    use types.{document};
+
+    fs-read: func(path: string) -> result<list<u8>, string>;
+    http-get: func(url: string) -> result<string, string>;
+    kv-get: func(key: string) -> result<option<string>, string>;
+    kv-set: func(key: string, value: string) -> result<_, string>;
+    secret-get: func(name: string) -> result<option<string>, string>;
+    log-event: func(level: string, message: string);
+}
+
+world media-plugin {
+    import host-capabilities;
+    use types.{document};
+
+    export name: func() -> string;
+    export version: func() -> string;
+    export process: func(doc: document) -> result<document, string>;
+}
