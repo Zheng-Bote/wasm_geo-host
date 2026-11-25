@@ -35,9 +35,7 @@ fn test_ac2_plugin_exports_normalized_embeddings() {
         },
     );
 
-    let ctx = PluginContext {
-        capabilities: Arc::new(NoopCapabilities),
-    };
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     let processed = plugin.process(doc, &ctx).expect("Plugin process failed");
     assert!(processed.ai.is_some());

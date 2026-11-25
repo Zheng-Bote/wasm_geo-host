@@ -2,6 +2,8 @@ pub use wasm_geo_models::*;
 pub use serde;
 pub use serde_json;
 
+use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -38,6 +40,10 @@ pub type PluginResult<T> = Result<T, PluginError>;
 /// Host capability abstraction granted to plugins.
 pub trait HostCapabilities: Send + Sync {
     fn fs_read(&self, path: &str) -> PluginResult<Vec<u8>>;
+    fn fs_write(&self, path: &str, data: &[u8]) -> PluginResult<()> {
+        let _ = (path, data);
+        Err(PluginError::CapabilityDenied("filesystem".to_string()))
+    }
     fn http_get(&self, url: &str) -> PluginResult<String>;
     fn kv_get(&self, key: &str) -> PluginResult<Option<String>>;
     fn kv_set(&self, key: &str, value: &str) -> PluginResult<()>;
@@ -48,11 +54,25 @@ pub trait HostCapabilities: Send + Sync {
 /// Execution context provided to every plugin execution.
 pub struct PluginContext {
     pub capabilities: Arc<dyn HostCapabilities>,
+    pub settings: HashMap<String, String>,
 }
 
 impl PluginContext {
     pub fn new(capabilities: Arc<dyn HostCapabilities>) -> Self {
-        Self { capabilities }
+        Self {
+            capabilities,
+            settings: HashMap::new(),
+        }
+    }
+
+    pub fn with_settings(
+        capabilities: Arc<dyn HostCapabilities>,
+        settings: HashMap<String, String>,
+    ) -> Self {
+        Self {
+            capabilities,
+            settings,
+        }
     }
 }
 
@@ -63,12 +83,32 @@ pub trait Plugin: Send + Sync {
     fn process(&self, doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument>;
 }
 
-/// Dummy / Noop capabilities for testing and standalone execution.
+/// Standalone / test capabilities that allow reading existing local files when present.
 pub struct NoopCapabilities;
 
 impl HostCapabilities for NoopCapabilities {
-    fn fs_read(&self, _path: &str) -> PluginResult<Vec<u8>> {
-        Err(PluginError::CapabilityDenied("fs".to_string()))
+    fn fs_read(&self, path: &str) -> PluginResult<Vec<u8>> {
+        if path.contains("..") {
+            return Err(PluginError::Io("Path traversal forbidden".to_string()));
+        }
+        let p = Path::new(path);
+        if p.exists() && p.is_file() {
+            std::fs::read(p).map_err(|e| PluginError::Io(e.to_string()))
+        } else {
+            Err(PluginError::CapabilityDenied("fs".to_string()))
+        }
+    }
+    fn fs_write(&self, path: &str, data: &[u8]) -> PluginResult<()> {
+        if path.contains("..") {
+            return Err(PluginError::Io("Path traversal forbidden".to_string()));
+        }
+        let p = Path::new(path);
+        if let Some(parent) = p.parent() {
+            if !parent.as_os_str().is_empty() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+        }
+        std::fs::write(p, data).map_err(|e| PluginError::Io(e.to_string()))
     }
     fn http_get(&self, _url: &str) -> PluginResult<String> {
         Err(PluginError::CapabilityDenied("http".to_string()))

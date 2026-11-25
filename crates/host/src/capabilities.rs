@@ -1,6 +1,7 @@
 use flagme_sdk::{HostCapabilities, PluginError, PluginResult};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::process::Command;
 use std::sync::{Arc, RwLock};
 
 /// Capability enforcement manager for a specific plugin.
@@ -61,6 +62,26 @@ impl HostCapabilities for CapabilityManager {
         std::fs::read(p).map_err(|e| PluginError::Io(format!("fs_read failed for {}: {}", path, e)))
     }
 
+    fn fs_write(&self, path: &str, data: &[u8]) -> PluginResult<()> {
+        self.check_capability("filesystem")?;
+
+        if path.contains("..") {
+            return Err(PluginError::Io("Path traversal forbidden".to_string()));
+        }
+
+        let p = Path::new(path);
+        if let Some(parent) = p.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    PluginError::Io(format!("fs_write create_dir_all failed for {}: {}", path, e))
+                })?;
+            }
+        }
+
+        std::fs::write(p, data)
+            .map_err(|e| PluginError::Io(format!("fs_write failed for {}: {}", path, e)))
+    }
+
     fn http_get(&self, url: &str) -> PluginResult<String> {
         self.check_capability("http")?;
 
@@ -69,7 +90,30 @@ impl HostCapabilities for CapabilityManager {
         }
 
         tracing::info!(plugin = %self.plugin_name, url = %url, "Executing HTTP GET");
-        Ok(format!(r#"{{"status": "ok", "url": "{}"}}"#, url))
+
+        // Attempt outbound HTTP fetch with strict 2-second timeout via system curl if network is available
+        if let Ok(output) = Command::new("curl")
+            .args([
+                "-sS",
+                "-L",
+                "--max-time",
+                "2",
+                "-H",
+                "User-Agent: flagme-host/0.1.0",
+                url,
+            ])
+            .output()
+        {
+            if output.status.success() && !output.stdout.is_empty() {
+                if let Ok(body) = String::from_utf8(output.stdout) {
+                    if !body.trim().is_empty() {
+                        return Ok(body);
+                    }
+                }
+            }
+        }
+
+        Ok(format!(r#"{{"status": "offline", "url": "{}"}}"#, url))
     }
 
     fn kv_get(&self, key: &str) -> PluginResult<Option<String>> {

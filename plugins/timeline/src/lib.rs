@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use flagme_sdk::{
     Plugin, PluginContext, PluginResult, TimelineInfo, UnifiedDocument,
 };
@@ -13,17 +13,21 @@ impl TimelinePlugin {
         Self
     }
 
-    fn parse_exif_date(s: &str) -> Option<DateTime<Utc>> {
-        let clean = s.trim().trim_matches('"');
-        // 1. Try standard EXIF format: "YYYY:MM:DD HH:MM:SS"
+    pub fn parse_exif_date(s: &str) -> Option<DateTime<Utc>> {
+        let clean = s.trim().trim_matches('"').trim();
+        // 1. Standard EXIF format: "YYYY:MM:DD HH:MM:SS"
         if let Ok(naive) = NaiveDateTime::parse_from_str(clean, "%Y:%m:%d %H:%M:%S") {
             return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc));
         }
-        // 2. Try RFC 3339 / ISO 8601: "YYYY-MM-DDTHH:MM:SSZ"
+        // 2. Standard ISO without T: "YYYY-MM-DD HH:MM:SS"
+        if let Ok(naive) = NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S") {
+            return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc));
+        }
+        // 3. RFC 3339 / ISO 8601: "YYYY-MM-DDTHH:MM:SSZ"
         if let Ok(parsed) = DateTime::parse_from_rfc3339(clean) {
             return Some(parsed.with_timezone(&Utc));
         }
-        // 3. Try filename timestamp pattern: "YYYY-MM-DD_HHMMSS"
+        // 4. Filename timestamp pattern: "YYYY-MM-DD_HHMMSS"
         if clean.len() >= 17 {
             if let Ok(naive) = NaiveDateTime::parse_from_str(&clean[0..17], "%Y-%m-%d_%H%M%S") {
                 return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc));
@@ -32,19 +36,41 @@ impl TimelinePlugin {
         None
     }
 
-    fn parse_filename_date(filename: &str) -> Option<DateTime<Utc>> {
-        // e.g. "2025-10-25_094918.jpg"
+    pub fn parse_filename_date(filename: &str) -> Option<DateTime<Utc>> {
         let stem = Path::new(filename)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or(filename);
 
+        // 1. Pattern: "YYYY-MM-DD_HHMMSS..." (e.g. "2025-10-25_094918.jpg")
         if stem.len() >= 17 {
             let candidate = &stem[0..17];
             if let Ok(naive) = NaiveDateTime::parse_from_str(candidate, "%Y-%m-%d_%H%M%S") {
                 return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc));
             }
         }
+
+        // 2. Pattern: "YYYY-MM-DD..." (e.g. "2026-03-04_Stromzaehler.jpg")
+        if stem.len() >= 10 {
+            let date_part = &stem[0..10];
+            if let Ok(date) = chrono::NaiveDate::parse_from_str(date_part, "%Y-%m-%d") {
+                if let Some(naive) = date.and_hms_opt(12, 0, 0) {
+                    return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc));
+                }
+            }
+        }
+
+        // 3. Pattern containing 13-digit Unix epoch milliseconds (e.g. "app_inventor_1554303518406.jpg")
+        for part in stem.split(|c: char| !c.is_ascii_digit()) {
+            if part.len() == 13 {
+                if let Ok(ms) = part.parse::<i64>() {
+                    if let chrono::LocalResult::Single(dt) = Utc.timestamp_millis_opt(ms) {
+                        return Some(dt);
+                    }
+                }
+            }
+        }
+
         None
     }
 }
@@ -64,23 +90,31 @@ impl Plugin for TimelinePlugin {
         let mut modified_at = None;
         let mut resolution_source = "fallback_now".to_string();
 
-        // 1. Priority: EXIF original timestamp
+        // 1. Priority: EXIF original / digitized / image timestamp
         if let Some(metadata) = &doc.metadata {
-            if let Some(raw_date) = metadata.raw_tags.get("Exif.Photo.DateTimeOriginal").or_else(|| metadata.raw_tags.get("Exif.DateTimeOriginal")) {
-                if let Some(parsed) = Self::parse_exif_date(raw_date) {
-                    taken_at = Some(parsed);
-                    resolution_source = "exif_datetime_original".to_string();
-                }
-            } else if let Some(raw_date) = metadata.raw_tags.get("XMP.xmp.CreateDate") {
-                // 2. Priority: XMP create date
-                if let Some(parsed) = Self::parse_exif_date(raw_date) {
-                    taken_at = Some(parsed);
-                    resolution_source = "xmp_create_date".to_string();
+            let exif_candidates = [
+                ("Exif.Photo.DateTimeOriginal", "exif_datetime_original"),
+                ("Exif.DateTimeOriginal", "exif_datetime_original"),
+                ("Exif.Date/Time Original", "exif_datetime_original"),
+                ("Exif.Photo.DateTimeDigitized", "exif_datetime_digitized"),
+                ("Exif.DateTimeDigitized", "exif_datetime_digitized"),
+                ("Exif.Image.DateTime", "exif_datetime"),
+                ("Exif.DateTime", "exif_datetime"),
+                ("XMP.xmp.CreateDate", "xmp_create_date"),
+            ];
+
+            for (key, source_label) in exif_candidates {
+                if let Some(raw_date) = metadata.raw_tags.get(key) {
+                    if let Some(parsed) = Self::parse_exif_date(raw_date) {
+                        taken_at = Some(parsed);
+                        resolution_source = source_label.to_string();
+                        break;
+                    }
                 }
             }
         }
 
-        // 2. Priority: Parse timestamp encoded in filename (e.g. 2025-10-25_094918.jpg)
+        // 2. Priority: Parse timestamp encoded in filename
         if taken_at.is_none() {
             if let Some(parsed) = Self::parse_filename_date(&doc.file.filename) {
                 taken_at = Some(parsed);

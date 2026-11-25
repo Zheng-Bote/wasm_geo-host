@@ -53,9 +53,7 @@ fn test_ac2_plugin_contract_metadata() {
 fn test_ac3_model_tiers_selection() {
     let plugin_light = FaceDetectionPlugin::with_tier(ModelTier::Lightweight);
     let plugin_heavy = FaceDetectionPlugin::with_tier(ModelTier::Heavy);
-    let ctx = PluginContext {
-        capabilities: Arc::new(NoopCapabilities),
-    };
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     let doc = UnifiedDocument::new(
         "photo-portrait",
@@ -136,9 +134,7 @@ fn test_ac4_sqlite_face_persistence() {
 #[test]
 fn test_ac5_integration_face_detection() {
     let plugin = FaceDetectionPlugin::new();
-    let ctx = PluginContext {
-        capabilities: Arc::new(NoopCapabilities),
-    };
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     let doc = UnifiedDocument::new(
         "photo-group-shot",

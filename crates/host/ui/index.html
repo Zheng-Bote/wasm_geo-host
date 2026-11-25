@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    #map { height: 500px; width: 100%; border-radius: 0.5rem; }
+    #map { height: 460px; width: 100%; border-radius: 0.5rem; }
   </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
@@ -16,11 +16,13 @@
     <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-4">
       <div class="flex items-center gap-3">
         <span class="text-2xl">🌍</span>
-        <h1 class="text-xl font-bold tracking-tight text-white">flagme-host Media Explorer</h1>
+        <h1 class="text-xl font-bold tracking-tight text-white">flagme-host — Media Dashboard</h1>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <input id="countryFilter" type="text" placeholder="Country (e.g. DE)..." class="bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-indigo-500 w-36" />
         <input id="searchInput" type="text" placeholder="Search photos (FTS5)..." class="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 w-64" />
         <button id="searchBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-sm font-medium">Search</button>
+        <button id="resetBtn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded text-sm border border-gray-700">Reset</button>
       </div>
     </div>
   </header>
@@ -28,9 +30,12 @@
   <main class="max-w-7xl mx-auto p-4 space-y-6">
     <!-- Map Section -->
     <section class="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
-      <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-        <span>📍</span> Interactive Map View
-      </h2>
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-lg font-semibold flex items-center gap-2">
+          <span>📍</span> Interactive Map View
+        </h2>
+        <span id="markerCount" class="text-xs text-gray-400">0 mapped photos</span>
+      </div>
       <div id="map"></div>
     </section>
 
@@ -42,14 +47,25 @@
         </h2>
         <span id="photoCount" class="text-sm text-gray-400">Loading...</span>
       </div>
-      <div id="galleryGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div id="galleryGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <!-- Rendered photo cards -->
       </div>
     </section>
   </main>
 
+  <!-- Detail Modal -->
+  <div id="detailModal" class="fixed inset-0 bg-black/75 hidden items-center justify-center z-50 p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
+      <div class="flex justify-between items-center border-b border-gray-800 pb-3">
+        <h3 id="modalTitle" class="text-lg font-bold text-white">Photo Details</h3>
+        <button id="closeModalBtn" class="text-gray-400 hover:text-white text-xl">&times;</button>
+      </div>
+      <div id="modalBody" class="space-y-4 text-sm"></div>
+    </div>
+  </div>
+
   <script>
-    const map = L.map('map').setView([20, 0], 2);
+    const map = L.map('map').setView([35, 10], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
       attribution: '© OpenStreetMap'
@@ -62,31 +78,102 @@
         const res = await fetch('/api/map/markers');
         const data = await res.json();
         markersLayer.clearLayers();
+        const bounds = [];
 
         if (data.features) {
+          document.getElementById('markerCount').textContent = `${data.features.length} mapped photo(s)`;
           data.features.forEach(feat => {
             const [lng, lat] = feat.geometry.coordinates;
             const props = feat.properties;
+            bounds.push([lat, lng]);
             const marker = L.marker([lat, lng]);
             const popupContent = `
-              <div class="text-gray-900 text-sm">
-                <strong>${props.filename}</strong><br/>
-                ${props.flag || ''} ${props.city || ''}, ${props.country || ''}<br/>
-                <a href="/api/photos/${props.id}" target="_blank" class="text-indigo-600 underline">View JSON</a>
+              <div class="text-gray-900 text-xs space-y-1 min-w-[160px]">
+                <img src="${props.thumbnail_url}" class="w-full h-24 object-cover rounded mb-1 bg-gray-200" onerror="this.style.display='none'" />
+                <div class="font-bold">${props.filename}</div>
+                <div>${props.flag || ''} ${props.city || ''}, ${props.country || ''}</div>
+                ${props.weather ? `<div class="text-gray-600">${props.weather}</div>` : ''}
+                <button onclick="openPhotoDetail('${props.id}')" class="text-indigo-600 underline font-medium mt-1 inline-block">Inspect Metadata</button>
               </div>
             `;
             marker.bindPopup(popupContent);
             markersLayer.addLayer(marker);
           });
+          if (bounds.length > 0) {
+            map.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 });
+          }
         }
       } catch (e) {
         console.error('Failed to load map markers:', e);
       }
     }
 
+    function renderPhotoCard(doc) {
+      const card = document.createElement('div');
+      card.className = 'bg-gray-900 border border-gray-700 hover:border-indigo-500 transition rounded-lg overflow-hidden flex flex-col cursor-pointer';
+      card.onclick = () => openPhotoDetail(doc.id);
+
+      const flag = doc.country ? doc.country.flag_emoji : '';
+      const locationStr = doc.location && (doc.location.city || doc.location.country)
+        ? `${doc.location.city || ''} ${doc.location.country || ''}`.trim()
+        : (doc.location && doc.location.latitude ? `${doc.location.latitude.toFixed(2)}, ${doc.location.longitude.toFixed(2)}` : 'No GPS');
+
+      const cameraStr = doc.metadata && (doc.metadata.camera_make || doc.metadata.camera_model)
+        ? `${doc.metadata.camera_make || ''} ${doc.metadata.camera_model || ''}`.trim()
+        : 'Standard Media';
+
+      const weatherStr = doc.weather
+        ? `${doc.weather.icon_emoji} ${doc.weather.temperature !== null ? doc.weather.temperature + '°C' : ''} ${doc.weather.condition}`
+        : '';
+
+      const dateStr = doc.timeline && doc.timeline.taken_at
+        ? new Date(doc.timeline.taken_at).toISOString().slice(0, 10)
+        : '';
+
+      const tags = doc.ai && doc.ai.tags
+        ? doc.ai.tags.slice(0, 3).map(t => `<span class="bg-gray-800 text-xs px-1.5 py-0.5 rounded text-indigo-300 border border-gray-700">#${t.label}</span>`).join(' ')
+        : '';
+
+      const badges = [];
+      if (doc.ocr && doc.ocr.combined_text) {
+        badges.push(`<span class="bg-emerald-950 text-emerald-300 border border-emerald-800 text-[11px] px-1.5 py-0.5 rounded" title="OCR: ${doc.ocr.combined_text}">🔤 OCR</span>`);
+      }
+      if (doc.faces && doc.faces.faces && doc.faces.faces.length > 0) {
+        badges.push(`<span class="bg-amber-950 text-amber-300 border border-amber-800 text-[11px] px-1.5 py-0.5 rounded">👤 ${doc.faces.faces.length}</span>`);
+      }
+      if (doc.privacy && doc.privacy.is_redacted) {
+        badges.push(`<span class="bg-purple-950 text-purple-300 border border-purple-800 text-[11px] px-1.5 py-0.5 rounded">🛡️ Redacted</span>`);
+      }
+
+      card.innerHTML = `
+        <div class="h-44 bg-gray-950 flex items-center justify-center overflow-hidden relative">
+          <img src="/api/photos/${doc.id}/thumbnail/medium" alt="${doc.file.filename}" class="w-full h-full object-cover" onerror="this.outerHTML='<div class=\\'text-3xl text-gray-600\\'>📷</div>'" />
+          ${dateStr ? `<span class="absolute top-2 right-2 bg-black/70 text-gray-200 text-[11px] px-2 py-0.5 rounded">${dateStr}</span>` : ''}
+        </div>
+        <div class="p-3 flex-1 flex flex-col justify-between space-y-2">
+          <div>
+            <div class="text-sm font-semibold truncate text-white" title="${doc.file.filename}">${doc.file.filename}</div>
+            <div class="text-xs text-gray-400 truncate mt-0.5">${flag} ${locationStr}</div>
+            <div class="text-xs text-gray-500 truncate mt-0.5">📷 ${cameraStr}</div>
+            ${weatherStr ? `<div class="text-xs text-sky-400 truncate mt-0.5">${weatherStr}</div>` : ''}
+          </div>
+          <div class="space-y-1.5 pt-1">
+            ${badges.length > 0 ? `<div class="flex flex-wrap gap-1">${badges.join('')}</div>` : ''}
+            <div class="flex flex-wrap gap-1">${tags}</div>
+          </div>
+        </div>
+      `;
+      return card;
+    }
+
     async function loadGallery() {
       try {
-        const res = await fetch('/api/photos?limit=50');
+        const country = document.getElementById('countryFilter').value.trim();
+        let url = '/api/photos?limit=100';
+        if (country) {
+          url += `&country=${encodeURIComponent(country)}`;
+        }
+        const res = await fetch(url);
         const photos = await res.json();
         const grid = document.getElementById('galleryGrid');
         const count = document.getElementById('photoCount');
@@ -94,26 +181,61 @@
         grid.innerHTML = '';
 
         photos.forEach(doc => {
-          const card = document.createElement('div');
-          card.className = 'bg-gray-900 border border-gray-700 rounded-lg overflow-hidden flex flex-col p-2';
-          const flag = doc.country ? doc.country.flag_emoji : '';
-          const locationStr = doc.location ? `${doc.location.city || ''} ${doc.location.country || ''}` : 'No GPS';
-          const tags = doc.ai ? doc.ai.tags.slice(0, 2).map(t => `<span class="bg-gray-800 text-xs px-1.5 py-0.5 rounded text-gray-300">#${t.label}</span>`).join(' ') : '';
-
-          card.innerHTML = `
-            <div class="h-32 bg-gray-800 flex items-center justify-center text-gray-500 rounded mb-2 text-2xl">
-              📷
-            </div>
-            <div class="text-sm font-semibold truncate text-white">${doc.file.filename}</div>
-            <div class="text-xs text-gray-400 truncate">${flag} ${locationStr}</div>
-            <div class="mt-2 flex flex-wrap gap-1">${tags}</div>
-          `;
-          grid.appendChild(card);
+          grid.appendChild(renderPhotoCard(doc));
         });
       } catch (e) {
         console.error('Failed to load gallery:', e);
       }
     }
+
+    async function openPhotoDetail(photoId) {
+      try {
+        const res = await fetch(`/api/photos/${encodeURIComponent(photoId)}`);
+        if (!res.ok) return;
+        const doc = await res.json();
+        const modal = document.getElementById('detailModal');
+        document.getElementById('modalTitle').textContent = `${doc.file.filename} (${doc.id})`;
+
+        const loc = doc.location ? `${doc.country ? doc.country.flag_emoji : ''} ${doc.location.city || ''}, ${doc.location.country || ''} (${doc.location.latitude || 'N/A'}, ${doc.location.longitude || 'N/A'})` : 'None';
+        const weather = doc.weather ? `${doc.weather.icon_emoji} ${doc.weather.condition}, ${doc.weather.temperature}°C (Humidity: ${doc.weather.humidity_percent || 0}%)` : 'None';
+        const ocr = doc.ocr && doc.ocr.combined_text ? doc.ocr.combined_text : 'No text detected';
+        const faces = doc.faces && doc.faces.faces ? `${doc.faces.faces.length} face(s) [${doc.faces.detection_model}]` : '0';
+        const privacy = doc.privacy ? `Redacted: ${doc.privacy.is_redacted} | Rules: ${(doc.privacy.applied_rules || []).join(', ') || 'none'}` : 'None';
+
+        document.getElementById('modalBody').innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-950 rounded p-2 flex items-center justify-center">
+              <img src="/api/photos/${doc.id}/thumbnail/large" class="max-h-72 object-contain rounded" />
+            </div>
+            <div class="space-y-2 text-xs">
+              <div><span class="text-gray-400">File Path:</span> <code class="text-gray-200">${doc.file.path}</code></div>
+              <div><span class="text-gray-400">Size / MIME:</span> ${doc.file.size_bytes} bytes (${doc.file.mime_type})</div>
+              <div><span class="text-gray-400">Location:</span> ${loc}</div>
+              <div><span class="text-gray-400">Weather:</span> ${weather}</div>
+              <div><span class="text-gray-400">Timeline:</span> ${doc.timeline ? doc.timeline.taken_at + ' (' + doc.timeline.resolution_source + ')' : 'N/A'}</div>
+              <div><span class="text-gray-400">OCR Text:</span> ${ocr}</div>
+              <div><span class="text-gray-400">Faces:</span> ${faces}</div>
+              <div><span class="text-gray-400">Privacy:</span> ${privacy}</div>
+              <div><span class="text-gray-400">Duplicate pHash:</span> <code>${doc.duplicate ? doc.duplicate.phash : 'N/A'}</code></div>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-gray-400 mb-1">Full UnifiedDocument JSON</div>
+            <pre class="bg-gray-950 p-3 rounded text-xs text-emerald-400 overflow-x-auto max-h-64">${JSON.stringify(doc, null, 2)}</pre>
+          </div>
+        `;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      } catch (e) {
+        console.error('Failed to load photo detail:', e);
+      }
+    }
+
+    document.getElementById('closeModalBtn').addEventListener('click', () => {
+      const modal = document.getElementById('detailModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    });
 
     document.getElementById('searchBtn').addEventListener('click', async () => {
       const q = document.getElementById('searchInput').value.trim();
@@ -129,19 +251,22 @@
         count.textContent = `${searchResults.length} match(es) for "${q}"`;
         grid.innerHTML = '';
 
-        searchResults.forEach(r => {
-          const card = document.createElement('div');
-          card.className = 'bg-gray-900 border border-gray-700 rounded-lg p-3';
-          card.innerHTML = `
-            <div class="text-sm font-bold text-indigo-400">${r.filename}</div>
-            <div class="text-xs text-gray-400">ID: ${r.photo_id}</div>
-            <div class="text-xs text-gray-500">BM25 Rank: ${r.rank.toFixed(4)}</div>
-          `;
-          grid.appendChild(card);
-        });
+        for (const r of searchResults) {
+          const detailRes = await fetch(`/api/photos/${encodeURIComponent(r.photo_id)}`);
+          if (detailRes.ok) {
+            const doc = await detailRes.json();
+            grid.appendChild(renderPhotoCard(doc));
+          }
+        }
       } catch (e) {
         console.error('Search error:', e);
       }
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('countryFilter').value = '';
+      loadGallery();
     });
 
     loadMapMarkers();

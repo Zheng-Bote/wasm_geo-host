@@ -1,9 +1,9 @@
 # config.mac-studio.yaml - High-Performance Profile for Apple Silicon (Mac Studio M-Series, 32GB+ Unified RAM)
-database_path: "media.db"
+database_path: 'media.db'
 
 resource_limits:
   max_memory_bytes: 4294967296 # 4 GB per plugin sandbox
-  timeout_ms: 60000            # 60s timeout for ultra-high-resolution files
+  timeout_ms: 60000 # 60s timeout for ultra-high-resolution files
 
 pipeline:
   - metadata
@@ -21,59 +21,59 @@ pipeline:
 plugins:
   metadata:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
   reversegeo:
     enabled: true
-    capabilities: ["http", "kv"]
+    capabilities: ['http', 'kv']
     settings:
-      offline_cache: "true"
+      offline_cache: 'true'
   countryflag:
     enabled: true
     capabilities: []
   thumbnail:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
     settings:
-      quality: "95"
-      variants: "128,256,512,1024,2048"
+      quality: '95'
+      variants: '128,256,512,1024,2048'
   ai-tagging:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
     settings:
-      model: "OpenCLIP-ConvNeXt-Large" # High-accuracy multi-modal vision foundation model
-      model_tier: "heavy"
-      embedding_dim: "512"
-      device: "mps" # Metal Performance Shaders / Apple Neural Engine
+      model: 'OpenCLIP-ConvNeXt-Large' # High-accuracy multi-modal vision foundation model
+      model_tier: 'heavy'
+      embedding_dim: '512'
+      device: 'mps' # Metal Performance Shaders / Apple Neural Engine
   duplicate:
     enabled: true
-    capabilities: ["filesystem", "kv"]
+    capabilities: ['filesystem', 'kv']
     settings:
-      phash_threshold: "8"
+      phash_threshold: '8'
   timeline:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
   weather-enrich:
     enabled: true
-    capabilities: ["http", "kv"]
+    capabilities: ['http', 'kv']
   ocr-text:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
     settings:
-      engine: "PaddleOCR-v4-Server" # Server-grade multi-lingual OCR pipeline
-      max_image_dimension: "4096"
+      engine: 'PaddleOCR-v4-Server' # Server-grade multi-lingual OCR pipeline
+      max_image_dimension: '4096'
   face-detection:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
     settings:
-      tier: "heavy" # SCRFD + ArcFace-ResNet100 (512-D identity embeddings)
-      min_confidence: "0.80"
-      device: "mps"
+      tier: 'heavy' # SCRFD + ArcFace-ResNet100 (512-D identity embeddings)
+      min_confidence: '0.80'
+      device: 'mps'
   privacy-redact:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
     settings:
-      style: "blur"
-      blur_sigma: "24.0"
-      fuzz_gps: "true"
-      gps_decimal_places: "2"
-      strip_serials: "true"
+      style: 'blackout'
+      blur_sigma: '24.0'
+      fuzz_gps: 'true'
+      gps_decimal_places: '3'
+      strip_serials: 'true'

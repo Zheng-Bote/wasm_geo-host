@@ -20,6 +20,10 @@ impl StreamSupervisor {
             "target/wasm32-wasip2/release/flagme-plugin-ai-tagging.wasm".to_string(),
             "target/wasm32-wasip2/release/flagme-plugin-duplicate.wasm".to_string(),
             "target/wasm32-wasip2/release/flagme-plugin-timeline.wasm".to_string(),
+            "target/wasm32-wasip2/release/flagme-plugin-weather-enrich.wasm".to_string(),
+            "target/wasm32-wasip2/release/flagme-plugin-ocr-text.wasm".to_string(),
+            "target/wasm32-wasip2/release/flagme-plugin-face-detection.wasm".to_string(),
+            "target/wasm32-wasip2/release/flagme-plugin-privacy-redact.wasm".to_string(),
         ])
     }
 

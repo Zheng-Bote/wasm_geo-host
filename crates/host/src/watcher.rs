@@ -3,13 +3,32 @@ use crate::pipeline::Pipeline;
 use crate::storage::Storage;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use wasm_geo_models::{FileInfo, UnifiedDocument};
+
+static IN_FLIGHT_HASHES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn in_flight_set() -> &'static Mutex<HashSet<String>> {
+    IN_FLIGHT_HASHES.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+struct InFlightGuard {
+    sha256: String,
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = in_flight_set().lock() {
+            set.remove(&self.sha256);
+        }
+    }
+}
 
 /// Configuration options for DirectoryWatcher.
 #[derive(Debug, Clone)]
@@ -89,6 +108,10 @@ impl MediaOrganizer {
         let rel_path = Self::format_destination_path(doc, pattern);
         let dest_path = target_base.join(rel_path);
 
+        if source_path == dest_path {
+            return Ok(dest_path);
+        }
+
         if let Some(parent) = dest_path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -96,7 +119,6 @@ impl MediaOrganizer {
         if copy_only {
             fs::copy(source_path, &dest_path)?;
         } else {
-            // Try rename; fall back to copy + remove if across filesystem mounts
             if fs::rename(source_path, &dest_path).is_err() {
                 fs::copy(source_path, &dest_path)?;
                 let _ = fs::remove_file(source_path);
@@ -145,6 +167,7 @@ impl DirectoryWatcher {
         let (tx, rx) = mpsc::channel::<PathBuf>(1024);
         let rx = Arc::new(tokio::sync::Mutex::new(rx));
         let tx_sync = tx.clone();
+        let target_dir_filter = self.config.target_dir.clone();
 
         // 1. Setup notify event watcher (AC-1)
         let mut watcher = RecommendedWatcher::new(
@@ -153,6 +176,11 @@ impl DirectoryWatcher {
                     match event.kind {
                         EventKind::Create(_) | EventKind::Modify(_) => {
                             for path in event.paths {
+                                if let Some(ref target) = target_dir_filter {
+                                    if path.starts_with(target) {
+                                        continue;
+                                    }
+                                }
                                 if is_supported_media_file(&path) {
                                     let _ = tx_sync.blocking_send(path);
                                 }
@@ -195,8 +223,22 @@ impl DirectoryWatcher {
                     };
 
                     if let Some(path) = maybe_path {
-                        if let Err(e) = process_single_file(&path, &pipeline, &storage, &config).await {
-                            tracing::error!(path = ?path, error = %e, "Failed to ingest media file");
+                        match process_single_file(&path, &pipeline, &storage, &config).await {
+                            Ok(Some(doc)) => {
+                                println!(
+                                    "[watcher] Processed '{}' -> id={} ({})",
+                                    doc.file.filename,
+                                    doc.id,
+                                    doc.location
+                                        .as_ref()
+                                        .and_then(|l| l.city.as_deref())
+                                        .unwrap_or("no-gps")
+                                );
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                tracing::error!(path = ?path, error = %e, "Failed to ingest media file");
+                            }
                         }
                     }
                 }
@@ -227,6 +269,11 @@ impl DirectoryWatcher {
 
         let mut dirs = vec![self.config.watch_dir.clone()];
         while let Some(current_dir) = dirs.pop() {
+            if let Some(ref target) = self.config.target_dir {
+                if current_dir.starts_with(target) {
+                    continue;
+                }
+            }
             if let Ok(entries) = fs::read_dir(current_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
@@ -255,9 +302,25 @@ pub async fn process_single_file(
 
     // Read bytes & compute SHA-256
     let bytes = fs::read(file_path)?;
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
     let sha256_hex = format!("{:x}", hasher.finalize());
+
+    // Prevent concurrent duplicate processing of the same SHA-256 across worker threads
+    {
+        let mut in_flight = in_flight_set().lock().unwrap();
+        if in_flight.contains(&sha256_hex) {
+            return Ok(None);
+        }
+        in_flight.insert(sha256_hex.clone());
+    }
+    let _guard = InFlightGuard {
+        sha256: sha256_hex.clone(),
+    };
 
     // AC-3: Deduplication check against SQLite database
     if storage.has_sha256(&sha256_hex) {
@@ -300,7 +363,6 @@ pub async fn process_single_file(
 
     // AC-2: Execute pipeline
     let mut processed_doc = pipeline.process(doc)?;
-    // Ensure the true sha256_hex is preserved in the processed doc and storage
     if processed_doc.file.sha256.as_deref() != Some(&sha256_hex) {
         processed_doc.file.sha256 = Some(sha256_hex);
         let _ = storage.save_document(&processed_doc);
@@ -315,6 +377,8 @@ pub async fn process_single_file(
             &config.organize_pattern,
             config.copy_only,
         )?;
+        processed_doc.file.path = new_path.to_string_lossy().to_string();
+        let _ = storage.save_document(&processed_doc);
         tracing::info!(
             from = ?file_path,
             to = ?new_path,
@@ -326,11 +390,15 @@ pub async fn process_single_file(
 }
 
 fn is_supported_media_file(path: &Path) -> bool {
-    // Ignore hidden files and macOS AppleDouble resource forks (e.g. ._IMG_0001.jpg, .DS_Store)
     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-        if file_name.starts_with('.') || file_name.starts_with("._") {
+        if file_name.starts_with('.') || file_name.starts_with("._") || file_name.ends_with(".redacted.jpg") {
             return false;
         }
+    }
+
+    // Skip cache directory artifacts
+    if path.components().any(|c| c.as_os_str() == "cache") {
+        return false;
     }
 
     let ext = path

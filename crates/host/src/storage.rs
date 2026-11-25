@@ -1,6 +1,7 @@
 use wasm_geo_models::*;
 use std::collections::HashMap;
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
@@ -38,7 +39,7 @@ pub struct Storage {
 
 impl Storage {
     pub fn new(db_path: impl Into<String>) -> Self {
-        Self {
+        let storage = Self {
             db_path: db_path.into(),
             photos: Arc::new(Mutex::new(HashMap::new())),
             metadata: Arc::new(Mutex::new(HashMap::new())),
@@ -52,10 +53,13 @@ impl Storage {
             ocr: Arc::new(Mutex::new(HashMap::new())),
             faces: Arc::new(Mutex::new(HashMap::new())),
             privacy: Arc::new(Mutex::new(HashMap::new())),
-        }
+        };
+        storage.load_existing_from_disk();
+        storage
     }
 
-    /// Applies migrations and creates tables in the SQLite database file on disk.
+    /// Applies migrations and creates tables in the SQLite database file on disk,
+    /// then synchronizes any existing records into memory.
     pub fn init_schema(&self) -> anyhow::Result<()> {
         let migration_sql = include_str!("../migrations/20261125000000_init.sql");
 
@@ -81,72 +85,196 @@ impl Storage {
             }
         }
 
+        self.load_existing_from_disk();
+
         tracing::info!(db = %self.db_path, "Applied database migrations successfully to SQLite database");
         Ok(())
+    }
+
+    /// Loads existing documents from the SQLite database file into the in-memory caches.
+    pub fn load_existing_from_disk(&self) {
+        if !Path::new(&self.db_path).exists() {
+            return;
+        }
+
+        // 1. Load complete UnifiedDocuments from documents_store if available
+        if let Ok(output) = Command::new("sqlite3")
+            .arg(&self.db_path)
+            .arg("SELECT doc_json FROM documents_store;")
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with('{') {
+                        if let Ok(doc) = serde_json::from_str::<UnifiedDocument>(trimmed) {
+                            self.cache_document_in_memory(&doc);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Also load any rows from relational tables that might not be in documents_store
+        if let Ok(output) = Command::new("sqlite3")
+            .arg(&self.db_path)
+            .arg("-separator")
+            .arg("\t")
+            .arg("SELECT id, file_path, filename, size_bytes, mime_type, COALESCE(sha256, '') FROM photos;")
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split('\t').collect();
+                    if parts.len() >= 6 {
+                        let id = parts[0].trim().to_string();
+                        let has_already = { self.photos.lock().unwrap().contains_key(&id) };
+                        if !has_already {
+                            let sha256 = if parts[5].trim().is_empty() {
+                                None
+                            } else {
+                                Some(parts[5].trim().to_string())
+                            };
+                            let file_info = FileInfo {
+                                path: parts[1].trim().to_string(),
+                                filename: parts[2].trim().to_string(),
+                                size_bytes: parts[3].trim().parse().unwrap_or(0),
+                                mime_type: parts[4].trim().to_string(),
+                                sha256,
+                            };
+                            self.photos.lock().unwrap().insert(id, file_info);
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Ok(output) = Command::new("sqlite3")
+            .arg(&self.db_path)
+            .arg("-separator")
+            .arg("\t")
+            .arg("SELECT country_code, country_name, flag_emoji, continent, region FROM countries;")
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let mut countries = self.countries.lock().unwrap();
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split('\t').collect();
+                    if parts.len() >= 5 {
+                        let code = parts[0].trim().to_string();
+                        countries.entry(code.clone()).or_insert_with(|| CountryInfo {
+                            country_code: code,
+                            country_name: parts[1].trim().to_string(),
+                            flag_emoji: parts[2].trim().to_string(),
+                            continent: parts[3].trim().to_string(),
+                            region: parts[4].trim().to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        if let Ok(output) = Command::new("sqlite3")
+            .arg(&self.db_path)
+            .arg("-separator")
+            .arg("\t")
+            .arg("SELECT photo_id, latitude, longitude, altitude, country, country_code, region, county, city, local_country, local_region, local_city, local_language FROM locations;")
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let mut locations = self.locations.lock().unwrap();
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split('\t').collect();
+                    if parts.len() >= 13 {
+                        let id = parts[0].trim().to_string();
+                        locations.entry(id).or_insert_with(|| LocationInfo {
+                            latitude: parts[1].trim().parse().ok(),
+                            longitude: parts[2].trim().parse().ok(),
+                            altitude: parts[3].trim().parse().ok(),
+                            country: non_empty_opt(parts[4]),
+                            country_code: non_empty_opt(parts[5]),
+                            region: non_empty_opt(parts[6]),
+                            county: non_empty_opt(parts[7]),
+                            city: non_empty_opt(parts[8]),
+                            local_country: non_empty_opt(parts[9]),
+                            local_region: non_empty_opt(parts[10]),
+                            local_city: non_empty_opt(parts[11]),
+                            local_language: non_empty_opt(parts[12]),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    fn cache_document_in_memory(&self, doc: &UnifiedDocument) {
+        let mut photos = self.photos.lock().unwrap();
+        photos.insert(doc.id.clone(), doc.file.clone());
+
+        if let Some(meta) = &doc.metadata {
+            let mut metadata = self.metadata.lock().unwrap();
+            metadata.insert(doc.id.clone(), meta.clone());
+        }
+
+        if let Some(loc) = &doc.location {
+            let mut locations = self.locations.lock().unwrap();
+            locations.insert(doc.id.clone(), loc.clone());
+        }
+
+        if let Some(country) = &doc.country {
+            let mut countries = self.countries.lock().unwrap();
+            countries.insert(country.country_code.clone(), country.clone());
+        }
+
+        if !doc.thumbnails.is_empty() {
+            let mut thumbnails = self.thumbnails.lock().unwrap();
+            thumbnails.insert(doc.id.clone(), doc.thumbnails.clone());
+        }
+
+        if let Some(ai) = &doc.ai {
+            let mut ai_tags = self.ai_tags.lock().unwrap();
+            ai_tags.insert(doc.id.clone(), ai.clone());
+        }
+
+        if let Some(dup) = &doc.duplicate {
+            let mut duplicates = self.duplicates.lock().unwrap();
+            duplicates.insert(doc.id.clone(), dup.clone());
+        }
+
+        if let Some(tl) = &doc.timeline {
+            let mut timelines = self.timelines.lock().unwrap();
+            timelines.insert(doc.id.clone(), tl.clone());
+        }
+
+        if let Some(w) = &doc.weather {
+            let mut weather = self.weather.lock().unwrap();
+            weather.insert(doc.id.clone(), w.clone());
+        }
+
+        if let Some(o) = &doc.ocr {
+            let mut ocr = self.ocr.lock().unwrap();
+            ocr.insert(doc.id.clone(), o.clone());
+        }
+
+        if let Some(f) = &doc.faces {
+            let mut faces = self.faces.lock().unwrap();
+            faces.insert(doc.id.clone(), f.clone());
+        }
+
+        if let Some(p) = &doc.privacy {
+            let mut privacy = self.privacy.lock().unwrap();
+            privacy.insert(doc.id.clone(), p.clone());
+        }
     }
 
     /// Persists a UnifiedDocument into the SQLite tables on disk and in memory.
     pub fn save_document(&self, doc: &UnifiedDocument) -> anyhow::Result<()> {
         // 1. Update In-Memory cache
-        {
-            let mut photos = self.photos.lock().unwrap();
-            photos.insert(doc.id.clone(), doc.file.clone());
-
-            if let Some(meta) = &doc.metadata {
-                let mut metadata = self.metadata.lock().unwrap();
-                metadata.insert(doc.id.clone(), meta.clone());
-            }
-
-            if let Some(loc) = &doc.location {
-                let mut locations = self.locations.lock().unwrap();
-                locations.insert(doc.id.clone(), loc.clone());
-            }
-
-            if let Some(country) = &doc.country {
-                let mut countries = self.countries.lock().unwrap();
-                countries.insert(country.country_code.clone(), country.clone());
-            }
-
-            if !doc.thumbnails.is_empty() {
-                let mut thumbnails = self.thumbnails.lock().unwrap();
-                thumbnails.insert(doc.id.clone(), doc.thumbnails.clone());
-            }
-
-            if let Some(ai) = &doc.ai {
-                let mut ai_tags = self.ai_tags.lock().unwrap();
-                ai_tags.insert(doc.id.clone(), ai.clone());
-            }
-
-            if let Some(dup) = &doc.duplicate {
-                let mut duplicates = self.duplicates.lock().unwrap();
-                duplicates.insert(doc.id.clone(), dup.clone());
-            }
-
-            if let Some(tl) = &doc.timeline {
-                let mut timelines = self.timelines.lock().unwrap();
-                timelines.insert(doc.id.clone(), tl.clone());
-            }
-
-            if let Some(w) = &doc.weather {
-                let mut weather = self.weather.lock().unwrap();
-                weather.insert(doc.id.clone(), w.clone());
-            }
-
-            if let Some(o) = &doc.ocr {
-                let mut ocr = self.ocr.lock().unwrap();
-                ocr.insert(doc.id.clone(), o.clone());
-            }
-
-            if let Some(f) = &doc.faces {
-                let mut faces = self.faces.lock().unwrap();
-                faces.insert(doc.id.clone(), f.clone());
-            }
-
-            if let Some(p) = &doc.privacy {
-                let mut privacy = self.privacy.lock().unwrap();
-                privacy.insert(doc.id.clone(), p.clone());
-            }
-        }
+        self.cache_document_in_memory(doc);
 
         // 2. Persist to disk SQLite database file via SQL statements
         let mut sql = String::new();
@@ -165,6 +293,14 @@ impl Storage {
             is_redacted,
             escape_sql(redacted_path)
         ));
+
+        if let Ok(full_doc_json) = serde_json::to_string(doc) {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO documents_store (photo_id, doc_json) VALUES ('{}', '{}');\n",
+                escape_sql(&doc.id),
+                escape_sql(&full_doc_json)
+            ));
+        }
 
         if let Some(meta) = &doc.metadata {
             let raw_tags_json = serde_json::to_string(&meta.raw_tags).unwrap_or_else(|_| "{}".to_string());
@@ -225,19 +361,57 @@ impl Storage {
             ));
         }
 
-        for thumb in &doc.thumbnails {
+        if let Some(tl) = &doc.timeline {
+            let taken_str = tl.taken_at.map(|d| d.to_rfc3339()).unwrap_or_default();
+            let imported_str = tl.imported_at.to_rfc3339();
+            let modified_str = tl.modified_at.map(|d| d.to_rfc3339()).unwrap_or_default();
             sql.push_str(&format!(
-                "INSERT INTO thumbnails (photo_id, size_label, width, height, file_path, cache_key) VALUES ('{}', '{}', {}, {}, '{}', '{}');\n",
+                "INSERT OR REPLACE INTO timelines (photo_id, taken_at, imported_at, modified_at, resolution_source) VALUES ('{}', '{}', '{}', '{}', '{}');\n",
                 escape_sql(&doc.id),
-                escape_sql(&thumb.size_label),
-                thumb.width,
-                thumb.height,
-                escape_sql(&thumb.path),
-                escape_sql(&thumb.cache_key)
+                escape_sql(&taken_str),
+                escape_sql(&imported_str),
+                escape_sql(&modified_str),
+                escape_sql(&tl.resolution_source)
             ));
         }
 
+        if let Some(p) = &doc.privacy {
+            let rules_json = serde_json::to_string(&p.applied_rules).unwrap_or_else(|_| "[]".to_string());
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO privacy_redactions (photo_id, is_redacted, faces_redacted_count, license_plates_redacted_count, original_gps_fuzzed, redacted_image_path, applied_rules) VALUES ('{}', {}, {}, {}, {}, '{}', '{}');\n",
+                escape_sql(&doc.id),
+                if p.is_redacted { 1 } else { 0 },
+                p.faces_redacted_count,
+                p.license_plates_redacted_count,
+                if p.original_gps_fuzzed { 1 } else { 0 },
+                escape_sql(p.redacted_image_path.as_deref().unwrap_or("")),
+                escape_sql(&rules_json)
+            ));
+        }
+
+        if !doc.thumbnails.is_empty() {
+            sql.push_str(&format!(
+                "DELETE FROM thumbnails WHERE photo_id = '{}';\n",
+                escape_sql(&doc.id)
+            ));
+            for thumb in &doc.thumbnails {
+                sql.push_str(&format!(
+                    "INSERT INTO thumbnails (photo_id, size_label, width, height, file_path, cache_key) VALUES ('{}', '{}', {}, {}, '{}', '{}');\n",
+                    escape_sql(&doc.id),
+                    escape_sql(&thumb.size_label),
+                    thumb.width,
+                    thumb.height,
+                    escape_sql(&thumb.path),
+                    escape_sql(&thumb.cache_key)
+                ));
+            }
+        }
+
         if let Some(ai) = &doc.ai {
+            sql.push_str(&format!(
+                "DELETE FROM ai_tags WHERE photo_id = '{}';\n",
+                escape_sql(&doc.id)
+            ));
             for tag in &ai.tags {
                 sql.push_str(&format!(
                     "INSERT INTO ai_tags (photo_id, label, confidence, model) VALUES ('{}', '{}', {}, '{}');\n",
@@ -262,7 +436,7 @@ impl Storage {
         let raw_tags_str = doc.metadata.as_ref().map(|m| {
             m.raw_tags.values().map(|v| v.as_str()).collect::<Vec<_>>().join(" ")
         }).unwrap_or_default();
-        let description = doc.custom.get("description").and_then(|v| v.as_str()).unwrap_or("");
+        let description = doc.ai.as_ref().map(|a| a.description.as_str()).filter(|s| !s.is_empty()).or_else(|| doc.custom.get("description").and_then(|v| v.as_str())).unwrap_or("");
         let ocr_text_str = doc.ocr.as_ref().map(|o| o.combined_text.as_str()).unwrap_or("");
 
         sql.push_str(&format!(
@@ -327,6 +501,10 @@ impl Storage {
                 escape_sql(&ocr.combined_text),
                 escape_sql(primary_lang)
             ));
+            sql.push_str(&format!(
+                "DELETE FROM ocr_regions WHERE photo_id = '{}';\n",
+                escape_sql(&doc.id)
+            ));
             for reg in &ocr.regions {
                 sql.push_str(&format!(
                     "INSERT INTO ocr_regions (photo_id, text, confidence, bbox_x, bbox_y, bbox_w, bbox_h) VALUES ('{}', '{}', {}, {}, {}, {}, {});\n",
@@ -359,7 +537,15 @@ impl Storage {
                 let person_sql = face
                     .person_id
                     .as_deref()
-                    .map(|p| format!("'{}'", escape_sql(p)))
+                    .map(|p| {
+                        sql.push_str(&format!(
+                            "INSERT OR IGNORE INTO persons (id, name, representative_face_id) VALUES ('{}', '{}', '{}');\n",
+                            escape_sql(p),
+                            escape_sql(p),
+                            escape_sql(&face.id)
+                        ));
+                        format!("'{}'", escape_sql(p))
+                    })
                     .unwrap_or_else(|| "NULL".to_string());
 
                 sql.push_str(&format!(
@@ -386,7 +572,7 @@ impl Storage {
         {
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(sql.as_bytes());
-                drop(stdin); // Explicitly close stdin pipe so sqlite3 executes
+                drop(stdin);
             }
             let _ = child.wait();
         }
@@ -396,8 +582,15 @@ impl Storage {
     }
 
     pub fn get_document(&self, id: &str) -> Option<UnifiedDocument> {
+        // Reload from disk if not yet in memory
+        let has_in_memory = { self.photos.lock().unwrap().contains_key(id) };
+        if !has_in_memory {
+            self.load_existing_from_disk();
+        }
+
         let photos = self.photos.lock().unwrap();
         let file = photos.get(id)?.clone();
+        drop(photos);
 
         let metadata = self.metadata.lock().unwrap().get(id).cloned();
         let location = self.locations.lock().unwrap().get(id).cloned();
@@ -440,6 +633,8 @@ impl Storage {
 
     /// Returns a list of all documents currently stored in memory or on disk.
     pub fn list_documents(&self, page: usize, limit: usize) -> Vec<UnifiedDocument> {
+        self.load_existing_from_disk();
+
         let ids: Vec<String> = {
             let photos = self.photos.lock().unwrap();
             let mut list: Vec<String> = photos.keys().cloned().collect();
@@ -554,7 +749,6 @@ impl Storage {
         }
 
         let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        // Format from quote(blob) is X'010203...'
         let hex_str = raw.strip_prefix("X'")?.strip_suffix('\'')?;
         decode_hex_to_floats(hex_str)
     }
@@ -598,11 +792,19 @@ impl Storage {
             }
         }
 
-        // Sort descending by similarity score
         candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         candidates.truncate(limit);
 
         Ok(candidates)
+    }
+}
+
+fn non_empty_opt(s: &str) -> Option<String> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
     }
 }
 

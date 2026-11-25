@@ -6,6 +6,10 @@ use flagme_plugin_metadata::MetadataPlugin;
 use flagme_plugin_reversegeo::ReverseGeoPlugin;
 use flagme_plugin_thumbnail::ThumbnailPlugin;
 use flagme_plugin_timeline::TimelinePlugin;
+use flagme_plugin_weather_enrich::WeatherEnrichPlugin;
+use flagme_plugin_ocr_text::OcrTextPlugin;
+use flagme_plugin_face_detection::FaceDetectionPlugin;
+use flagme_plugin_privacy_redact::PrivacyRedactPlugin;
 use flagme_sdk::{FileInfo, NoopCapabilities, Plugin, PluginContext, UnifiedDocument};
 use std::sync::Arc;
 
@@ -104,6 +108,9 @@ fn test_ac4_lossless_metadata_extraction() {
     assert_eq!(meta.camera_model.as_deref(), Some("ILCE-7RM4"));
     assert!(!meta.raw_tags.is_empty(), "Raw tags must be preserved without data loss");
     assert!(meta.raw_tags.contains_key("Exif.Image.Software"));
+    assert!(meta.raw_tags.contains_key("Exif"), "raw_tags must contain structured Exif object");
+    assert!(meta.raw_tags.contains_key("IPTC"), "raw_tags must contain structured IPTC object");
+    assert!(meta.raw_tags.contains_key("XMP"), "raw_tags must contain structured XMP object");
 }
 
 // wasm-geo-host AC-5: ReverseGeo and CountryFlag offline/online resolution with flag emoji
@@ -249,6 +256,10 @@ fn test_ac9_end_to_end_pipeline() {
     runtime.register_plugin(Arc::new(AiTaggingPlugin::new()));
     runtime.register_plugin(Arc::new(DuplicatePlugin::new()));
     runtime.register_plugin(Arc::new(TimelinePlugin::new()));
+    runtime.register_plugin(Arc::new(WeatherEnrichPlugin::new()));
+    runtime.register_plugin(Arc::new(OcrTextPlugin::new()));
+    runtime.register_plugin(Arc::new(FaceDetectionPlugin::new()));
+    runtime.register_plugin(Arc::new(PrivacyRedactPlugin::new()));
 
     let pipeline = Pipeline::new(config, runtime, storage.clone());
 
@@ -275,6 +286,18 @@ fn test_ac9_end_to_end_pipeline() {
     let stored = storage.get_document("doc-e2e-final").expect("Stored doc missing");
     assert_eq!(stored.id, "doc-e2e-final");
     assert_eq!(stored.country.unwrap().country_code, "DE");
+
+    // Verify new Storage instance loads persisted documents from SQLite on disk
+    let reloaded_storage = Storage::new(db_path_str);
+    let reloaded = reloaded_storage
+        .get_document("doc-e2e-final")
+        .expect("Document must be reloaded from SQLite disk file");
+    assert_eq!(reloaded.id, "doc-e2e-final");
+    assert!(reloaded.timeline.is_some());
+    assert!(reloaded.weather.is_some());
+    assert!(reloaded.privacy.is_some());
+    assert_eq!(reloaded_storage.list_documents(1, 10).len(), 1);
+
     let _ = std::fs::remove_file(&db_path);
 }
 

@@ -58,7 +58,7 @@ impl PluginRuntime {
             self.kv_store.clone(),
         ));
 
-        let ctx = PluginContext::new(cap_manager);
+        let ctx = PluginContext::with_settings(cap_manager, plugin_cfg.settings);
 
         let start = std::time::Instant::now();
         tracing::debug!(plugin = %name, "Invoking plugin");

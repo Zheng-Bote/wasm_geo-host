@@ -45,6 +45,7 @@ fn test_ac3_visual_obfuscation_applied() {
         fuzz_gps: false,
         gps_decimal_places: 2,
         strip_serial_numbers: false,
+        ..Default::default()
     });
 
     let plugin_blackout = PrivacyRedactPlugin::with_settings(PrivacySettings {
@@ -53,11 +54,10 @@ fn test_ac3_visual_obfuscation_applied() {
         fuzz_gps: false,
         gps_decimal_places: 2,
         strip_serial_numbers: false,
+        ..Default::default()
     });
 
-    let ctx = PluginContext {
-        capabilities: Arc::new(NoopCapabilities),
-    };
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     let mut doc = UnifiedDocument::new(
         "photo-face-redact",
@@ -104,11 +104,10 @@ fn test_ac4_gps_coordinate_fuzzing() {
         fuzz_gps: true,
         gps_decimal_places: 2,
         strip_serial_numbers: false,
+        ..Default::default()
     });
 
-    let ctx = PluginContext {
-        capabilities: Arc::new(NoopCapabilities),
-    };
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     let mut doc = UnifiedDocument::new(
         "photo-gps-precise",
@@ -144,11 +143,10 @@ fn test_ac5_hardware_serial_purging() {
         fuzz_gps: false,
         gps_decimal_places: 2,
         strip_serial_numbers: true,
+        ..Default::default()
     });
 
-    let ctx = PluginContext {
-        capabilities: Arc::new(NoopCapabilities),
-    };
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     let mut doc = UnifiedDocument::new(
         "photo-serials",

@@ -125,6 +125,42 @@ impl Default for AppConfig {
                 settings: HashMap::new(),
             },
         );
+        plugins.insert(
+            "weather-enrich".to_string(),
+            PluginConfig {
+                enabled: true,
+                path: Some("plugins/weather-enrich.wasm".to_string()),
+                capabilities: vec!["http".to_string(), "kv".to_string()],
+                settings: HashMap::new(),
+            },
+        );
+        plugins.insert(
+            "ocr-text".to_string(),
+            PluginConfig {
+                enabled: true,
+                path: Some("plugins/ocr-text.wasm".to_string()),
+                capabilities: vec!["filesystem".to_string()],
+                settings: HashMap::new(),
+            },
+        );
+        plugins.insert(
+            "face-detection".to_string(),
+            PluginConfig {
+                enabled: true,
+                path: Some("plugins/face-detection.wasm".to_string()),
+                capabilities: vec!["filesystem".to_string()],
+                settings: HashMap::new(),
+            },
+        );
+        plugins.insert(
+            "privacy-redact".to_string(),
+            PluginConfig {
+                enabled: true,
+                path: Some("plugins/privacy-redact.wasm".to_string()),
+                capabilities: vec!["filesystem".to_string()],
+                settings: HashMap::new(),
+            },
+        );
 
         Self {
             database_path: default_database_path(),
@@ -137,6 +173,10 @@ impl Default for AppConfig {
                 "ai-tagging".to_string(),
                 "duplicate".to_string(),
                 "timeline".to_string(),
+                "weather-enrich".to_string(),
+                "ocr-text".to_string(),
+                "face-detection".to_string(),
+                "privacy-redact".to_string(),
             ],
             plugins,
         }
@@ -145,25 +185,178 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn load_from_str(s: &str) -> anyhow::Result<Self> {
-        // Simple YAML-like / JSON parser support
         if let Ok(cfg) = serde_json::from_str::<AppConfig>(s) {
             return Ok(cfg);
         }
-        // Fallback to default if empty or parse standard config format
+
         let mut cfg = AppConfig::default();
-        for line in s.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with('#') || trimmed.is_empty() {
+        let mut has_custom_pipeline = false;
+        let mut custom_pipeline = Vec::new();
+
+        #[derive(PartialEq)]
+        enum Section {
+            Root,
+            ResourceLimits,
+            Pipeline,
+            Plugins,
+        }
+
+        let mut section = Section::Root;
+        let mut current_plugin: Option<String> = None;
+        let mut in_capabilities = false;
+        let mut in_settings = false;
+
+        for raw_line in s.lines() {
+            let line_no_comment = match raw_line.find('#') {
+                Some(idx) => &raw_line[..idx],
+                None => raw_line,
+            };
+            if line_no_comment.trim().is_empty() {
                 continue;
             }
-            if let Some((k, v)) = trimmed.split_once(':') {
-                let k = k.trim();
-                let v = v.trim().trim_matches('"').trim_matches('\'').trim();
-                if k == "database_path" {
-                    cfg.database_path = v.to_string();
+
+            let indent = line_no_comment.chars().take_while(|c| *c == ' ').count();
+            let trimmed = line_no_comment.trim();
+
+            if indent == 0 {
+                current_plugin = None;
+                in_capabilities = false;
+                in_settings = false;
+
+                if let Some((k, v)) = trimmed.split_once(':') {
+                    let k = k.trim();
+                    let v = clean_yaml_scalar(v);
+                    match k {
+                        "database_path" => {
+                            section = Section::Root;
+                            if !v.is_empty() {
+                                cfg.database_path = v;
+                            }
+                        }
+                        "resource_limits" => {
+                            section = Section::ResourceLimits;
+                        }
+                        "pipeline" => {
+                            section = Section::Pipeline;
+                            has_custom_pipeline = true;
+                        }
+                        "plugins" => {
+                            section = Section::Plugins;
+                        }
+                        _ => {
+                            section = Section::Root;
+                        }
+                    }
                 }
+                continue;
+            }
+
+            match section {
+                Section::ResourceLimits => {
+                    if let Some((k, v)) = trimmed.split_once(':') {
+                        let k = k.trim();
+                        let v = clean_yaml_scalar(v);
+                        if k == "max_memory_bytes" {
+                            if let Ok(val) = v.parse::<u64>() {
+                                cfg.resource_limits.max_memory_bytes = val;
+                            }
+                        } else if k == "timeout_ms" {
+                            if let Ok(val) = v.parse::<u64>() {
+                                cfg.resource_limits.timeout_ms = val;
+                            }
+                        }
+                    }
+                }
+                Section::Pipeline => {
+                    if let Some(item) = trimmed.strip_prefix('-') {
+                        let plugin_name = clean_yaml_scalar(item);
+                        if !plugin_name.is_empty() {
+                            custom_pipeline.push(plugin_name);
+                        }
+                    }
+                }
+                Section::Plugins => {
+                    if indent == 2 && trimmed.ends_with(':') {
+                        let pname = trimmed.trim_end_matches(':').trim().to_string();
+                        cfg.plugins.entry(pname.clone()).or_insert_with(|| PluginConfig {
+                            enabled: true,
+                            path: Some(format!("plugins/{}.wasm", pname)),
+                            capabilities: Vec::new(),
+                            settings: HashMap::new(),
+                        });
+                        current_plugin = Some(pname);
+                        in_capabilities = false;
+                        in_settings = false;
+                    } else if let Some(ref pname) = current_plugin {
+                        if indent == 4 {
+                            if let Some((k, v)) = trimmed.split_once(':') {
+                                let k = k.trim();
+                                let v_raw = v.trim();
+                                let v_clean = clean_yaml_scalar(v_raw);
+                                in_capabilities = false;
+                                in_settings = false;
+
+                                if let Some(pcfg) = cfg.plugins.get_mut(pname) {
+                                    match k {
+                                        "enabled" => {
+                                            pcfg.enabled = v_clean.eq_ignore_ascii_case("true");
+                                        }
+                                        "path" => {
+                                            if !v_clean.is_empty() {
+                                                pcfg.path = Some(v_clean);
+                                            }
+                                        }
+                                        "capabilities" => {
+                                            pcfg.capabilities.clear();
+                                            if v_raw.starts_with('[') && v_raw.ends_with(']') {
+                                                let inner = &v_raw[1..v_raw.len() - 1];
+                                                for item in inner.split(',') {
+                                                    let c = clean_yaml_scalar(item);
+                                                    if !c.is_empty() {
+                                                        pcfg.capabilities.push(c);
+                                                    }
+                                                }
+                                            } else {
+                                                in_capabilities = true;
+                                            }
+                                        }
+                                        "settings" => {
+                                            in_settings = true;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        } else if indent >= 6 {
+                            if in_capabilities {
+                                if let Some(item) = trimmed.strip_prefix('-') {
+                                    let cap = clean_yaml_scalar(item);
+                                    if !cap.is_empty() {
+                                        if let Some(pcfg) = cfg.plugins.get_mut(pname) {
+                                            pcfg.capabilities.push(cap);
+                                        }
+                                    }
+                                }
+                            } else if in_settings {
+                                if let Some((sk, sv)) = trimmed.split_once(':') {
+                                    let sk = clean_yaml_scalar(sk);
+                                    let sv = clean_yaml_scalar(sv);
+                                    if let Some(pcfg) = cfg.plugins.get_mut(pname) {
+                                        pcfg.settings.insert(sk, sv);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Section::Root => {}
             }
         }
+
+        if has_custom_pipeline && !custom_pipeline.is_empty() {
+            cfg.pipeline = custom_pipeline;
+        }
+
         Ok(cfg)
     }
 
@@ -171,4 +364,12 @@ impl AppConfig {
         let content = std::fs::read_to_string(path)?;
         Self::load_from_str(&content)
     }
+}
+
+fn clean_yaml_scalar(s: &str) -> String {
+    s.trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .to_string()
 }

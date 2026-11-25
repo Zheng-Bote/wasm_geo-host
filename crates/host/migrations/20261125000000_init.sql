@@ -74,6 +74,29 @@ CREATE TABLE IF NOT EXISTS duplicates (
     duplicate_ids JSON NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS timelines (
+    photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+    taken_at TEXT,
+    imported_at TEXT NOT NULL,
+    modified_at TEXT,
+    resolution_source TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS privacy_redactions (
+    photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+    is_redacted INTEGER NOT NULL DEFAULT 0,
+    faces_redacted_count INTEGER NOT NULL DEFAULT 0,
+    license_plates_redacted_count INTEGER NOT NULL DEFAULT 0,
+    original_gps_fuzzed INTEGER NOT NULL DEFAULT 0,
+    redacted_image_path TEXT,
+    applied_rules JSON NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS documents_store (
+    photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+    doc_json JSON NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_photos_sha256 ON photos(sha256);
 CREATE INDEX IF NOT EXISTS idx_duplicates_phash ON duplicates(phash);
 CREATE INDEX IF NOT EXISTS idx_locations_coords ON locations(latitude, longitude);
@@ -158,7 +181,3 @@ CREATE TABLE IF NOT EXISTS faces (
 
 CREATE INDEX IF NOT EXISTS idx_faces_photo ON faces(photo_id);
 CREATE INDEX IF NOT EXISTS idx_faces_person ON faces(person_id);
-
-
-
-

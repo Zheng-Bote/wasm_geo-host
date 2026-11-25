@@ -13,6 +13,19 @@ use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use wasm_geo_models::UnifiedDocument;
 
+/// Minimal valid 1x1 JPEG image bytes if neither thumbnail nor original file exists on disk.
+const FALLBACK_JPEG_1X1: &[u8] = &[
+    0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01,
+    0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x1F, 0x00, 0x00, 0x01, 0x05, 0x01, 0x01, 0x01, 0x01,
+    0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+    0x07, 0x08, 0x09, 0x0A, 0x0B, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0xD2,
+    0xCF, 0x20, 0xFF, 0xD9,
+];
+
 #[derive(RustEmbed)]
 #[folder = "ui/"]
 pub struct WebAssets;
@@ -26,6 +39,8 @@ pub struct ServerState {
 pub struct PaginationParams {
     pub page: Option<usize>,
     pub limit: Option<usize>,
+    pub country: Option<String>,
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,15 +80,65 @@ pub fn build_router(state: ServerState) -> Router {
         .with_state(state)
 }
 
-/// GET /api/photos: Paginated list of UnifiedDocuments.
+/// GET /api/photos: Paginated list of UnifiedDocuments with optional country & tag filtering.
 async fn get_photos(
     State(state): State<ServerState>,
     Query(params): Query<PaginationParams>,
 ) -> Json<Vec<UnifiedDocument>> {
     let page = params.page.unwrap_or(1);
     let limit = params.limit.unwrap_or(50);
-    let docs = state.storage.list_documents(page, limit);
-    Json(docs)
+
+    if params.country.is_none() && params.tag.is_none() {
+        let docs = state.storage.list_documents(page, limit);
+        return Json(docs);
+    }
+
+    let all_docs = state.storage.list_documents(1, 10_000);
+    let filtered: Vec<UnifiedDocument> = all_docs
+        .into_iter()
+        .filter(|doc| {
+            if let Some(ref c_filter) = params.country {
+                let cf = c_filter.trim().to_lowercase();
+                if !cf.is_empty() {
+                    let match_loc = doc
+                        .location
+                        .as_ref()
+                        .map(|l| {
+                            l.country_code
+                                .as_deref()
+                                .map(|c| c.to_lowercase() == cf)
+                                .unwrap_or(false)
+                                || l.country
+                                    .as_deref()
+                                    .map(|c| c.to_lowercase().contains(&cf))
+                                    .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
+                    if !match_loc {
+                        return false;
+                    }
+                }
+            }
+            if let Some(ref t_filter) = params.tag {
+                let tf = t_filter.trim().to_lowercase();
+                if !tf.is_empty() {
+                    let match_tag = doc
+                        .ai
+                        .as_ref()
+                        .map(|a| a.tags.iter().any(|t| t.label.to_lowercase().contains(&tf)))
+                        .unwrap_or(false);
+                    if !match_tag {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+        .skip(page.saturating_sub(1) * limit)
+        .take(limit)
+        .collect();
+
+    Json(filtered)
 }
 
 /// GET /api/photos/:id: Single UnifiedDocument by ID.
@@ -99,11 +164,23 @@ async fn get_photo_thumbnail(
         .thumbnails
         .iter()
         .find(|t| t.size_label.eq_ignore_ascii_case(&size))
-        .or_else(|| doc.thumbnails.first())
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .or_else(|| doc.thumbnails.first());
 
-    let bytes = std::fs::read(&thumb.path).map_err(|_| StatusCode::NOT_FOUND)?;
-    let etag = format!("\"{}\"", thumb.cache_key);
+    let (bytes, cache_key) = if let Some(t) = thumb {
+        if let Ok(b) = std::fs::read(&t.path) {
+            (b, t.cache_key.clone())
+        } else if let Ok(orig) = std::fs::read(&doc.file.path) {
+            (orig, t.cache_key.clone())
+        } else {
+            return Err(StatusCode::NOT_FOUND);
+        }
+    } else if let Ok(orig) = std::fs::read(&doc.file.path) {
+        (orig, doc.id.clone())
+    } else {
+        (FALLBACK_JPEG_1X1.to_vec(), doc.id.clone())
+    };
+
+    let etag = format!("\"{}\"", cache_key);
 
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/jpeg"));
@@ -129,6 +206,18 @@ async fn get_map_markers(State(state): State<ServerState>) -> Json<GeoJsonFeatur
                 let country_name = loc.country.clone().unwrap_or_default();
                 let city_name = loc.city.clone().unwrap_or_default();
                 let flag = doc.country.as_ref().map(|c| c.flag_emoji.clone()).unwrap_or_default();
+                let weather_str = doc
+                    .weather
+                    .as_ref()
+                    .map(|w| {
+                        format!(
+                            "{} {} ({:.1}°C)",
+                            w.icon_emoji,
+                            w.condition,
+                            w.temperature.unwrap_or(0.0)
+                        )
+                    })
+                    .unwrap_or_default();
 
                 let feature = GeoJsonFeature {
                     r#type: "Feature",
@@ -142,6 +231,7 @@ async fn get_map_markers(State(state): State<ServerState>) -> Json<GeoJsonFeatur
                         "city": city_name,
                         "country": country_name,
                         "flag": flag,
+                        "weather": weather_str,
                         "thumbnail_url": format!("/api/photos/{}/thumbnail/small", doc.id)
                     }),
                 };

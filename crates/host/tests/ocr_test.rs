@@ -110,9 +110,7 @@ fn test_ac4_storage_and_fts5_indexing() {
 #[test]
 fn test_ac5_integration_signage_transcription() {
     let plugin = OcrTextPlugin::new();
-    let ctx = PluginContext {
-        capabilities: Arc::new(NoopCapabilities),
-    };
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     let doc = UnifiedDocument::new(
         "photo-ocr-berlin",

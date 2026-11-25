@@ -77,9 +77,7 @@ impl HostCapabilities for MockKvCapabilities {
 fn test_ac3_kv_caching_and_http_avoidance() {
     let plugin = WeatherEnrichPlugin::new();
     let caps = Arc::new(MockKvCapabilities::new());
-    let ctx = PluginContext {
-        capabilities: caps.clone(),
-    };
+    let ctx = PluginContext::new(caps.clone());
 
     let mut doc = UnifiedDocument::new(
         "photo-w1",
@@ -175,9 +173,7 @@ fn test_ac5_sqlite_weather_persistence() {
 #[test]
 fn test_ac6_end_to_end_weather_enrichment() {
     let plugin = WeatherEnrichPlugin::new();
-    let ctx = PluginContext {
-        capabilities: Arc::new(NoopCapabilities),
-    };
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     // Document with coordinates
     let mut doc = UnifiedDocument::new(

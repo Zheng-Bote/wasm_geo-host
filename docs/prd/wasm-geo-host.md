@@ -7,8 +7,11 @@ touches:
   - "plugins/**"
   - "wit/**"
   - "Cargo.toml"
+  - "Cargo.lock"
   - "config.yaml"
   - "docs/**"
+  - "data/**"
+  - "Examples/**"
 ---
 
 # PRD — wasm-geo-host (`wasm-geo-host`)

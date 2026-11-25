@@ -12,6 +12,10 @@ pipeline:
   - ai-tagging
   - duplicate
   - timeline
+  - weather-enrich
+  - ocr-text
+  - face-detection
+  - privacy-redact
 
 plugins:
   metadata:
@@ -46,6 +50,27 @@ plugins:
       - kv
 
   timeline:
+    enabled: true
+    capabilities:
+      - filesystem
+
+  weather-enrich:
+    enabled: true
+    capabilities:
+      - http
+      - kv
+
+  ocr-text:
+    enabled: true
+    capabilities:
+      - filesystem
+
+  face-detection:
+    enabled: true
+    capabilities:
+      - filesystem
+
+  privacy-redact:
     enabled: true
     capabilities:
       - filesystem
