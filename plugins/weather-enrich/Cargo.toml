@@ -1,0 +1,16 @@
+[package]
+name = "flagme-plugin-weather-enrich"
+version = "0.1.0"
+edition = "2021"
+description = "Historical Weather Enrichment Plugin for WASM Geo Host"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "flagme-plugin-weather-enrich"
+path = "src/main.rs"
+
+[dependencies]
+flagme-sdk = { path = "../../crates/sdk" }
+serde_json = "1.0"

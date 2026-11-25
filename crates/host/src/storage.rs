@@ -30,6 +30,7 @@ pub struct Storage {
     ai_tags: Arc<Mutex<HashMap<String, AiInfo>>>,
     duplicates: Arc<Mutex<HashMap<String, DuplicateInfo>>>,
     timelines: Arc<Mutex<HashMap<String, TimelineInfo>>>,
+    weather: Arc<Mutex<HashMap<String, WeatherInfo>>>,
 }
 
 impl Storage {
@@ -44,6 +45,7 @@ impl Storage {
             ai_tags: Arc::new(Mutex::new(HashMap::new())),
             duplicates: Arc::new(Mutex::new(HashMap::new())),
             timelines: Arc::new(Mutex::new(HashMap::new())),
+            weather: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -117,6 +119,11 @@ impl Storage {
             if let Some(tl) = &doc.timeline {
                 let mut timelines = self.timelines.lock().unwrap();
                 timelines.insert(doc.id.clone(), tl.clone());
+            }
+
+            if let Some(w) = &doc.weather {
+                let mut weather = self.weather.lock().unwrap();
+                weather.insert(doc.id.clone(), w.clone());
             }
         }
 
@@ -268,6 +275,20 @@ impl Storage {
             }
         }
 
+        if let Some(w) = &doc.weather {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO weather (photo_id, temperature, condition, wmo_code, icon_emoji, humidity_percent, precipitation_mm, is_day) VALUES ('{}', {}, '{}', {}, '{}', {}, {}, {});\n",
+                escape_sql(&doc.id),
+                w.temperature.unwrap_or(0.0),
+                escape_sql(&w.condition),
+                w.wmo_code,
+                escape_sql(&w.icon_emoji),
+                w.humidity_percent.unwrap_or(0),
+                w.precipitation_mm.unwrap_or(0.0),
+                if w.is_day.unwrap_or(false) { 1 } else { 0 }
+            ));
+        }
+
         if let Ok(mut child) = Command::new("sqlite3")
             .arg(&self.db_path)
             .stdin(Stdio::piped())
@@ -296,6 +317,7 @@ impl Storage {
         let ai = self.ai_tags.lock().unwrap().get(id).cloned();
         let duplicate = self.duplicates.lock().unwrap().get(id).cloned();
         let timeline = self.timelines.lock().unwrap().get(id).cloned();
+        let weather = self.weather.lock().unwrap().get(id).cloned();
 
         let country = if let Some(loc) = &location {
             if let Some(code) = &loc.country_code {
@@ -317,6 +339,7 @@ impl Storage {
             ai,
             duplicate,
             timeline,
+            weather,
             custom: HashMap::new(),
         })
     }
