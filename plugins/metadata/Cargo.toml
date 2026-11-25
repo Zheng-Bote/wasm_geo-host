@@ -7,5 +7,9 @@ description = "Lossless Metadata Extraction Plugin for WASM Geo Host"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "flagme-plugin-metadata"
+path = "src/main.rs"
+
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }

@@ -192,13 +192,41 @@ plugins:
 
 ### 2. Process Media Files
 
-Run the `flagme-host` binary with the target media file and configuration:
+#### Mode 1: In-Process Host Execution
+Runs the pipeline within the `flagme-host` process, sharing memory safely across plugins:
 
 ```bash
-cargo run --bin flagme-host -- process /path/to/sample.jpg --config config.yaml
+cargo run --bin flagme-host -- process Examples/sample.jpg --config config.yaml
 ```
 
 The CLI outputs the enriched `UnifiedDocument` as structured JSON, while concurrently persisting records to the SQLite database `media.db`.
+
+#### Mode 2c: Host Subprocess Streaming Supervisor
+Spawns each WASM plugin as an isolated child process, streaming JSON between them via stdin/stdout:
+
+```bash
+cargo run --bin flagme-host -- stream Examples/sample.jpg --config config.yaml
+```
+
+---
+
+## Dual-Mode & Advanced Pipeline Execution Models
+
+Every plugin in `plugins/*` supports **Dual-Mode** compilation:
+1. **Library Component (`cdylib`/`rlib`)**: Used for high-throughput, in-process embedding inside `flagme-host`.
+2. **Standalone WASI CLI Binary (`bin`)**: Executable directly via `wasmtime run -S cli-exit-with-code <plugin>.wasm`.
+
+### Advanced Pipeline Models
+- **[Model 2a: Unix CLI Streaming Pipeline](docs/pipeline_unix_pipes.md)** — Pipe plugins together using standard shell pipes (`|`):
+  ```bash
+  wasmtime run -S cli-exit-with-code --dir Examples::/media \
+      target/wasm32-wasip2/release/flagme-plugin-metadata.wasm /media/sample.jpg \
+    | wasmtime run -S cli-exit-with-code target/wasm32-wasip2/release/flagme-plugin-reversegeo.wasm \
+    | wasmtime run -S cli-exit-with-code target/wasm32-wasip2/release/flagme-plugin-countryflag.wasm \
+    | jq .
+  ```
+- **[Model 2b: Component Composition](docs/pipeline_component_composition.md)** — Statically compose plugins into a single component (`wac compose` or `wasm-tools compose`) for zero-copy memory execution.
+- **[Model 2c: Host Streaming Supervisor](docs/pipeline_host_supervisor.md)** — Let `flagme-host stream` supervise and monitor sandboxed child processes.
 
 ---
 
@@ -207,7 +235,11 @@ The CLI outputs the enriched `UnifiedDocument` as structured JSON, while concurr
 - [Build Instructions](docs/build-instructions.md)
 - [Deployment Guide](docs/deployment-guide.md)
 - [Plugin Development Guide](docs/plugin-development-guide.md)
+- [Pipeline Model 2a: Unix CLI Streaming](docs/pipeline_unix_pipes.md)
+- [Pipeline Model 2b: Component Composition](docs/pipeline_component_composition.md)
+- [Pipeline Model 2c: Host Streaming Supervisor](docs/pipeline_host_supervisor.md)
 - [Verfassung & SDD Spezifikationen](constitution.md)
+- [GitHub Feature Specification Template](.github/ISSUE_TEMPLATE/feature_spec.md)
 
 ---
 

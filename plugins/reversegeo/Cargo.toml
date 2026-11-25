@@ -7,5 +7,9 @@ description = "Dual Online/Offline Reverse Geocoding Plugin for WASM Geo Host"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "flagme-plugin-reversegeo"
+path = "src/main.rs"
+
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }

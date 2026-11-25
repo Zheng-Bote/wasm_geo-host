@@ -1,4 +1,4 @@
-use flagme_host::{AppConfig, Pipeline, PluginRuntime, Storage};
+use flagme_host::{AppConfig, Pipeline, PluginRuntime, Storage, StreamSupervisor};
 use flagme_plugin_ai_tagging::AiTaggingPlugin;
 use flagme_plugin_countryflag::CountryFlagPlugin;
 use flagme_plugin_duplicate::DuplicatePlugin;
@@ -14,13 +14,16 @@ use std::sync::Arc;
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: flagme-host process <FILE> [--config <CONFIG>]");
+        eprintln!("Usage: flagme-host [process|stream] <FILE> [--config <CONFIG>]");
         std::process::exit(1);
     }
 
-    let file_path = if args[1] == "process" {
+    let is_stream = args[1] == "stream";
+    let is_process = args[1] == "process";
+
+    let file_path = if is_process || is_stream {
         if args.len() < 3 {
-            eprintln!("Usage: flagme-host process <FILE> [--config <CONFIG>]");
+            eprintln!("Usage: flagme-host [process|stream] <FILE> [--config <CONFIG>]");
             std::process::exit(1);
         }
         &args[2]
@@ -43,6 +46,15 @@ async fn main() -> anyhow::Result<()> {
 
     let storage = Arc::new(Storage::new(&config.database_path));
     storage.init_schema()?;
+
+    if is_stream {
+        let supervisor = StreamSupervisor::default_pipeline();
+        let final_json = supervisor.execute(file_path)?;
+        let doc: UnifiedDocument = serde_json::from_str(&final_json)?;
+        storage.save_document(&doc)?;
+        println!("{}", serde_json::to_string_pretty(&doc)?);
+        return Ok(());
+    }
 
     let mut runtime = PluginRuntime::new(config.clone());
     runtime.register_plugin(Arc::new(MetadataPlugin::new()));

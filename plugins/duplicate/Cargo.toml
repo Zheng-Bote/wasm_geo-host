@@ -7,5 +7,9 @@ description = "Duplicate Detection via SHA256 and Perceptual Hashing for WASM Ge
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "flagme-plugin-duplicate"
+path = "src/main.rs"
+
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
