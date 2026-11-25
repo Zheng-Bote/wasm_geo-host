@@ -1,112 +1,141 @@
 # Privacy Redaction & Sanitizing Plugin (`flagme-plugin-privacy-redact`)
 
 ## Overview
-The `privacy-redact` plugin provides automated visual pixel obfuscation and metadata sanitization to protect personal data (GDPR / DSGVO compliance) before media files are indexed, shared, or exported. It operates as the final stage of the media processing pipeline after `metadata`, `reversegeo`, and `face-detection`.
+
+The `privacy-redact` plugin sanitizes personal data (GDPR / DSGVO) before media files are indexed, shared or exported. It obfuscates image regions for detected faces, reduces GPS precision and strips hardware serial numbers. It runs as the **last** pipeline stage, after `metadata`, `reversegeo` and `face-detection`.
+
+| Property | Value |
+| :--- | :--- |
+| Plugin name (`config.yaml`) | `privacy-redact` |
+| Crate | `flagme-plugin-privacy-redact` (`cdylib` + `rlib` + `[[bin]]`) |
+| Version | `0.1.0` |
+| Reads | `doc.file.path`, `doc.faces`, `doc.location`, `doc.metadata.raw_tags` |
+| Writes | `doc.privacy`; modifies `doc.location.latitude/longitude` and `doc.metadata.raw_tags` |
+| Capabilities | `filesystem` |
+| Configurable via `settings` | **Yes** (8 parameters, see §2) |
 
 ---
 
 ## 1. Key Features
 
-1. **Destructive Visual Obfuscation**:
-   - Reads detected facial bounding boxes from `UnifiedDocument.faces` (`DetectedFace.bbox`) and permanently obfuscates the corresponding image regions.
-   - Supports three configurable redaction algorithms (`style`):
-     - `pixelate` (Default): Downscales the target bounding box into coarse mosaic blocks (`block_size`).
-     - `blur`: Applies a high-radius Gaussian smoothing filter (`blur_sigma`).
-     - `blackout`: Irreversibly overwrites the bounding box with a solid opaque black mask.
-2. **Geospatial Coordinate Fuzzing (GPS Truncation)**:
-   - Reduces the decimal precision of `UnifiedDocument.location.latitude` and `longitude` to prevent pinpointing private residences while preserving city- or neighborhood-level context for map views and reverse geocoding.
-3. **Hardware & Owner Identifier Stripping**:
-   - Purges unique camera and lens hardware serial numbers (e.g., `CameraSerialNumber`, `LensSerialNumber`, `BodySerialNumber`, `SerialNumber`, `serial_number`) from `UnifiedDocument.metadata.raw_tags`.
-4. **Audit Trail & Relational Persistence**:
-   - Records all executed privacy transformations in `UnifiedDocument.privacy` (`PrivacyInfo`) and persists them into SQLite (`photos.is_redacted`, `photos.redacted_file_path`, `locations.is_gps_fuzzed`, and the `privacy_redactions` table).
-5. **Dual-Mode Execution**:
-   - **Library Component (`cdylib`)**: Loaded into `flagme-host` capability sandbox (`wasm32-wasip2`).
-   - **Standalone CLI Binary (`[[bin]]`)**: Usable in Unix pipelines (`stdin` $\to$ `stdout`).
+1. **Face Region Obfuscation** — if `doc.faces` contains at least one face, a redacted copy of the source file is written to `<output_dir>/<doc.id>.redacted.jpg`. Three styles: `pixelate` (default), `blur`, `blackout` (see §8 for the current implementation level).
+2. **GPS Coordinate Fuzzing** — rounds `doc.location.latitude` / `longitude` to `gps_decimal_places` decimals, keeping city/district context for maps.
+3. **Hardware Serial Stripping** (on request, the only permitted change to `raw_tags`, see [ADR 0001](../../docs/adr/0001-raw-tags-original-serial-stripping.md)) — removes every `raw_tags` key containing `serialnumber` or `serial_number` (case-insensitive), e.g. `CameraSerialNumber`, `LensSerialNumber`, `Exif.BodySerialNumber`.
+4. **Audit Trail** — every applied rule is recorded in `doc.privacy.applied_rules` and persisted to SQLite.
+5. **Dual-Mode Execution** — library component loaded by `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 
-## 2. Configuration & Parameters (`config.yaml` / `PrivacySettings`)
+## 2. Configuration & Parameters
 
-The plugin can be configured declaratively via `plugins.privacy-redact.settings` in `config.yaml` (or programmatically in Rust via `PrivacyRedactPlugin::with_settings(PrivacySettings { ... })`).
-
-### YAML Configuration Example
+### 2.1 Plugin Entry (`config.yaml`)
 
 ```yaml
 plugins:
   privacy-redact:
-    enabled: true
+    enabled: true                  # false → host skips the plugin, document passes unchanged
     capabilities:
-      - filesystem
+      - filesystem                 # required to read the source image and write the redacted copy
     settings:
-      style: "pixelate"              # Options: "pixelate" | "blur" | "blackout"
-      block_size: "16"               # Mosaic block size in px (2..128) when style="pixelate"
-      blur_sigma: "24.0"             # Gaussian blur sigma (1.0..100.0) when style="blur"
-      redact_faces: "true"           # Redact all faces detected in doc.faces ("true" | "false")
-      fuzz_gps: "true"               # Round GPS coordinates in doc.location ("true" | "false")
-      gps_decimal_places: "2"        # Decimal places to retain (0..6, default: 2 ≈ 1.1 km)
-      strip_serial_numbers: "true"   # Remove hardware serial numbers from raw_tags ("true" | "false")
-      output_dir: "cache/redacted"   # Target directory for exported *.redacted.jpg artifacts
+      style: "pixelate"            # "pixelate" | "blur" | "blackout"
+      block_size: "16"             # 2..128, only used by style "pixelate"
+      blur_sigma: "24.0"           # 1.0..100.0, only used by style "blur"
+      redact_faces: "true"
+      fuzz_gps: "true"
+      gps_decimal_places: "2"      # 0..6
+      strip_serial_numbers: "true"
+      output_dir: "cache/redacted"
 ```
 
-### Parameter Reference Table
+All `settings` values are passed to the plugin as **strings** (`HashMap<String, String>`). Quoting is optional; the host strips `"` and `'`.
 
-| Parameter (`config.yaml`) | Rust Field (`PrivacySettings`) | Type | Default | Valid Values / Range | Description |
+### 2.2 `settings` Reference
+
+| Key *(aliases)* | Rust field (`PrivacySettings`) | Type | Default | Valid values / range | Effect |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `style` *(alias: `redaction_style`)* | `style: RedactionStyle` | `String` / `enum` | `"pixelate"` (`RedactionStyle::Pixelate`) | `"pixelate"` (`"mosaic"`), `"blur"` (`"gaussian"`), `"blackout"` (`"solid"`, `"mask"`) | Visual obfuscation method applied to detected bounding boxes. Adds rule `redacted_<N>_faces_via_<style>`. |
-| `block_size` | `block_size: u32` | `u32` | `16` | `2` – `128` (clamped) | Mosaic block size in pixels when `style: "pixelate"` is active. Larger values produce coarser pixelation. |
-| `blur_sigma` | `blur_sigma: f32` | `f32` | `24.0` | `1.0` – `100.0` (clamped) | Standard deviation ($\sigma$) of the Gaussian blur kernel when `style: "blur"` is active. |
-| `redact_faces` | `redact_faces: bool` | `bool` | `true` | `"true"` / `"false"` | If `true`, iterates over all entries in `doc.faces.faces`, obfuscates their bounding boxes, and writes a redacted image file to `output_dir`. |
-| `fuzz_gps` *(alias: `fuzz_gps_coordinates`)* | `fuzz_gps: bool` | `bool` | `true` | `"true"` / `"false"` | If `true`, rounds `doc.location.latitude` and `doc.location.longitude` to `gps_decimal_places` and sets `original_gps_fuzzed = true`. |
-| `gps_decimal_places` | `gps_decimal_places: u32` | `u32` | `2` | `0` – `6` (clamped) | Number of decimal places retained during GPS fuzzing: $\text{round}(\text{coord} \times 10^d) / 10^d$. Adds rule `fuzzed_gps_precision_<d>_decimals`. |
-| `strip_serial_numbers` *(alias: `strip_serials`)* | `strip_serial_numbers: bool` | `bool` | `true` | `"true"` / `"false"` | If `true`, removes all keys containing `serialnumber` or `serial_number` (case-insensitive) from `doc.metadata.raw_tags`. Adds rule `stripped_hardware_serial_numbers`. |
-| `output_dir` | `output_dir: String` | `String` | `"cache/redacted"` | Relative directory path (no `..` traversal) | Output folder where redacted image copies (`<output_dir>/<doc.id>.redacted.jpg`) are written when `faces_redacted_count > 0`. |
+| `style` *(`redaction_style`)* | `style: RedactionStyle` | enum | `pixelate` | `pixelate` (`mosaic`), `blur` (`gaussian`), `blackout` (`solid`, `mask`) — case-insensitive | Obfuscation style for the redacted image. Adds rule `redacted_<N>_faces_via_<style>`. |
+| `block_size` | `block_size: u32` | integer | `16` | `2`–`128` (clamped) | Mosaic block width in bytes for `pixelate`. Larger = coarser. |
+| `blur_sigma` | `blur_sigma: f32` | float | `24.0` | `1.0`–`100.0` (clamped) | Intended Gaussian sigma for `blur`. **Currently parsed but without effect** (see §8). |
+| `redact_faces` | `redact_faces: bool` | bool | `true` | `true` / `false` | `true` → count faces from `doc.faces` and write the redacted copy. `false` → no image is written, `faces_redacted_count = 0`. |
+| `fuzz_gps` *(`fuzz_gps_coordinates`)* | `fuzz_gps: bool` | bool | `true` | `true` / `false` | `true` → round `latitude`/`longitude` (only if both are present). Sets `original_gps_fuzzed = true` and adds rule `fuzzed_gps_precision_<d>_decimals`. |
+| `gps_decimal_places` | `gps_decimal_places: u32` | integer | `2` | `0`–`6` (values > 6 become 6) | Decimals kept: `round(coord × 10^d) / 10^d`. |
+| `strip_serial_numbers` *(`strip_serials`)* | `strip_serial_numbers: bool` | bool | `true` | `true` / `false` | `true` → remove serial-number keys from `raw_tags`. Adds rule `stripped_hardware_serial_numbers` only if at least one key was removed. |
+| `output_dir` | `output_dir: String` | path | `cache/redacted` | relative or absolute path without `..` | Target folder for `<output_dir>/<doc.id>.redacted.jpg` (`/` in `doc.id` is replaced by `_`). A trailing `/` is removed. |
 
-### GPS Precision Reference (`gps_decimal_places`)
+### 2.3 Parsing Rules
 
-| `gps_decimal_places` | Example Coordinate (`52.518624, 13.376198`) | Spatial Resolution (at Equator) | Typical Privacy Level |
+- **Canonical key wins**: if both `style` and `redaction_style` are set, `style` is used (same for all aliases).
+- **Invalid values are ignored silently** and the default stays active, e.g. `block_size: "abc"`, `gps_decimal_places: "-1"`, `style: "sepia"`, `output_dir: "../x"` or an empty `output_dir`.
+- **Booleans**: only `true` (case-insensitive) means *true*. **Every other value means `false`** — `"yes"`, `"1"` or `"on"` disable the feature.
+- **Out-of-range numbers are clamped**, not rejected (`block_size: "500"` → `128`).
+- **No `#` in values**: the host YAML reader treats `#` as the start of a comment.
+
+### 2.4 GPS Precision Reference (`gps_decimal_places`)
+
+| `gps_decimal_places` | Example (`52.518624, 13.376198`) | Resolution (at equator) | Typical privacy level |
 | :---: | :---: | :---: | :--- |
-| `0` | `53.0, 13.0` | $\approx 111\text{ km}$ | Country / State level |
-| `1` | `52.5, 13.4` | $\approx 11.1\text{ km}$ | Metropolitan area / City level |
-| **`2` (Default)** | **`52.52, 13.38`** | **$\approx 1.11\text{ km}$** | **District / Neighborhood level (GDPR recommended)** |
-| `3` | `52.519, 13.376` | $\approx 111\text{ m}$ | Street / Block level |
-| `4` | `52.5186, 13.3762` | $\approx 11.1\text{ m}$ | Building / Parcel level |
+| `0` | `53.0, 13.0` | ≈ 111 km | Country / state |
+| `1` | `52.5, 13.4` | ≈ 11.1 km | Metropolitan area / city |
+| **`2` (default)** | **`52.52, 13.38`** | **≈ 1.11 km** | **District / neighborhood (recommended)** |
+| `3` | `52.519, 13.376` | ≈ 111 m | Street / block |
+| `4` | `52.5186, 13.3762` | ≈ 11.1 m | Building / parcel |
+| `5`–`6` | `52.51862, 13.3762` … | ≈ 1.1 m – 0.11 m | Practically no protection |
+
+### 2.5 Profiles Shipped with the Repository
+
+| Key | `config.yaml` | `config.docker.yaml` | `config.mac-studio.yaml` |
+| :--- | :--- | :--- | :--- |
+| `style` | *(default `pixelate`)* | `pixelate` | `blackout` |
+| `block_size` | *(default `16`)* | `16` | *(default)* |
+| `blur_sigma` | *(default)* | *(default)* | `24.0` (no effect with `blackout`) |
+| `fuzz_gps` | *(default `true`)* | `true` | `true` |
+| `gps_decimal_places` | *(default `2`)* | `2` | `3` |
+| `strip_serials` | *(default `true`)* | `true` | `true` |
 
 ---
 
 ## 3. Pipeline Dependencies & Ordering
 
-For full effectiveness, `privacy-redact` must be placed **after** the extraction and detection stages in `config.yaml`:
+`privacy-redact` must run **after** these stages:
 
-1. **`metadata`** $\to$ Populates `doc.location` (raw EXIF GPS coordinates) and `doc.metadata.raw_tags` (camera/lens serial numbers).
-2. **`reversegeo`** $\to$ Resolves exact city/country names from raw GPS coordinates *before* `privacy-redact` rounds the numeric coordinates.
-3. **`face-detection`** $\to$ Populates `doc.faces` with normalized bounding boxes (`x`, `y`, `width`, `height` $\in [0.0, 1.0]$).
-4. **`privacy-redact`** $\to$ Redacts detected faces, rounds GPS coordinates, and purges hardware serial numbers.
+1. **`metadata`** → fills `doc.location` (raw GPS) and `doc.metadata.raw_tags` (serial numbers).
+2. **`reversegeo`** → resolves city/country from the *exact* coordinates before they are rounded.
+3. **`weather-enrich`** → queries the weather with the exact coordinates.
+4. **`face-detection`** → fills `doc.faces`.
+5. **`privacy-redact`** → redacts, rounds and strips.
+
+If an upstream stage is missing, the respective step is skipped without error (no faces → no image; no coordinates → no fuzzing).
 
 ---
 
 ## 4. Required Capabilities
 
-When executing under sandboxed host control (`config.yaml`), the plugin requires:
-- `filesystem`: Read access to the source image (`doc.file.path`) and write access to create the sanitized output image (`cache/redacted/<doc.id>.redacted.jpg`).
+| Capability | Used for | Without the grant |
+| :--- | :--- | :--- |
+| `filesystem` | `fs_read(doc.file.path)`, `fs_write(<output_dir>/…)` | No redacted image is created in the sandbox (see the fallback note in §8). GPS fuzzing and serial stripping still work. |
 
 ---
 
 ## 5. Data Model Output (`UnifiedDocument.privacy` / `PrivacyInfo`)
 
-### Rust Struct Definition (`crates/models/src/lib.rs`)
-
 ```rust
 pub struct PrivacyInfo {
-    pub is_redacted: bool,
-    pub faces_redacted_count: usize,
-    pub license_plates_redacted_count: usize,
+    pub is_redacted: bool,                    // true if faces > 0, GPS fuzzed, or any rule applied
+    pub faces_redacted_count: usize,          // number of entries in doc.faces.faces (0 if redact_faces = false)
+    pub license_plates_redacted_count: usize, // always 0 (not implemented yet)
     pub original_gps_fuzzed: bool,
-    pub redacted_image_path: Option<String>,
+    pub redacted_image_path: Option<String>,  // Some(..) only if faces_redacted_count > 0
     pub applied_rules: Vec<String>,
 }
 ```
 
-### Example JSON Output in `UnifiedDocument`
+Possible `applied_rules` entries:
+
+| Rule | Condition |
+| :--- | :--- |
+| `redacted_<N>_faces_via_<style>` | `redact_faces = true` and `N > 0` faces |
+| `fuzzed_gps_precision_<d>_decimals` | `fuzz_gps = true` and latitude + longitude present |
+| `stripped_hardware_serial_numbers` | `strip_serial_numbers = true` and at least one key removed |
 
 ```json
 {
@@ -127,31 +156,57 @@ pub struct PrivacyInfo {
 
 ---
 
-## 6. Usage Examples
+## 6. Persistence (SQLite)
 
-### 1. In Host Pipeline (`flagme-host`)
+| Table | Columns |
+| :--- | :--- |
+| `privacy_redactions` | `photo_id`, `is_redacted`, `faces_redacted_count`, `license_plates_redacted_count`, `original_gps_fuzzed`, `redacted_image_path`, `applied_rules` |
+| `photos` | `is_redacted`, `redacted_file_path` |
+| `locations` | `is_gps_fuzzed`; `latitude`/`longitude` are stored **already rounded** |
+
+```sql
+SELECT photo_id, is_redacted, faces_redacted_count, original_gps_fuzzed, redacted_image_path, applied_rules
+FROM privacy_redactions;
+```
+
+---
+
+## 7. Usage Examples
+
+### 7.1 Host Pipeline
+
 ```bash
 cargo run --bin flagme-host -- process Examples/2025/10/Germany/Munich/2025-10-25_094918.jpg --config config.yaml
 ```
 
-### 2. Programmatic Rust Usage with Custom Parameters
+### 7.2 Standalone CLI (stdin → stdout)
+
+```bash
+cat doc.json | cargo run -p flagme-plugin-privacy-redact
+```
+
+The CLI always uses the **default settings** (`PrivacySettings::default()`); `config.yaml` is not read. Empty input prints `Plugin privacy-redact v0.1.0`.
+
+### 7.3 Rust API with Custom Parameters
+
 ```rust
 use flagme_plugin_privacy_redact::{PrivacyRedactPlugin, PrivacySettings, RedactionStyle};
 
 let plugin = PrivacyRedactPlugin::with_settings(PrivacySettings {
     style: RedactionStyle::Blackout,
-    block_size: 16,
-    blur_sigma: 24.0,
-    redact_faces: true,
-    fuzz_gps: true,
-    gps_decimal_places: 2,
-    strip_serial_numbers: true,
-    output_dir: "cache/redacted".to_string(),
+    gps_decimal_places: 3,
+    ..PrivacySettings::default()
 });
 ```
 
-### 3. SQLite Verification
-```sql
-SELECT photo_id, is_redacted, faces_redacted_count, original_gps_fuzzed, redacted_image_path, applied_rules
-FROM privacy_redactions;
-```
+`ctx.settings` from `config.yaml` is layered **on top of** these values (`apply_map`): keys that are present override the Rust values.
+
+---
+
+## 8. Limitations & Implementation Notes
+
+- **Image obfuscation is not bounding-box based yet.** The plugin overwrites a byte segment of the encoded file (offset `len/3`, length `len/4`, `0xFF` bytes kept; only files > 256 bytes). `DetectedFace.bbox` is not evaluated; `blur_sigma` has no effect. The output is a corrupted copy of the original, not a pixel-accurate redaction. Tracked in [#22](https://github.com/Zheng-Bote/wasm_geo-host/issues/22).
+- **`raw_tags` keeps the original values (by design).** GPS fuzzing only changes `doc.location`; EXIF tags such as `Exif.GPSLatitude` / `Exif.GPSLongitude` and the aggregated `Exif`, `IPTC`, `XMP` JSON strings in `raw_tags` are left untouched as the lossless original record ([ADR 0001](../../docs/adr/0001-raw-tags-original-serial-stripping.md)).
+- **Serial-number stripping is the only permitted change to `raw_tags`** and only when requested (`strip_serial_numbers`, [ADR 0001](../../docs/adr/0001-raw-tags-original-serial-stripping.md)). It currently filters *keys* only; `CameraSerialNumber` / `LensSerialNumber` inside the aggregated `raw_tags["Exif"]` JSON string remain.
+- **Write fallback:** if `fs_write` fails (e.g. capability missing), the plugin writes directly via `std::fs` in native host mode. Inside a Wasm sandbox without a preopened directory this fails silently. Tracked in [#25](https://github.com/Zheng-Bote/wasm_geo-host/issues/25).
+- `license_plates_redacted_count` is always `0`.
