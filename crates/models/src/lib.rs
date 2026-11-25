@@ -23,6 +23,8 @@ pub struct UnifiedDocument {
     pub timeline: Option<TimelineInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weather: Option<WeatherInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ocr: Option<OcrInfo>,
     #[serde(default)]
     pub custom: HashMap<String, serde_json::Value>,
 }
@@ -40,6 +42,7 @@ impl UnifiedDocument {
             duplicate: None,
             timeline: None,
             weather: None,
+            ocr: None,
             custom: HashMap::new(),
         }
     }
@@ -148,6 +151,30 @@ pub struct WeatherInfo {
     pub humidity_percent: Option<u8>,
     pub precipitation_mm: Option<f32>,
     pub is_day: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct OcrInfo {
+    pub combined_text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub regions: Vec<TextRegion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_language: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TextRegion {
+    pub text: String,
+    pub confidence: f32,
+    pub bbox: BoundingBox,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct BoundingBox {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

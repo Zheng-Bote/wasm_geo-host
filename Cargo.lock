@@ -119,6 +119,7 @@ dependencies = [
  "flagme-plugin-countryflag",
  "flagme-plugin-duplicate",
  "flagme-plugin-metadata",
+ "flagme-plugin-ocr-text",
  "flagme-plugin-reversegeo",
  "flagme-plugin-thumbnail",
  "flagme-plugin-timeline",
@@ -158,6 +159,14 @@ name = "flagme-plugin-metadata"
 version = "0.1.0"
 dependencies = [
  "flagme-sdk",
+]
+
+[[package]]
+name = "flagme-plugin-ocr-text"
+version = "0.1.0"
+dependencies = [
+ "flagme-sdk",
+ "serde_json",
 ]
 
 [[package]]
