@@ -8,6 +8,7 @@ use flagme_plugin_thumbnail::ThumbnailPlugin;
 use flagme_plugin_timeline::TimelinePlugin;
 use flagme_plugin_weather_enrich::WeatherEnrichPlugin;
 use flagme_plugin_ocr_text::OcrTextPlugin;
+use flagme_plugin_face_detection::FaceDetectionPlugin;
 use wasm_geo_models::{FileInfo, UnifiedDocument};
 use std::path::Path;
 use std::sync::Arc;
@@ -137,6 +138,7 @@ async fn main() -> anyhow::Result<()> {
     runtime.register_plugin(Arc::new(TimelinePlugin::new()));
     runtime.register_plugin(Arc::new(WeatherEnrichPlugin::new()));
     runtime.register_plugin(Arc::new(OcrTextPlugin::new()));
+    runtime.register_plugin(Arc::new(FaceDetectionPlugin::new()));
 
     let pipeline = Pipeline::new(config, runtime, storage);
 

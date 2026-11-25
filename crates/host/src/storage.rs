@@ -32,6 +32,7 @@ pub struct Storage {
     timelines: Arc<Mutex<HashMap<String, TimelineInfo>>>,
     weather: Arc<Mutex<HashMap<String, WeatherInfo>>>,
     ocr: Arc<Mutex<HashMap<String, OcrInfo>>>,
+    faces: Arc<Mutex<HashMap<String, FacesInfo>>>,
 }
 
 impl Storage {
@@ -48,6 +49,7 @@ impl Storage {
             timelines: Arc::new(Mutex::new(HashMap::new())),
             weather: Arc::new(Mutex::new(HashMap::new())),
             ocr: Arc::new(Mutex::new(HashMap::new())),
+            faces: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -131,6 +133,11 @@ impl Storage {
             if let Some(o) = &doc.ocr {
                 let mut ocr = self.ocr.lock().unwrap();
                 ocr.insert(doc.id.clone(), o.clone());
+            }
+
+            if let Some(f) = &doc.faces {
+                let mut faces = self.faces.lock().unwrap();
+                faces.insert(doc.id.clone(), f.clone());
             }
         }
 
@@ -320,6 +327,42 @@ impl Storage {
             }
         }
 
+        if let Some(faces_info) = &doc.faces {
+            for face in &faces_info.faces {
+                let emb_sql = if let Some(emb) = &face.embedding {
+                    let mut hex = String::with_capacity(emb.len() * 8);
+                    for v in emb {
+                        for b in v.to_le_bytes() {
+                            use std::fmt::Write;
+                            let _ = write!(&mut hex, "{:02x}", b);
+                        }
+                    }
+                    format!("X'{}'", hex)
+                } else {
+                    "NULL".to_string()
+                };
+
+                let person_sql = face
+                    .person_id
+                    .as_deref()
+                    .map(|p| format!("'{}'", escape_sql(p)))
+                    .unwrap_or_else(|| "NULL".to_string());
+
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO faces (id, photo_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, embedding, person_id) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
+                    escape_sql(&face.id),
+                    escape_sql(&doc.id),
+                    face.bbox.x,
+                    face.bbox.y,
+                    face.bbox.width,
+                    face.bbox.height,
+                    face.confidence,
+                    emb_sql,
+                    person_sql
+                ));
+            }
+        }
+
         if let Ok(mut child) = Command::new("sqlite3")
             .arg(&self.db_path)
             .stdin(Stdio::piped())
@@ -350,6 +393,7 @@ impl Storage {
         let timeline = self.timelines.lock().unwrap().get(id).cloned();
         let weather = self.weather.lock().unwrap().get(id).cloned();
         let ocr = self.ocr.lock().unwrap().get(id).cloned();
+        let faces = self.faces.lock().unwrap().get(id).cloned();
 
         let country = if let Some(loc) = &location {
             if let Some(code) = &loc.country_code {
@@ -373,6 +417,7 @@ impl Storage {
             timeline,
             weather,
             ocr,
+            faces,
             custom: HashMap::new(),
         })
     }
