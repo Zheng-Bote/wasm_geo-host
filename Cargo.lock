@@ -118,6 +118,7 @@ dependencies = [
  "flagme-plugin-ai-tagging",
  "flagme-plugin-countryflag",
  "flagme-plugin-duplicate",
+ "flagme-plugin-face-detection",
  "flagme-plugin-metadata",
  "flagme-plugin-ocr-text",
  "flagme-plugin-reversegeo",
@@ -152,6 +153,14 @@ name = "flagme-plugin-duplicate"
 version = "0.1.0"
 dependencies = [
  "flagme-sdk",
+]
+
+[[package]]
+name = "flagme-plugin-face-detection"
+version = "0.1.0"
+dependencies = [
+ "flagme-sdk",
+ "serde_json",
 ]
 
 [[package]]

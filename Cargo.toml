@@ -13,4 +13,5 @@ members = [
     "plugins/timeline",
     "plugins/weather-enrich",
     "plugins/ocr-text",
+    "plugins/face-detection",
 ]

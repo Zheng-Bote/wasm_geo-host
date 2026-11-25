@@ -133,5 +133,29 @@ CREATE TABLE IF NOT EXISTS ocr_regions (
 
 CREATE INDEX IF NOT EXISTS idx_ocr_regions_photo ON ocr_regions(photo_id);
 
+-- Human Face Detection, Facial Landmarks and Embeddings
+CREATE TABLE IF NOT EXISTS persons (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    representative_face_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS faces (
+    id TEXT PRIMARY KEY,
+    photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    bbox_x REAL NOT NULL,
+    bbox_y REAL NOT NULL,
+    bbox_w REAL NOT NULL,
+    bbox_h REAL NOT NULL,
+    confidence REAL NOT NULL,
+    embedding BLOB,
+    person_id TEXT REFERENCES persons(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_faces_photo ON faces(photo_id);
+CREATE INDEX IF NOT EXISTS idx_faces_person ON faces(person_id);
+
+
 
 

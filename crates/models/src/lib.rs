@@ -25,6 +25,8 @@ pub struct UnifiedDocument {
     pub weather: Option<WeatherInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ocr: Option<OcrInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub faces: Option<FacesInfo>,
     #[serde(default)]
     pub custom: HashMap<String, serde_json::Value>,
 }
@@ -43,6 +45,7 @@ impl UnifiedDocument {
             timeline: None,
             weather: None,
             ocr: None,
+            faces: None,
             custom: HashMap::new(),
         }
     }
@@ -175,6 +178,35 @@ pub struct BoundingBox {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct FacesInfo {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub faces: Vec<DetectedFace>,
+    pub detection_model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DetectedFace {
+    pub id: String,
+    pub bbox: BoundingBox,
+    pub confidence: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub landmarks: Option<FaceLandmarks>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<Vec<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FaceLandmarks {
+    pub left_eye: (f32, f32),
+    pub right_eye: (f32, f32),
+    pub nose: (f32, f32),
+    pub mouth_left: (f32, f32),
+    pub mouth_right: (f32, f32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
