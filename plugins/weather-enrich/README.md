@@ -12,7 +12,7 @@ The `weather-enrich` plugin adds the historical weather at the place and hour a 
 | Reads | `doc.location.latitude/longitude`, `doc.timeline.taken_at` |
 | Writes | `doc.weather` (`WeatherInfo`) |
 | Capabilities | `http`, `kv` |
-| Configurable via `settings` | **No** |
+| Configurable via `settings` | **Yes** (3 parameters, see §2.2) |
 
 ---
 
@@ -20,8 +20,8 @@ The `weather-enrich` plugin adds the historical weather at the place and hour a 
 
 1. **Historical Hourly Weather** — Open-Meteo archive, value of the capture hour (UTC).
 2. **WMO Code Mapping** — codes 0–99 → label + emoji (table in §2.4).
-3. **KV Caching** — per coordinate (2 decimals) and hour.
-4. **Offline Fallback** — climatological model from latitude, month and hour.
+3. **KV Caching** — per coordinate (`coordinate_precision`, default 2 decimals) and hour.
+4. **Offline Fallback** — climatological model from latitude, month and hour (`offline_fallback`).
 5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
@@ -43,20 +43,29 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → no `doc.weather`. |
 | `capabilities` | list | `[http, kv]` | See §4. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters** (no API endpoint, API key or unit setting). An API key is not required for Open-Meteo. Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+| Key | Type / range | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `endpoint` | `http(s)://` URL | `https://archive-api.open-meteo.com/v1/archive` | Base URL of the archive API (e.g. an own Open-Meteo instance). |
+| `coordinate_precision` | integer 0–4 | `2` | Decimal places of the coordinates in the request and the cache key. |
+| `offline_fallback` | bool | `true` | `false` → no climatological estimate; if the request fails, `doc.weather` stays empty and nothing is cached. |
 
-### 2.3 Built-in Parameters (fixed in code)
+```yaml
+    settings:
+      offline_fallback: "false"   # only measured data
+```
+
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
+
+### 2.3 Built-in Parameters (not configurable)
 
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
-| Endpoint | `https://archive-api.open-meteo.com/v1/archive` | |
-| Query | `latitude`/`longitude` (2 decimals), `start_date` = `end_date` = capture date, `hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,is_day` | one request per photo and day |
-| Coordinate precision | 2 decimals (≈ 1.1 km) | for request and cache key |
-| Cache key | `weather:{lat:.2}:{lon:.2}:{YYYY-MM-DD-HH}` | |
+| Query | `<endpoint>?latitude=…&longitude=…` (`coordinate_precision` decimals), `start_date` = `end_date` = capture date, `hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,is_day` | one request per photo and day |
+| Cache key | `weather:<lat>:<lon>:<YYYY-MM-DD-HH>` | coordinates with `coordinate_precision` decimals |
 | Hour selection | hour of `taken_at` (0–23), index into the `hourly` arrays | |
 | Missing `taken_at` | date `2025-07-15`, hour `12`, cache suffix `default-date` | |
 | HTTP timeout | 2 s (host capability) | |
@@ -85,7 +94,7 @@ This plugin has **no configurable parameters** (no API endpoint, API key or unit
 
 ### 2.5 Climatological Fallback (offline)
 
-Used if the HTTP request fails or the response cannot be parsed:
+Used if the HTTP request fails or the response cannot be parsed **and** `offline_fallback = true`:
 
 | Value | Formula / rule |
 | :--- | :--- |
@@ -169,7 +178,7 @@ SELECT photo_id, temperature, condition, wmo_code, icon_emoji, humidity_percent,
 
 ## 7. Limitations & Implementation Notes
 
-- **Fallback values are not marked.** `WeatherInfo` has no field that tells measured and estimated values apart; in the output, an estimate looks like real data.
+- **Fallback values are not marked.** `WeatherInfo` has no field that tells measured and estimated values apart; in the output, an estimate looks like real data. Set `offline_fallback: false` to store measured data only.
 - Because `timeline` stores local times as UTC (see its README), the selected hour can be off by the time-zone offset.
 - The ERA5 archive has a delay of a few days; very recent photos may get no data and fall back to the estimate.
 - The KV cache lives in memory of the host process.

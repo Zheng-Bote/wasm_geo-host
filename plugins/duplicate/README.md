@@ -12,7 +12,7 @@ The `duplicate` plugin finds exact copies (SHA-256) and visually similar images 
 | Reads | `doc.id`, `doc.file.path` (file bytes) |
 | Writes | `doc.duplicate` (`DuplicateInfo`), `doc.file.sha256` |
 | Capabilities | `filesystem`, `kv` |
-| Configurable via `settings` | **No** |
+| Configurable via `settings` | **Yes** (1 parameter, see §2.2) |
 
 ---
 
@@ -43,15 +43,22 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → no hashes; `doc.file.sha256` stays empty. |
 | `capabilities` | list | `[filesystem, kv]` | See §4. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters**. Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+| Key | Type / range | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `phash_threshold` | integer 0–64 | `0` | Maximum Hamming distance between two dHashes to count as duplicate. `0` = exact match via `phash:<hex>`; `> 0` = linear comparison against the index `phash:index` (see §2.4). |
 
-> **Note:** `config.docker.yaml` (`phash_threshold: "10"`) and `config.mac-studio.yaml` (`phash_threshold: "8"`) set a Hamming threshold that is **ignored**. Matching is always **exact** (Hamming distance 0, see §7).
+```yaml
+    settings:
+      phash_threshold: "8"
+```
 
-### 2.3 Built-in Parameters (fixed in code)
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
+
+### 2.3 Built-in Parameters (not configurable)
 
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
@@ -59,7 +66,8 @@ This plugin has **no configurable parameters**. Settings support for all plugins
 | Sampled region | JPEG: data after SOS (`0xFFDA`); other formats: whole file | skips EXIF/APP segments |
 | Empty input | `phash = "0000000000000000"` | |
 | KV keys | `sha256:<64 hex>`, `phash:<16 hex>` | value = `doc.id` of the first photo |
-| Match rule | identical SHA-256 **or** identical dHash, different `doc.id` | IDs are added at most once |
+| KV index (`phash_threshold > 0`) | `phash:index`, one line `<16 hex> <doc.id>` per photo | ≈ 34 bytes per photo |
+| Match rule | identical SHA-256 **or** dHash Hamming distance ≤ `phash_threshold`, different `doc.id` | IDs are added at most once |
 
 ---
 
@@ -120,7 +128,7 @@ SELECT phash, group_concat(photo_id) FROM duplicates GROUP BY phash HAVING count
 
 ## 7. Limitations & Implementation Notes
 
-- **No similarity threshold:** dHash matches only if all 64 bits are identical. A Hamming comparison (`phash_threshold`) is not implemented.
+- **Linear index:** with `phash_threshold > 0` every new photo is compared with all entries of `phash:index`; the effort grows linearly with the library.
 - **dHash over compressed bytes:** the grid is computed over the encoded JPEG stream, not decoded pixels. It is therefore not robust against re-compression or resizing.
 - **The KV index lives in memory** of the host process; after a restart, earlier photos are no longer known as duplicates (the SQL query in §6.3 still works).
 - Only the **first** photo per hash is remembered; later copies point to it, not to each other.

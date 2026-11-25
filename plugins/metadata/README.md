@@ -12,7 +12,7 @@ The `metadata` plugin extracts EXIF, IPTC and XMP metadata from media files in p
 | Reads | `doc.file.path` (file bytes) |
 | Writes | `doc.metadata`; `doc.location.latitude/longitude/altitude` (only if GPS was found) |
 | Capabilities | `filesystem` |
-| Configurable via `settings` | **No** |
+| Configurable via `settings` | **Yes** (2 parameters, see §2.2) |
 
 ---
 
@@ -42,18 +42,27 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → host skips the plugin. |
 | `capabilities` | list | `[filesystem]` | See §4. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters**. Any keys under `settings` are ignored. Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+| Key | Type / range | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `makernote_max_length` | integer 64–65536 | `512` | `Exif.MakerNote` values longer than this are replaced by `<MakerNote <n> bytes>`. |
+| `xmp_max_value_length` | integer 64–65536 | `512` | XMP values (attributes and elements) longer than this are dropped. |
 
-### 2.3 Built-in Parameters (fixed in code)
+```yaml
+    settings:
+      makernote_max_length: "4096"
+      xmp_max_value_length: "2048"
+```
+
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
+
+### 2.3 Built-in Parameters (not configurable)
 
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
-| MakerNote truncation | > 512 characters | `Exif.MakerNote` is replaced by `<MakerNote <n> bytes>`. |
-| XMP value limit | ≤ 512 characters | Longer XMP values are dropped. |
 | XMP namespaces skipped | `x`, `rdf`, `xmlns`, `xml`, `Container` | Structural namespaces are not exported. |
 | XMP namespace alias | `Iptc4xmpCore` → `iptc` | e.g. `XMP.iptc.Location`. |
 | IPTC record | only record `2` (Application) | Known datasets get names (`Keywords`, `City`, `Caption`, …), others `Dataset<n>`. |

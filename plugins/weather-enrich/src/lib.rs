@@ -1,13 +1,55 @@
 use flagme_sdk::{
-    Plugin, PluginContext, PluginResult, UnifiedDocument, WeatherInfo,
+    Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache, SettingsReader,
+    UnifiedDocument, WeatherInfo,
 };
 
+/// Configurable parameters of the weather plugin (`config.yaml` `settings`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WeatherSettings {
+    /// Base URL of the Open-Meteo archive API.
+    pub endpoint: String,
+    /// Decimal places of the coordinates in the request and the cache key.
+    pub coordinate_precision: u32,
+    /// Use the climatological estimate if the request fails.
+    pub offline_fallback: bool,
+}
+
+impl Default for WeatherSettings {
+    fn default() -> Self {
+        Self {
+            endpoint: "https://archive-api.open-meteo.com/v1/archive".to_string(),
+            coordinate_precision: 2,
+            offline_fallback: true,
+        }
+    }
+}
+
+impl PluginSettings for WeatherSettings {
+    const PLUGIN: &'static str = "weather-enrich";
+
+    fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        Self {
+            endpoint: r.url("endpoint", &[], &base.endpoint),
+            coordinate_precision: r.u32("coordinate_precision", &[], 0..=4, base.coordinate_precision),
+            offline_fallback: r.bool("offline_fallback", &[], base.offline_fallback),
+        }
+    }
+}
+
 /// Historical weather enrichment plugin querying Open-Meteo with local KV caching.
-pub struct WeatherEnrichPlugin;
+pub struct WeatherEnrichPlugin {
+    settings: SettingsCache<WeatherSettings>,
+}
 
 impl WeatherEnrichPlugin {
     pub fn new() -> Self {
-        Self
+        Self::with_settings(WeatherSettings::default())
+    }
+
+    pub fn with_settings(settings: WeatherSettings) -> Self {
+        Self {
+            settings: SettingsCache::new(settings),
+        }
     }
 
     /// Maps standard WMO weather interpretation codes (0-99) to condition names and emoji icons.
@@ -162,7 +204,9 @@ impl Plugin for WeatherEnrichPlugin {
             ("2025-07-15".to_string(), "default-date".to_string(), 7, 12)
         };
 
-        let cache_key = format!("weather:{:.2}:{:.2}:{}", lat, lon, date_hour);
+        let settings = self.settings.get_or_parse(ctx);
+        let p = settings.coordinate_precision as usize;
+        let cache_key = format!("weather:{:.p$}:{:.p$}:{}", lat, lon, date_hour, p = p);
 
         // 1. Check local KV cache
         if let Ok(Some(cached_json)) = ctx.capabilities.kv_get(&cache_key) {
@@ -176,20 +220,31 @@ impl Plugin for WeatherEnrichPlugin {
         // 2. Outbound HTTP query to Open-Meteo Historical Weather API
         ctx.capabilities.log(
             "info",
-            &format!("Querying historical weather for coordinates ({:.2}, {:.2})", lat, lon),
+            &format!("Querying historical weather for coordinates ({:.p$}, {:.p$})", lat, lon, p = p),
         );
 
         let url = format!(
-            "https://archive-api.open-meteo.com/v1/archive?latitude={:.2}&longitude={:.2}&start_date={}&end_date={}&hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,is_day",
-            lat, lon, date_str, date_str
+            "{}?latitude={:.p$}&longitude={:.p$}&start_date={}&end_date={}&hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,is_day",
+            settings.endpoint, lat, lon, date_str, date_str, p = p
         );
 
-        let weather = ctx
+        let measured = ctx
             .capabilities
             .http_get(&url)
             .ok()
-            .and_then(|body| Self::parse_open_meteo_response(&body, hour as usize))
-            .unwrap_or_else(|| Self::compute_climatological_fallback(lat, lon, month, hour));
+            .and_then(|body| Self::parse_open_meteo_response(&body, hour as usize));
+
+        let weather = match measured {
+            Some(w) => w,
+            None if settings.offline_fallback => Self::compute_climatological_fallback(lat, lon, month, hour),
+            None => {
+                ctx.capabilities.log(
+                    "warn",
+                    "Historical weather unavailable and offline_fallback disabled; leaving weather empty",
+                );
+                return Ok(doc);
+            }
+        };
 
         // Cache result in KV
         if let Ok(json_str) = serde_json::to_string(&weather) {

@@ -1,21 +1,71 @@
 use flagme_sdk::{
-    serde_json, MetadataInfo, Plugin, PluginContext, PluginResult, UnifiedDocument,
+    serde_json, MetadataInfo, Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache,
+    SettingsReader, UnifiedDocument,
 };
 use std::collections::HashMap;
 use std::io::Cursor;
 
+/// Configurable parameters of the metadata plugin (`config.yaml` `settings`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MetadataSettings {
+    /// MakerNote values longer than this are replaced by `<MakerNote <n> bytes>`.
+    pub makernote_max_length: usize,
+    /// XMP values longer than this are dropped.
+    pub xmp_max_value_length: usize,
+}
+
+impl Default for MetadataSettings {
+    fn default() -> Self {
+        Self {
+            makernote_max_length: 512,
+            xmp_max_value_length: 512,
+        }
+    }
+}
+
+impl PluginSettings for MetadataSettings {
+    const PLUGIN: &'static str = "metadata";
+
+    fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        Self {
+            makernote_max_length: r.u32("makernote_max_length", &[], 64..=65536, base.makernote_max_length as u32)
+                as usize,
+            xmp_max_value_length: r.u32("xmp_max_value_length", &[], 64..=65536, base.xmp_max_value_length as u32)
+                as usize,
+        }
+    }
+}
+
 /// Metadata plugin extracting EXIF, IPTC, and XMP metadata without loss.
-pub struct MetadataPlugin;
+pub struct MetadataPlugin {
+    settings: SettingsCache<MetadataSettings>,
+}
 
 impl MetadataPlugin {
     pub fn new() -> Self {
-        Self
+        Self::with_settings(MetadataSettings::default())
     }
 
-    /// Pure Rust parser extracting all EXIF, IPTC, and XMP metadata tags from raw image bytes.
+    pub fn with_settings(settings: MetadataSettings) -> Self {
+        Self {
+            settings: SettingsCache::new(settings),
+        }
+    }
+
+    /// Pure Rust parser extracting all EXIF, IPTC, and XMP metadata tags from raw image bytes,
+    /// using the constructor settings.
     pub fn parse_image_metadata(
         &self,
         bytes: &[u8],
+    ) -> (MetadataInfo, Option<f64>, Option<f64>, Option<f64>) {
+        self.parse_image_metadata_with(bytes, self.settings.base())
+    }
+
+    /// Like [`Self::parse_image_metadata`], with explicit settings.
+    pub fn parse_image_metadata_with(
+        &self,
+        bytes: &[u8],
+        settings: &MetadataSettings,
     ) -> (MetadataInfo, Option<f64>, Option<f64>, Option<f64>) {
         let mut info = MetadataInfo::default();
         let mut raw_tags = HashMap::new();
@@ -66,11 +116,11 @@ impl MetadataPlugin {
 
             for f in reader.fields() {
                 let tag_name = format!("{}", f.tag);
-                // Omit huge binary MakerNote dumps (> 512 chars) from cluttering text fields
+                // Omit huge binary MakerNote dumps (> makernote_max_length chars) from cluttering text fields
                 let raw_val_str = f.display_value().with_unit(&reader).to_string();
                 let clean_val = raw_val_str.trim().trim_matches('"').trim().to_string();
 
-                let display_val = if clean_val.len() > 512 && f.tag == exif::Tag::MakerNote {
+                let display_val = if clean_val.len() > settings.makernote_max_length && f.tag == exif::Tag::MakerNote {
                     format!("<MakerNote {} bytes>", clean_val.len())
                 } else {
                     clean_val.clone()
@@ -209,7 +259,7 @@ impl MetadataPlugin {
         extract_iptc_tags(bytes, &mut raw_tags, &mut iptc_obj);
 
         // 4. Extract all XMP (RDF attributes and elements) fields
-        extract_xmp_tags(bytes, &mut raw_tags, &mut xmp_obj);
+        extract_xmp_tags(bytes, &mut raw_tags, &mut xmp_obj, settings.xmp_max_value_length);
 
         // 5. Synthetic test buffer fallback ONLY when input is a tiny synthetic test stub (< 128 bytes)
         let is_synthetic_stub = bytes.len() < 128;
@@ -448,6 +498,7 @@ fn extract_xmp_tags(
     bytes: &[u8],
     raw_tags: &mut HashMap<String, String>,
     xmp_obj: &mut serde_json::Map<String, serde_json::Value>,
+    max_len: usize,
 ) {
     let text = String::from_utf8_lossy(bytes);
     let mut search_from = 0;
@@ -459,7 +510,7 @@ fn extract_xmp_tags(
         };
         let end = start + rel_end + "</x:xmpmeta>".len();
         let xmp_block = &text[start..end];
-        parse_single_xmp_packet(xmp_block, raw_tags, xmp_obj);
+        parse_single_xmp_packet(xmp_block, raw_tags, xmp_obj, max_len);
         search_from = end;
     }
 }
@@ -468,6 +519,7 @@ fn parse_single_xmp_packet(
     xmp_block: &str,
     raw_tags: &mut HashMap<String, String>,
     xmp_obj: &mut serde_json::Map<String, serde_json::Value>,
+    max_len: usize,
 ) {
     // 1. Parse prefixed attributes (e.g. photoshop:City="Berlin", hdrgm:Version="1.0")
     // inside any XML tag in the XMP packet
@@ -481,7 +533,7 @@ fn parse_single_xmp_packet(
         let tag_header = &xmp_block[abs_open + 1..abs_close];
 
         if !tag_header.starts_with('/') && !tag_header.starts_with('?') && !tag_header.starts_with('!') {
-            parse_xml_attributes(tag_header, raw_tags, xmp_obj);
+            parse_xml_attributes(tag_header, raw_tags, xmp_obj, max_len);
         }
         cursor = abs_close + 1;
     }
@@ -519,7 +571,7 @@ fn parse_single_xmp_packet(
         if let Some(close_rel) = xmp_block[pos..].find(&close_tag) {
             let inner = &xmp_block[pos..pos + close_rel];
             let clean_val = extract_rdf_inner_text(inner);
-            if !clean_val.is_empty() && clean_val.len() <= 512 {
+            if !clean_val.is_empty() && clean_val.len() <= max_len {
                 let norm_key = format!("{}.{}", normalize_xmp_ns(ns), prop);
                 raw_tags.insert(format!("XMP.{}", norm_key), clean_val.clone());
                 xmp_obj.insert(norm_key, serde_json::Value::String(clean_val));
@@ -532,6 +584,7 @@ fn parse_xml_attributes(
     tag_header: &str,
     raw_tags: &mut HashMap<String, String>,
     xmp_obj: &mut serde_json::Map<String, serde_json::Value>,
+    max_len: usize,
 ) {
     let mut rest = tag_header;
     // Skip element name
@@ -559,7 +612,7 @@ fn parse_xml_attributes(
         if let Some((ns, prop)) = attr_name.split_once(':') {
             if !matches!(ns, "xmlns" | "rdf" | "xml" | "x")
                 && !attr_val.is_empty()
-                && attr_val.len() <= 512
+                && attr_val.len() <= max_len
             {
                 let norm_key = format!("{}.{}", normalize_xmp_ns(ns), prop);
                 raw_tags.insert(format!("XMP.{}", norm_key), attr_val.to_string());
@@ -623,6 +676,7 @@ impl Plugin for MetadataPlugin {
 
     fn process(&self, mut doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument> {
         ctx.capabilities.log("info", "Starting lossless metadata extraction");
+        let settings = self.settings.get_or_parse(ctx);
 
         let file_bytes = match ctx.capabilities.fs_read(&doc.file.path) {
             Ok(bytes) => bytes,
@@ -631,7 +685,7 @@ impl Plugin for MetadataPlugin {
             }
         };
 
-        let (metadata_info, lat, lon, alt) = self.parse_image_metadata(&file_bytes);
+        let (metadata_info, lat, lon, alt) = self.parse_image_metadata_with(&file_bytes, &settings);
         doc.metadata = Some(metadata_info);
 
         if lat.is_some() || lon.is_some() {

@@ -12,7 +12,7 @@ The `face-detection` plugin finds faces in images and returns for each face a bo
 | Reads | `doc.file.path` (file bytes and file name) |
 | Writes | `doc.faces` (`FacesInfo`) |
 | Capabilities | `filesystem` |
-| Configurable via `settings` | **No** — model tier only via the Rust API (§6.3) |
+| Configurable via `settings` | **Yes** (3 parameters, see §2.2) |
 
 ---
 
@@ -49,20 +49,23 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → no `doc.faces`; `privacy-redact` then redacts no faces. |
 | `capabilities` | list | `[filesystem]` | See §4. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters**. The host always registers `FaceDetectionPlugin::new()` (= `Lightweight`). Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+| Key | Type / values | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `tier` | `lightweight`, `heavy` | detector of the constructor (`new()` → lightweight) | Built-in tier, selected per call. |
+| `min_confidence` | number 0.0–1.0 | `0.0` | Faces with lower confidence are dropped (and therefore not redacted by `privacy-redact`). |
+| `device` | `cpu` | `cpu` | `mps`, `cuda`, `metal`, `gpu` are known but not supported yet → warning, `cpu` is used. |
 
-> **Note:** the shipped profiles set keys that are **ignored**:
->
-> | Profile | Ignored keys |
-> | :--- | :--- |
-> | `config.docker.yaml` | `tier: "lightweight"`, `min_confidence: "0.85"` |
-> | `config.mac-studio.yaml` | `tier: "heavy"`, `min_confidence: "0.80"`, `device: "mps"` |
->
-> There is **no confidence filter**: all detected faces are returned (confidence 0.88–0.99).
+```yaml
+    settings:
+      tier: "heavy"
+      min_confidence: "0.80"
+```
+
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
 
 ### 2.3 Detection Strategy (first stage with a result wins)
 
@@ -186,6 +189,8 @@ use flagme_plugin_face_detection::{FaceDetectionPlugin, ModelTier};
 let plugin = FaceDetectionPlugin::with_tier(ModelTier::Heavy);
 // or a custom detector: FaceDetectionPlugin::with_detector(Box::new(MyDetector))
 ```
+
+The constructor detector is the default; `settings.tier` replaces it per call.
 
 ### 6.4 SQLite
 

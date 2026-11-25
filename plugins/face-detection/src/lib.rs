@@ -1,6 +1,6 @@
 use flagme_sdk::{
     BoundingBox, DetectedFace, FaceLandmarks, FacesInfo, Plugin, PluginContext, PluginResult,
-    UnifiedDocument,
+    PluginSettings, SettingsCache, SettingsReader, UnifiedDocument,
 };
 use std::process::Command;
 
@@ -522,31 +522,79 @@ impl FaceDetector for HeavyFaceDetector {
     }
 }
 
+/// Compute device. Only the CPU is implemented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Device {
+    Cpu,
+}
+
+/// Device names that are known but not implemented yet.
+pub const UNSUPPORTED_DEVICES: &[&str] = &["mps", "cuda", "metal", "gpu"];
+
+/// Configurable parameters of the face detection plugin (`config.yaml` `settings`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FaceDetectionSettings {
+    /// Built-in tier; `None` keeps the detector passed to the constructor.
+    pub tier: Option<ModelTier>,
+    /// Faces with a lower confidence are dropped.
+    pub min_confidence: f32,
+    pub device: Device,
+}
+
+impl Default for FaceDetectionSettings {
+    fn default() -> Self {
+        Self {
+            tier: None,
+            min_confidence: 0.0,
+            device: Device::Cpu,
+        }
+    }
+}
+
+impl PluginSettings for FaceDetectionSettings {
+    const PLUGIN: &'static str = "face-detection";
+
+    fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        Self {
+            tier: r
+                .opt_choice(
+                    "tier",
+                    &[],
+                    &[(&["lightweight"], ModelTier::Lightweight), (&["heavy"], ModelTier::Heavy)],
+                    &[],
+                    ModelTier::Lightweight,
+                )
+                .or(base.tier),
+            min_confidence: r.f32("min_confidence", &[], 0.0..=1.0, base.min_confidence),
+            device: r.choice("device", &[], &[(&["cpu"], Device::Cpu)], UNSUPPORTED_DEVICES, base.device),
+        }
+    }
+}
+
 /// Face Detection and Clustering Plugin.
 pub struct FaceDetectionPlugin {
     detector: Box<dyn FaceDetector>,
+    settings: SettingsCache<FaceDetectionSettings>,
 }
 
 impl FaceDetectionPlugin {
     pub fn new() -> Self {
-        Self {
-            detector: Box::new(LightweightFaceDetector),
-        }
+        Self::with_tier(ModelTier::Lightweight)
     }
 
     pub fn with_tier(tier: ModelTier) -> Self {
         match tier {
-            ModelTier::Lightweight => Self {
-                detector: Box::new(LightweightFaceDetector),
-            },
-            ModelTier::Heavy => Self {
-                detector: Box::new(HeavyFaceDetector),
-            },
+            ModelTier::Lightweight => Self::with_detector(Box::new(LightweightFaceDetector)),
+            ModelTier::Heavy => Self::with_detector(Box::new(HeavyFaceDetector)),
         }
     }
 
+    /// Uses `detector` unless `settings.tier` selects a built-in tier.
     pub fn with_detector(detector: Box<dyn FaceDetector>) -> Self {
-        Self { detector }
+        Self {
+            detector,
+            settings: SettingsCache::new(FaceDetectionSettings::default()),
+        }
     }
 }
 
@@ -560,19 +608,28 @@ impl Plugin for FaceDetectionPlugin {
     }
 
     fn process(&self, mut doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument> {
+        let settings = self.settings.get_or_parse(ctx);
+        let detector: &dyn FaceDetector = match settings.tier {
+            Some(ModelTier::Lightweight) => &LightweightFaceDetector,
+            Some(ModelTier::Heavy) => &HeavyFaceDetector,
+            None => self.detector.as_ref(),
+        };
         ctx.capabilities.log(
             "info",
             &format!(
                 "Running face detection with model '{}' ({:?}) on '{}'",
-                self.detector.model_name(),
-                self.detector.tier(),
+                detector.model_name(),
+                detector.tier(),
                 doc.file.path
             ),
         );
 
         let bytes = ctx.capabilities.fs_read(&doc.file.path).unwrap_or_default();
-        let faces = self.detector.detect_with_bytes(&doc.file.path, &bytes);
-        let detection_model = self.detector.model_name().to_string();
+        let mut faces = detector.detect_with_bytes(&doc.file.path, &bytes);
+        if settings.min_confidence > 0.0 {
+            faces.retain(|f| f.confidence >= settings.min_confidence);
+        }
+        let detection_model = detector.model_name().to_string();
 
         doc.faces = Some(FacesInfo {
             faces,

@@ -2,6 +2,9 @@ pub use wasm_geo_models::*;
 pub use serde;
 pub use serde_json;
 
+pub mod settings;
+pub use settings::{PluginSettings, SettingsCache, SettingsReader};
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;

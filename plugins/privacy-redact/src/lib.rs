@@ -1,7 +1,7 @@
 use flagme_sdk::{
-    Plugin, PluginContext, PluginResult, PrivacyInfo, UnifiedDocument,
+    Plugin, PluginContext, PluginResult, PluginSettings, PrivacyInfo, SettingsCache,
+    SettingsReader, UnifiedDocument,
 };
-use std::collections::HashMap;
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,74 +45,52 @@ impl Default for PrivacySettings {
     }
 }
 
-impl PrivacySettings {
-    /// Creates a new `PrivacySettings` instance by overlaying values from a configuration map (`config.yaml` `settings`)
-    /// onto `self`. Supports both canonical and alias parameter names.
-    pub fn apply_map(&self, map: &HashMap<String, String>) -> Self {
-        if map.is_empty() {
-            return self.clone();
+impl PluginSettings for PrivacySettings {
+    const PLUGIN: &'static str = "privacy-redact";
+
+    /// Overlays `config.yaml` `settings` onto `base`. Supports canonical and alias names.
+    fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        Self {
+            style: r.choice(
+                "style",
+                &["redaction_style"],
+                &[
+                    (&["pixelate", "mosaic"], RedactionStyle::Pixelate),
+                    (&["blur", "gaussian"], RedactionStyle::Blur),
+                    (&["blackout", "solid", "mask"], RedactionStyle::Blackout),
+                ],
+                &[],
+                base.style,
+            ),
+            block_size: r.u32("block_size", &[], 2..=128, base.block_size),
+            blur_sigma: r.f32("blur_sigma", &[], 1.0..=100.0, base.blur_sigma),
+            redact_faces: r.bool("redact_faces", &[], base.redact_faces),
+            fuzz_gps: r.bool("fuzz_gps", &["fuzz_gps_coordinates"], base.fuzz_gps),
+            gps_decimal_places: r.u32("gps_decimal_places", &[], 0..=6, base.gps_decimal_places),
+            strip_serial_numbers: r.bool(
+                "strip_serial_numbers",
+                &["strip_serials"],
+                base.strip_serial_numbers,
+            ),
+            output_dir: r.path("output_dir", &[], &base.output_dir),
         }
-
-        let mut cfg = self.clone();
-
-        if let Some(style_val) = map.get("style").or_else(|| map.get("redaction_style")) {
-            match style_val.trim().to_lowercase().as_str() {
-                "pixelate" | "mosaic" => cfg.style = RedactionStyle::Pixelate,
-                "blur" | "gaussian" => cfg.style = RedactionStyle::Blur,
-                "blackout" | "solid" | "mask" => cfg.style = RedactionStyle::Blackout,
-                _ => {}
-            }
-        }
-
-        if let Some(bs) = map.get("block_size").and_then(|v| v.parse::<u32>().ok()) {
-            cfg.block_size = bs.clamp(2, 128);
-        }
-
-        if let Some(sigma) = map.get("blur_sigma").and_then(|v| v.parse::<f32>().ok()) {
-            cfg.blur_sigma = sigma.clamp(1.0, 100.0);
-        }
-
-        if let Some(rf) = map.get("redact_faces") {
-            cfg.redact_faces = rf.trim().eq_ignore_ascii_case("true");
-        }
-
-        if let Some(fg) = map.get("fuzz_gps").or_else(|| map.get("fuzz_gps_coordinates")) {
-            cfg.fuzz_gps = fg.trim().eq_ignore_ascii_case("true");
-        }
-
-        if let Some(dp) = map.get("gps_decimal_places").and_then(|v| v.parse::<u32>().ok()) {
-            cfg.gps_decimal_places = dp.min(6);
-        }
-
-        if let Some(ss) = map.get("strip_serial_numbers").or_else(|| map.get("strip_serials")) {
-            cfg.strip_serial_numbers = ss.trim().eq_ignore_ascii_case("true");
-        }
-
-        if let Some(dir) = map.get("output_dir") {
-            let trimmed = dir.trim().trim_end_matches('/');
-            if !trimmed.is_empty() && !trimmed.contains("..") {
-                cfg.output_dir = trimmed.to_string();
-            }
-        }
-
-        cfg
     }
 }
 
 /// Privacy Redaction & Sanitizing Plugin.
 pub struct PrivacyRedactPlugin {
-    settings: PrivacySettings,
+    settings: SettingsCache<PrivacySettings>,
 }
 
 impl PrivacyRedactPlugin {
     pub fn new() -> Self {
-        Self {
-            settings: PrivacySettings::default(),
-        }
+        Self::with_settings(PrivacySettings::default())
     }
 
     pub fn with_settings(settings: PrivacySettings) -> Self {
-        Self { settings }
+        Self {
+            settings: SettingsCache::new(settings),
+        }
     }
 
     /// Destructively obfuscates image scanline data for detected bounding boxes and writes the redacted artifact to disk.
@@ -160,7 +138,7 @@ impl Plugin for PrivacyRedactPlugin {
     }
 
     fn process(&self, mut doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument> {
-        let active_settings = self.settings.apply_map(&ctx.settings);
+        let active_settings = self.settings.get_or_parse(ctx);
 
         ctx.capabilities.log(
             "info",

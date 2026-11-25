@@ -12,7 +12,7 @@ The `ai-tagging` plugin assigns semantic tags with confidence values to images, 
 | Reads | `doc.file.path` (file bytes and file name) |
 | Writes | `doc.ai` (`AiInfo`: `tags`, `description`, `embedding`) |
 | Capabilities | `filesystem` |
-| Configurable via `settings` | **No** — model selection only via the Rust API (§6.3) |
+| Configurable via `settings` | **Yes** (4 parameters, see §2.2) |
 
 ---
 
@@ -48,24 +48,29 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → no tags, no embedding; `similar` search finds nothing for this photo. |
 | `capabilities` | list | `[filesystem]` | See §4. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters**. The host always registers `AiTaggingPlugin::new()` (= `ClipModel`). Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+| Key | Type / values | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `model` | `CLIP-ViT-B/32` (`clip`), `MobileNetV3` (`mobilenet`), `OpenCLIP-ConvNeXt-Large` (`openclip`) | model of the constructor (`new()` → CLIP) | Built-in model, selected per call. |
+| `model_tier` | `lightweight` → MobileNetV3, `heavy` → OpenCLIP | — | Only used if `model` is not set. |
+| `embedding_dim` | integer 64–2048 | `512` | Length of `AiInfo.embedding`. |
+| `device` | `cpu` | `cpu` | `mps`, `cuda`, `metal`, `gpu` are known but not supported yet → warning, `cpu` is used. |
 
-> **Note:** the shipped profiles set keys that are **ignored**:
->
-> | Profile | Ignored keys |
-> | :--- | :--- |
-> | `config.docker.yaml` | `model: "MobileNetV3"`, `model_tier: "lightweight"`, `embedding_dim: "512"` |
-> | `config.mac-studio.yaml` | `model: "OpenCLIP-ConvNeXt-Large"`, `model_tier: "heavy"`, `embedding_dim: "512"`, `device: "mps"` |
+```yaml
+    settings:
+      model: "MobileNetV3"
+      embedding_dim: "512"
+```
 
-### 2.3 Built-in Parameters (fixed in code)
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
+
+### 2.3 Built-in Parameters (not configurable)
 
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
-| Embedding dimension | `512` | fixed, independent of the model |
 | Sampling | max. ≈ 8192 samples, header offset `min(len/10, 512)` | basis for the features |
 | Fallback dimensions | `1024 × 768` | if no PNG/JPEG header is found |
 
@@ -148,7 +153,7 @@ use flagme_plugin_ai_tagging::{AiTaggingPlugin, MobileNetModel};
 let plugin = AiTaggingPlugin::with_model(Box::new(MobileNetModel));
 ```
 
-Your own model: implement `VisionModel` (`model_name`, `predict`; optionally override `predict_from_bytes`).
+Your own model: implement `VisionModel` (`model_name`, `predict`; optionally override `predict_from_bytes_with_dim`). The constructor model is the default; `settings.model` / `settings.model_tier` replace it per call.
 
 ### 6.4 SQLite
 
@@ -163,4 +168,4 @@ SELECT photo_id, model, length(embedding) FROM photo_embeddings;   -- 2048 bytes
 
 - **No neural inference yet.** All three models share the same heuristic over raw (compressed) file bytes; the model only changes the `model` string and the fallback output. The labels are therefore rough estimates, not real classification. Tracked in [#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23).
 - The embedding is derived from byte statistics and the file path; similarity search finds byte-statistically similar files, not semantically similar images.
-- No WASI-NN / GPU support is wired up; `device` settings have no effect.
+- No WASI-NN / GPU support is wired up; only `device: cpu` is accepted.

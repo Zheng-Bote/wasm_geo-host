@@ -1,5 +1,6 @@
 use flagme_sdk::{
-    Plugin, PluginContext, PluginResult, ThumbnailEntry, UnifiedDocument,
+    Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache, SettingsReader,
+    ThumbnailEntry, UnifiedDocument,
 };
 use std::path::Path;
 
@@ -16,12 +17,96 @@ const FALLBACK_JPEG_1X1: &[u8] = &[
     0xCF, 0x20, 0xFF, 0xD9,
 ];
 
+/// Configurable parameters of the thumbnail plugin (`config.yaml` `settings`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThumbnailSettings {
+    /// Target sizes (longest side in px), ascending, without duplicates.
+    pub variants: Vec<u32>,
+    /// Upper bound for the variants; larger variants are dropped.
+    pub max_dimension: Option<u32>,
+    /// JPEG quality 1..=100; `None` keeps the encoder default.
+    pub quality: Option<u32>,
+    /// Output directory of the thumbnail files.
+    pub output_dir: String,
+}
+
+impl Default for ThumbnailSettings {
+    fn default() -> Self {
+        Self {
+            variants: vec![128, 512, 1024],
+            max_dimension: None,
+            quality: None,
+            output_dir: "cache/thumbnails".to_string(),
+        }
+    }
+}
+
+impl PluginSettings for ThumbnailSettings {
+    const PLUGIN: &'static str = "thumbnail";
+
+    fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        Self {
+            variants: r.list_u32("variants", 16..=8192, &base.variants),
+            max_dimension: r.opt_u32("max_dimension", &[], 16..=8192).or(base.max_dimension),
+            quality: r.opt_u32("quality", &[], 1..=100).or(base.quality),
+            output_dir: r.path("output_dir", &[], &base.output_dir),
+        }
+    }
+}
+
+impl ThumbnailSettings {
+    /// Effective sizes after applying `max_dimension`. If every variant exceeds the limit,
+    /// exactly `max_dimension` is used.
+    pub fn effective_sizes(&self) -> Vec<u32> {
+        match self.max_dimension {
+            Some(max) => {
+                let sizes: Vec<u32> = self.variants.iter().copied().filter(|v| *v <= max).collect();
+                if sizes.is_empty() {
+                    vec![max]
+                } else {
+                    sizes
+                }
+            }
+            None => self.variants.clone(),
+        }
+    }
+}
+
+/// Assigns size labels to ascending sizes: smallest `small`, largest `large`, the remaining
+/// size closest to 512 `medium`, every other size `<px>px`.
+pub fn size_labels(sizes: &[u32]) -> Vec<String> {
+    let n = sizes.len();
+    let mut labels: Vec<String> = sizes.iter().map(|s| format!("{}px", s)).collect();
+    if n == 0 {
+        return labels;
+    }
+    labels[0] = "small".to_string();
+    if n >= 2 {
+        labels[n - 1] = "large".to_string();
+    }
+    if n >= 3 {
+        let medium = (1..n - 1)
+            .min_by_key(|&i| (sizes[i] as i64 - 512).abs())
+            .unwrap_or(1);
+        labels[medium] = "medium".to_string();
+    }
+    labels
+}
+
 /// Thumbnail generation plugin with multi-format and deterministic caching support.
-pub struct ThumbnailPlugin;
+pub struct ThumbnailPlugin {
+    settings: SettingsCache<ThumbnailSettings>,
+}
 
 impl ThumbnailPlugin {
     pub fn new() -> Self {
-        Self
+        Self::with_settings(ThumbnailSettings::default())
+    }
+
+    pub fn with_settings(settings: ThumbnailSettings) -> Self {
+        Self {
+            settings: SettingsCache::new(settings),
+        }
     }
 
     fn calculate_cache_key(&self, path: &str, size: u32) -> String {
@@ -54,6 +139,7 @@ impl ThumbnailPlugin {
         source_path: &str,
         thumb_path: &str,
         _max_size: u32,
+        _quality: Option<u32>,
         ctx: &PluginContext,
     ) {
         let dest = Path::new(thumb_path);
@@ -69,17 +155,19 @@ impl ThumbnailPlugin {
             // Try macOS native `sips` or ImageMagick `magick` for real high-speed image scaling
             #[cfg(target_os = "macos")]
             {
+                let mut args: Vec<String> = vec!["-s".into(), "format".into(), "jpeg".into()];
+                if let Some(q) = _quality {
+                    args.extend(["-s".into(), "formatOptions".into(), q.to_string()]);
+                }
+                args.extend([
+                    "-Z".into(),
+                    _max_size.to_string(),
+                    source_path.to_string(),
+                    "--out".into(),
+                    thumb_path.to_string(),
+                ]);
                 if let Ok(status) = std::process::Command::new("sips")
-                    .args([
-                        "-s",
-                        "format",
-                        "jpeg",
-                        "-Z",
-                        &_max_size.to_string(),
-                        source_path,
-                        "--out",
-                        thumb_path,
-                    ])
+                    .args(&args)
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
                     .status()
@@ -132,23 +220,21 @@ impl Plugin for ThumbnailPlugin {
             &format!("Generating deterministic thumbnails for '{}'", path),
         );
 
-        let target_sizes = [
-            ("small", 128u32, 128u32),
-            ("medium", 512u32, 512u32),
-            ("large", 1024u32, 1024u32),
-        ];
+        let settings = self.settings.get_or_parse(ctx);
+        let sizes = settings.effective_sizes();
+        let labels = size_labels(&sizes);
 
         let mut entries = Vec::new();
-        for (label, width, height) in target_sizes {
-            let cache_key = self.calculate_cache_key(path, width);
-            let thumb_path = format!("cache/thumbnails/{}_{}.jpg", cache_key, width);
+        for (label, size) in labels.into_iter().zip(sizes) {
+            let cache_key = self.calculate_cache_key(path, size);
+            let thumb_path = format!("{}/{}_{}.jpg", settings.output_dir, cache_key, size);
 
-            self.ensure_thumbnail_file(path, &thumb_path, width, ctx);
+            self.ensure_thumbnail_file(path, &thumb_path, size, settings.quality, ctx);
 
             entries.push(ThumbnailEntry {
-                size_label: label.to_string(),
-                width,
-                height,
+                size_label: label,
+                width: size,
+                height: size,
                 path: thumb_path,
                 cache_key,
             });

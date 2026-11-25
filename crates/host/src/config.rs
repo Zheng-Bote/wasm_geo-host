@@ -207,10 +207,7 @@ impl AppConfig {
         let mut in_settings = false;
 
         for raw_line in s.lines() {
-            let line_no_comment = match raw_line.find('#') {
-                Some(idx) => &raw_line[..idx],
-                None => raw_line,
-            };
+            let line_no_comment = strip_comment(raw_line);
             if line_no_comment.trim().is_empty() {
                 continue;
             }
@@ -364,6 +361,37 @@ impl AppConfig {
         let content = std::fs::read_to_string(path)?;
         Self::load_from_str(&content)
     }
+}
+
+/// Removes a trailing `# comment`. A `#` inside a quoted scalar (`"…"` or `'…'`) is part of
+/// the value. A quote only opens a scalar at the start of a value (after `:`, `-`, `[`, `,`
+/// or at the beginning of the line), so apostrophes in plain text stay plain.
+fn strip_comment(line: &str) -> &str {
+    let mut quote: Option<char> = None;
+    let mut prev_significant: Option<char> = None;
+    for (idx, c) in line.char_indices() {
+        match quote {
+            Some(q) => {
+                if c == q {
+                    quote = None;
+                }
+            }
+            None => {
+                if c == '#' {
+                    return &line[..idx];
+                }
+                if (c == '"' || c == '\'')
+                    && matches!(prev_significant, None | Some(':') | Some('-') | Some('[') | Some(','))
+                {
+                    quote = Some(c);
+                }
+            }
+        }
+        if !c.is_whitespace() {
+            prev_significant = Some(c);
+        }
+    }
+    line
 }
 
 fn clean_yaml_scalar(s: &str) -> String {
