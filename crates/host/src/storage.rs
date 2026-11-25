@@ -4,6 +4,14 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+/// Search result item returned by full-text search.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SearchResult {
+    pub photo_id: String,
+    pub filename: String,
+    pub rank: f64,
+}
+
 /// SQLite storage implementation for WASM Geo Host.
 pub struct Storage {
     db_path: String,
@@ -199,6 +207,40 @@ impl Storage {
             }
         }
 
+        // Full-Text Search (FTS5) Synchronization
+        let camera_make = doc.metadata.as_ref().and_then(|m| m.camera_make.as_deref()).unwrap_or("");
+        let camera_model = doc.metadata.as_ref().and_then(|m| m.camera_model.as_deref()).unwrap_or("");
+        let country = doc.location.as_ref().and_then(|l| l.country.as_deref()).unwrap_or("");
+        let local_country = doc.location.as_ref().and_then(|l| l.local_country.as_deref()).unwrap_or("");
+        let city = doc.location.as_ref().and_then(|l| l.city.as_deref()).unwrap_or("");
+        let local_city = doc.location.as_ref().and_then(|l| l.local_city.as_deref()).unwrap_or("");
+        let ai_tags_str = doc.ai.as_ref().map(|a| {
+            a.tags.iter().map(|t| t.label.as_str()).collect::<Vec<_>>().join(" ")
+        }).unwrap_or_default();
+        let raw_tags_str = doc.metadata.as_ref().map(|m| {
+            m.raw_tags.values().map(|v| v.as_str()).collect::<Vec<_>>().join(" ")
+        }).unwrap_or_default();
+        let description = doc.custom.get("description").and_then(|v| v.as_str()).unwrap_or("");
+
+        sql.push_str(&format!(
+            "DELETE FROM photos_fts WHERE photo_id = '{}';\n",
+            escape_sql(&doc.id)
+        ));
+        sql.push_str(&format!(
+            "INSERT INTO photos_fts (photo_id, filename, camera_make, camera_model, country, local_country, city, local_city, ai_tags, description, raw_tags) VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');\n",
+            escape_sql(&doc.id),
+            escape_sql(&doc.file.filename),
+            escape_sql(camera_make),
+            escape_sql(camera_model),
+            escape_sql(country),
+            escape_sql(local_country),
+            escape_sql(city),
+            escape_sql(local_city),
+            escape_sql(&ai_tags_str),
+            escape_sql(description),
+            escape_sql(&raw_tags_str)
+        ));
+
         if let Ok(mut child) = Command::new("sqlite3")
             .arg(&self.db_path)
             .stdin(Stdio::piped())
@@ -250,6 +292,45 @@ impl Storage {
             timeline,
             custom: HashMap::new(),
         })
+    }
+
+    /// Queries the FTS5 full-text search index and returns ranked results.
+    pub fn search(&self, query: &str) -> anyhow::Result<Vec<SearchResult>> {
+        let fts_query = format!(
+            "SELECT photo_id, filename, bm25(photos_fts) AS rank FROM photos_fts WHERE photos_fts MATCH '{}' ORDER BY rank LIMIT 50;",
+            escape_sql(query)
+        );
+
+        let output = Command::new("sqlite3")
+            .arg(&self.db_path)
+            .arg("-separator")
+            .arg("\t")
+            .arg(&fts_query)
+            .output()?;
+
+        if !output.status.success() {
+            let err_msg = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow::anyhow!("FTS5 search failed: {}", err_msg));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut results = Vec::new();
+
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let photo_id = parts[0].trim().to_string();
+                let filename = parts[1].trim().to_string();
+                let rank: f64 = parts[2].trim().parse().unwrap_or(0.0);
+                results.push(SearchResult {
+                    photo_id,
+                    filename,
+                    rank,
+                });
+            }
+        }
+
+        Ok(results)
     }
 }
 

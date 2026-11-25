@@ -74,3 +74,19 @@ CREATE TABLE IF NOT EXISTS duplicates (
 CREATE INDEX IF NOT EXISTS idx_photos_sha256 ON photos(sha256);
 CREATE INDEX IF NOT EXISTS idx_duplicates_phash ON duplicates(phash);
 CREATE INDEX IF NOT EXISTS idx_locations_coords ON locations(latitude, longitude);
+
+-- Full-Text Search (FTS5) virtual table
+CREATE VIRTUAL TABLE IF NOT EXISTS photos_fts USING fts5(
+    photo_id UNINDEXED,
+    filename,
+    camera_make,
+    camera_model,
+    country,
+    local_country,
+    city,
+    local_city,
+    ai_tags,
+    description,
+    raw_tags
+);
+
