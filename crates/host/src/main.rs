@@ -1,4 +1,4 @@
-use flagme_host::{AppConfig, Pipeline, PluginRuntime, Storage, StreamSupervisor};
+use flagme_host::{AppConfig, DirectoryWatcher, Pipeline, PluginRuntime, Storage, StreamSupervisor, WatcherConfig};
 use flagme_plugin_ai_tagging::AiTaggingPlugin;
 use flagme_plugin_countryflag::CountryFlagPlugin;
 use flagme_plugin_duplicate::DuplicatePlugin;
@@ -26,6 +26,81 @@ async fn main() -> anyhow::Result<()> {
     let is_search = args[1] == "search";
     let is_stream = args[1] == "stream";
     let is_process = args[1] == "process";
+    let is_watch = args[1] == "watch";
+
+    if is_watch {
+        if args.len() < 3 {
+            eprintln!("Usage: flagme-host watch <DIR> [--target-dir <DIR>] [--config <CONFIG>] [--workers <N>] [--organize-by <PATTERN>] [--copy]");
+            std::process::exit(1);
+        }
+        let watch_dir = std::path::PathBuf::from(&args[2]);
+
+        let target_dir = args
+            .iter()
+            .position(|arg| arg == "--target-dir")
+            .and_then(|idx| args.get(idx + 1))
+            .map(std::path::PathBuf::from);
+
+        let config_path = args
+            .iter()
+            .position(|arg| arg == "--config")
+            .and_then(|idx| args.get(idx + 1))
+            .map(|s| s.as_str())
+            .unwrap_or("config.yaml");
+
+        let workers: usize = args
+            .iter()
+            .position(|arg| arg == "--workers")
+            .and_then(|idx| args.get(idx + 1))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(4);
+
+        let organize_pattern = args
+            .iter()
+            .position(|arg| arg == "--organize-by")
+            .and_then(|idx| args.get(idx + 1))
+            .cloned()
+            .unwrap_or_else(|| "{year}/{month}/{country}/{city}".to_string());
+
+        let copy_only = args.iter().any(|arg| arg == "--copy");
+
+        let config = if Path::new(config_path).exists() {
+            AppConfig::load_from_file(config_path)?
+        } else {
+            AppConfig::default()
+        };
+
+        let storage = Arc::new(Storage::new(&config.database_path));
+        storage.init_schema()?;
+
+        let mut runtime = PluginRuntime::new(config.clone());
+        runtime.register_plugin(Arc::new(MetadataPlugin::new()));
+        runtime.register_plugin(Arc::new(ReverseGeoPlugin::new()));
+        runtime.register_plugin(Arc::new(CountryFlagPlugin::new()));
+        runtime.register_plugin(Arc::new(ThumbnailPlugin::new()));
+        runtime.register_plugin(Arc::new(AiTaggingPlugin::new()));
+        runtime.register_plugin(Arc::new(DuplicatePlugin::new()));
+        runtime.register_plugin(Arc::new(TimelinePlugin::new()));
+        runtime.register_plugin(Arc::new(WeatherEnrichPlugin::new()));
+        runtime.register_plugin(Arc::new(OcrTextPlugin::new()));
+        runtime.register_plugin(Arc::new(FaceDetectionPlugin::new()));
+        runtime.register_plugin(Arc::new(PrivacyRedactPlugin::new()));
+
+        let pipeline = Arc::new(Pipeline::new(config, runtime, storage.clone()));
+
+        let watcher_config = WatcherConfig {
+            watch_dir,
+            target_dir,
+            organize_pattern,
+            copy_only,
+            workers,
+        };
+
+        let watcher = DirectoryWatcher::new(watcher_config, pipeline, storage);
+        println!("Starting flagme-host watch daemon on {:?} (workers: {})", args[2], workers);
+        watcher.run().await?;
+        return Ok(());
+    }
 
     if is_similar {
         if args.len() < 3 {
