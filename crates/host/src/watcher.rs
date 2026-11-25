@@ -326,6 +326,13 @@ pub async fn process_single_file(
 }
 
 fn is_supported_media_file(path: &Path) -> bool {
+    // Ignore hidden files and macOS AppleDouble resource forks (e.g. ._IMG_0001.jpg, .DS_Store)
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if file_name.starts_with('.') || file_name.starts_with("._") {
+            return false;
+        }
+    }
+
     let ext = path
         .extension()
         .and_then(|e| e.to_str())

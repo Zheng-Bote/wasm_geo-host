@@ -13,3 +13,4 @@ path = "src/main.rs"
 
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
+kamadak-exif = "0.6.2"
