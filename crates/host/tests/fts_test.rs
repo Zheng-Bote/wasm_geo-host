@@ -161,6 +161,7 @@ fn test_ac4_multitoken_fts_queries() {
             model: "test".to_string(),
         }],
         description: "A scenic mountain view".to_string(),
+        embedding: None,
     });
     storage.save_document(&doc1).unwrap();
 
@@ -191,6 +192,7 @@ fn test_ac4_multitoken_fts_queries() {
             model: "test".to_string(),
         }],
         description: "Mountain landscape in Bavaria".to_string(),
+        embedding: None,
     });
     storage.save_document(&doc2).unwrap();
 

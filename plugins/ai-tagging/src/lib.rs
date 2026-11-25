@@ -6,6 +6,22 @@ use flagme_sdk::{
 pub trait VisionModel: Send + Sync {
     fn model_name(&self) -> &'static str;
     fn predict(&self, image_path: &str) -> (Vec<AiTag>, String);
+    fn predict_with_embedding(&self, image_path: &str) -> (Vec<AiTag>, String, Option<Vec<f32>>) {
+        let (tags, desc) = self.predict(image_path);
+        let mut embedding = vec![0.0f32; 512];
+        // Generate a deterministic unit vector based on the model name and path for testing/runtime
+        let seed = image_path.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+        for i in 0..512 {
+            embedding[i] = (((i as u32).wrapping_add(seed) % 100) as f32) / 100.0;
+        }
+        let norm: f32 = embedding.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for v in embedding.iter_mut() {
+                *v /= norm;
+            }
+        }
+        (tags, desc, Some(embedding))
+    }
 }
 
 pub struct MobileNetModel;
@@ -107,9 +123,9 @@ impl Plugin for AiTaggingPlugin {
             &format!("Running AI inference with model '{}'", self.model.model_name()),
         );
 
-        let (tags, description) = self.model.predict(&doc.file.path);
+        let (tags, description, embedding) = self.model.predict_with_embedding(&doc.file.path);
 
-        doc.ai = Some(AiInfo { tags, description });
+        doc.ai = Some(AiInfo { tags, description, embedding });
         Ok(doc)
     }
 }
