@@ -14,16 +14,47 @@ use std::sync::Arc;
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: flagme-host [process|stream] <FILE> [--config <CONFIG>]");
+        eprintln!("Usage: flagme-host [process|stream|search] <FILE|QUERY> [--config <CONFIG>]");
         std::process::exit(1);
     }
 
+    let is_search = args[1] == "search";
     let is_stream = args[1] == "stream";
     let is_process = args[1] == "process";
 
+    if is_search {
+        if args.len() < 3 {
+            eprintln!("Usage: flagme-host search <QUERY> [--config <CONFIG>]");
+            std::process::exit(1);
+        }
+        let query = &args[2];
+        let config_path = args
+            .iter()
+            .position(|arg| arg == "--config")
+            .and_then(|idx| args.get(idx + 1))
+            .map(|s| s.as_str())
+            .unwrap_or("config.yaml");
+
+        let config = if Path::new(config_path).exists() {
+            AppConfig::load_from_file(config_path)?
+        } else {
+            AppConfig::default()
+        };
+
+        let storage = Storage::new(&config.database_path);
+        storage.init_schema()?;
+
+        let results = storage.search(query)?;
+        println!("FTS5 Search Results for '{}': {} match(es)", query, results.len());
+        for (idx, res) in results.iter().enumerate() {
+            println!("  [{}] photo_id: {} | filename: {} | bm25_rank: {:.4}", idx + 1, res.photo_id, res.filename, res.rank);
+        }
+        return Ok(());
+    }
+
     let file_path = if is_process || is_stream {
         if args.len() < 3 {
-            eprintln!("Usage: flagme-host [process|stream] <FILE> [--config <CONFIG>]");
+            eprintln!("Usage: flagme-host [process|stream|search] <FILE|QUERY> [--config <CONFIG>]");
             std::process::exit(1);
         }
         &args[2]
