@@ -129,8 +129,14 @@ fn test_ac5_reversegeo_and_countryflag() {
 
     let ctx = PluginContext::new(Arc::new(NoopCapabilities));
     let doc = geo_plugin.process(doc, &ctx).unwrap();
-    assert_eq!(doc.location.as_ref().unwrap().country_code.as_deref(), Some("DE"));
-    assert_eq!(doc.location.as_ref().unwrap().city.as_deref(), Some("Berlin"));
+    let resolved_loc = doc.location.as_ref().unwrap();
+    assert_eq!(resolved_loc.country_code.as_deref(), Some("DE"));
+    assert_eq!(resolved_loc.country.as_deref(), Some("Germany"));
+    assert_eq!(resolved_loc.city.as_deref(), Some("Berlin"));
+    // Dual-language local checks
+    assert_eq!(resolved_loc.local_country.as_deref(), Some("Deutschland"));
+    assert_eq!(resolved_loc.local_city.as_deref(), Some("Berlin"));
+    assert_eq!(resolved_loc.local_language.as_deref(), Some("de"));
 
     let doc = flag_plugin.process(doc, &ctx).unwrap();
     let country = doc.country.expect("Country info missing");

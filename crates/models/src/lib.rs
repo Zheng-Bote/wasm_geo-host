@@ -90,6 +90,15 @@ pub struct LocationInfo {
     pub county: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub city: Option<String>,
+    // Localized geocoding based on Country Code
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_country: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_region: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_city: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_language: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

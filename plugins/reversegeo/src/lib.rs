@@ -16,6 +16,10 @@ struct GeoEntry {
     region: &'static str,
     county: &'static str,
     city: &'static str,
+    local_country: &'static str,
+    local_region: &'static str,
+    local_city: &'static str,
+    local_language: &'static str,
 }
 
 impl ReverseGeoPlugin {
@@ -36,6 +40,10 @@ impl ReverseGeoPlugin {
                 region: "Berlin",
                 county: "Berlin",
                 city: "Berlin",
+                local_country: "Deutschland",
+                local_region: "Berlin",
+                local_city: "Berlin",
+                local_language: "de",
             },
             GeoEntry {
                 min_lat: 41.3,
@@ -47,6 +55,25 @@ impl ReverseGeoPlugin {
                 region: "Île-de-France",
                 county: "Paris",
                 city: "Paris",
+                local_country: "France",
+                local_region: "Île-de-France",
+                local_city: "Paris",
+                local_language: "fr",
+            },
+            GeoEntry {
+                min_lat: 35.4,
+                max_lat: 47.1,
+                min_lon: 6.6,
+                max_lon: 18.5,
+                country: "Italy",
+                country_code: "IT",
+                region: "Lazio",
+                county: "Rome",
+                city: "Rome",
+                local_country: "Italia",
+                local_region: "Lazio",
+                local_city: "Roma",
+                local_language: "it",
             },
             GeoEntry {
                 min_lat: 24.3,
@@ -58,6 +85,10 @@ impl ReverseGeoPlugin {
                 region: "California",
                 county: "San Francisco",
                 city: "San Francisco",
+                local_country: "United States",
+                local_region: "California",
+                local_city: "San Francisco",
+                local_language: "en",
             },
             GeoEntry {
                 min_lat: 20.4,
@@ -69,6 +100,10 @@ impl ReverseGeoPlugin {
                 region: "Kanto",
                 county: "Tokyo",
                 city: "Tokyo",
+                local_country: "日本",
+                local_region: "関東",
+                local_city: "東京",
+                local_language: "ja",
             },
         ];
 
@@ -117,6 +152,10 @@ impl Plugin for ReverseGeoPlugin {
                 loc.region = cached_loc.region;
                 loc.county = cached_loc.county;
                 loc.city = cached_loc.city;
+                loc.local_country = cached_loc.local_country;
+                loc.local_region = cached_loc.local_region;
+                loc.local_city = cached_loc.local_city;
+                loc.local_language = cached_loc.local_language;
                 doc.location = Some(loc);
                 return Ok(doc);
             }
@@ -134,12 +173,16 @@ impl Plugin for ReverseGeoPlugin {
                 region: Some(geo.region.to_string()),
                 county: Some(geo.county.to_string()),
                 city: Some(geo.city.to_string()),
+                local_country: Some(geo.local_country.to_string()),
+                local_region: Some(geo.local_region.to_string()),
+                local_city: Some(geo.local_city.to_string()),
+                local_language: Some(geo.local_language.to_string()),
             }
         } else {
-            // 3. Fallback to online geocoder via HTTP capability
+            // 3. Fallback to online geocoder via HTTP capability (defaulting to English + native accept-language)
             ctx.capabilities.log("info", "Querying online geocoder service");
             let _ = ctx.capabilities.http_get(&format!(
-                "https://nominatim.openstreetmap.org/reverse?lat={}&lon={}",
+                "https://nominatim.openstreetmap.org/reverse?lat={}&lon={}&accept-language=en",
                 lat, lon
             ));
 
@@ -152,6 +195,10 @@ impl Plugin for ReverseGeoPlugin {
                 region: Some("Global".to_string()),
                 county: None,
                 city: None,
+                local_country: Some("Unknown Country".to_string()),
+                local_region: Some("Global".to_string()),
+                local_city: None,
+                local_language: Some("en".to_string()),
             }
         };
 
@@ -166,6 +213,10 @@ impl Plugin for ReverseGeoPlugin {
         loc.region = resolved.region;
         loc.county = resolved.county;
         loc.city = resolved.city;
+        loc.local_country = resolved.local_country;
+        loc.local_region = resolved.local_region;
+        loc.local_city = resolved.local_city;
+        loc.local_language = resolved.local_language;
         doc.location = Some(loc);
 
         Ok(doc)
