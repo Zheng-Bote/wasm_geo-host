@@ -438,6 +438,44 @@ impl Storage {
         })
     }
 
+    /// Checks if a file with the given SHA-256 hash has already been stored.
+    pub fn has_sha256(&self, sha256_hash: &str) -> bool {
+        if sha256_hash.is_empty() {
+            return false;
+        }
+
+        // Check in-memory photos cache first
+        {
+            let photos = self.photos.lock().unwrap();
+            for file in photos.values() {
+                if file.sha256.as_deref() == Some(sha256_hash) {
+                    return true;
+                }
+            }
+        }
+
+        // Query disk SQLite database
+        let sql = format!(
+            "SELECT count(*) FROM photos WHERE sha256 = '{}';",
+            escape_sql(sha256_hash)
+        );
+
+        if let Ok(output) = Command::new("sqlite3")
+            .arg(&self.db_path)
+            .arg(&sql)
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Ok(count) = stdout.trim().parse::<i64>() {
+                    return count > 0;
+                }
+            }
+        }
+
+        false
+    }
+
     /// Queries the FTS5 full-text search index and returns ranked results.
     pub fn search(&self, query: &str) -> anyhow::Result<Vec<SearchResult>> {
         let fts_query = format!(
