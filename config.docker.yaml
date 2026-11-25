@@ -57,9 +57,6 @@ plugins:
   ocr-text:
     enabled: true
     capabilities: ["filesystem"]
-    settings:
-      engine: "CRAFT-CRNN-Quantized" # Low-overhead text detection
-      max_image_dimension: "1024"
   face-detection:
     enabled: true
     capabilities: ["filesystem"]

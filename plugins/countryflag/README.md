@@ -12,7 +12,7 @@ The `countryflag` plugin turns an ISO-3166-1 alpha-2 country code into an Englis
 | Reads | `doc.location.country_code` |
 | Writes | `doc.country` (`CountryInfo`) |
 | Capabilities | none (`[]`) |
-| Configurable via `settings` | **No** |
+| Configurable via `settings` | **No parameters** (unknown keys are reported) |
 
 ---
 
@@ -40,11 +40,12 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → host skips the plugin; `doc.country` stays empty. |
 | `capabilities` | list | `[]` | Not needed. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters**. Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+This plugin has **no parameters**. Keys under `settings` are reported as unknown (`settings[countryflag]: unknown key '<key>' ignored`).
+
 
 ### 2.3 Lookup Rules (fixed in code)
 

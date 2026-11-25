@@ -17,7 +17,7 @@ Resolution order: **KV cache → offline table → online geocoder (Nominatim) �
 | Reads | `doc.location.latitude`, `longitude`, `altitude` |
 | Writes | `doc.location.{country, country_code, region, county, city, local_*}` (coordinates stay unchanged) |
 | Capabilities | `http`, `kv` |
-| Configurable via `settings` | **No** |
+| Configurable via `settings` | **Yes** (7 parameters, see §2.2) |
 
 ---
 
@@ -25,8 +25,8 @@ Resolution order: **KV cache → offline table → online geocoder (Nominatim) �
 
 1. **Offline Nearest-City Lookup** — 34 reference cities in 16 countries with native names (table in §2.4). Zero network overhead.
 2. **Country Bounding-Box Fallback** — 7 country boxes (DE, FR, IT, US, JP, ES, GB) when no reference city is close enough.
-3. **Online Fallback** — Nominatim / OpenStreetMap (`accept-language=en`) for coordinates outside the offline data.
-4. **KV Caching** — results are stored per coordinate bucket (`geo:<lat>:<lon>`, 3 decimals).
+3. **Online Fallback** — Nominatim / OpenStreetMap (`accept-language` configurable, default `en`) for coordinates outside the offline data.
+4. **KV Caching** — results are stored per coordinate bucket (`geo:<lat>:<lon>`, default 3 decimals).
 5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
@@ -48,21 +48,35 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → host skips the plugin; `countryflag` then finds no `country_code`. |
 | `capabilities` | list | `[http, kv]` | See §4. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters**. Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+| Key | Type / range | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `offline_cache` | bool | `true` | `false` → no KV cache reads or writes. |
+| `offline_lookup` | bool | `true` | `false` → skip the embedded city table and country boxes. |
+| `online_lookup` | bool | `true` | `false` → never query the online geocoder; unresolved coordinates become `Unknown Country` / `XX`. |
+| `city_radius_km` | integer 1–2000 | `200` | Search radius around the reference cities (200 km = the former fixed 1.8°). |
+| `cache_precision` | integer 0–6 | `3` | Decimal places of the cache key `geo:<lat>:<lon>` (3 ≈ 111 m). |
+| `nominatim_url` | `http(s)://` URL | `https://nominatim.openstreetmap.org/reverse` | Base URL; the plugin appends `?format=jsonv2&lat=…&lon=…&accept-language=…`. |
+| `accept_language` | string | `en` | Language of the online request; stored as `local_language` for online results. |
 
-> **Note:** `config.docker.yaml` and `config.mac-studio.yaml` set `offline_cache: "true"`. This key is **ignored** — the offline lookup and the KV cache are always active.
+```yaml
+    settings:
+      online_lookup: "false"      # offline only
+      city_radius_km: "100"
+      accept_language: "de"
+```
 
-### 2.3 Built-in Parameters (fixed in code)
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
+
+### 2.3 Built-in Parameters (not configurable)
 
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
-| Cache key | `geo:{lat:.3}:{lon:.3}` | Bucket of ≈ 111 m; all photos in the same bucket share one result. |
-| City search radius | ≈ 1.8° (≈ 180 km), `dist² ≤ 3.24` | Longitude difference is scaled with `cos(lat)` (min. 0.2). The nearest city within the radius wins. |
-| Online endpoint | `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=…&lon=…&accept-language=en` | Only queried if the offline lookup finds nothing. |
+| Distance measure | `dist² = Δlat² + (Δlon · max(cos(lat), 0.2))²` in degrees, radius `city_radius_km / 111.1` | The nearest city within the radius wins. |
+| Online query | `<nominatim_url>?format=jsonv2&lat=…&lon=…&accept-language=<accept_language>` | Only if the offline lookup finds nothing and `online_lookup = true`. |
 | HTTP timeout | 2 s (host `curl --max-time 2`) | Defined by the host capability, not by the plugin. |
 | Fallback result | `country = "Unknown Country"`, `country_code = "XX"`, `region = "Global"`, `local_language = "en"` | When offline and online both fail. |
 
@@ -168,7 +182,7 @@ SELECT photo_id, country, city, local_country, local_city, local_language FROM l
 
 ## 7. Limitations & Implementation Notes
 
-- **Country boxes are coarse:** a coordinate in Germany more than ≈ 180 km away from every reference city is resolved as `Berlin` (box capital). The boxes overlap; the first matching entry (order DE, FR, IT, US, JP, ES, GB) wins.
-- **Online results are English only** (`local_*` = English values).
+- **Country boxes are coarse:** a coordinate in Germany more than `city_radius_km` (default 200 km) away from every reference city is resolved as `Berlin` (box capital). The boxes overlap; the first matching entry (order DE, FR, IT, US, JP, ES, GB) wins.
+- **Online results use one language** (`accept_language`): `local_*` and the international fields get the same values.
 - **The KV cache lives in memory** of the host process and is lost on restart.
 - If the host has no network, `http_get` returns `{"status": "offline", …}`; this is treated like a failed request.

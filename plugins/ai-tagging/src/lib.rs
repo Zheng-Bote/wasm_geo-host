@@ -1,6 +1,10 @@
 use flagme_sdk::{
-    AiInfo, AiTag, Plugin, PluginContext, PluginResult, UnifiedDocument,
+    AiInfo, AiTag, Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache,
+    SettingsReader, UnifiedDocument,
 };
+
+/// Default embedding dimension.
+pub const DEFAULT_EMBEDDING_DIM: usize = 512;
 
 /// Visual feature summary extracted directly from image byte stream.
 #[derive(Debug, Clone)]
@@ -103,10 +107,16 @@ impl ImageFeatures {
 
     /// Builds a normalized 512-dimensional float vector embedding from visual histogram, geometry, and frequency channels.
     pub fn build_512d_embedding(&self, path: &str) -> Vec<f32> {
-        let mut emb = vec![0.0f32; 512];
+        self.build_embedding(path, DEFAULT_EMBEDDING_DIM)
+    }
+
+    /// Builds a normalized `dim`-dimensional embedding (same construction as the 512-D variant).
+    pub fn build_embedding(&self, path: &str, dim: usize) -> Vec<f32> {
+        let dim = dim.max(1);
+        let mut emb = vec![0.0f32; dim];
         let seed = path.bytes().fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
 
-        for i in 0..512 {
+        for i in 0..dim {
             let bin_val = self.histogram_bins[i % 64];
             let ch_val = self.color_balance[i % 3];
             let geom = if i % 4 == 0 {
@@ -171,8 +181,18 @@ pub trait VisionModel: Send + Sync {
     fn model_name(&self) -> &'static str;
     fn predict(&self, image_path: &str) -> (Vec<AiTag>, String);
     fn predict_from_bytes(&self, image_path: &str, bytes: &[u8]) -> (Vec<AiTag>, String, Option<Vec<f32>>) {
+        self.predict_from_bytes_with_dim(image_path, bytes, DEFAULT_EMBEDDING_DIM)
+    }
+
+    /// Like [`Self::predict_from_bytes`], with a configurable embedding dimension.
+    fn predict_from_bytes_with_dim(
+        &self,
+        image_path: &str,
+        bytes: &[u8],
+        embedding_dim: usize,
+    ) -> (Vec<AiTag>, String, Option<Vec<f32>>) {
         let features = ImageFeatures::analyze(bytes, image_path);
-        let embedding = features.build_512d_embedding(image_path);
+        let embedding = features.build_embedding(image_path, embedding_dim);
 
         if bytes.is_empty() {
             let (tags, desc) = self.predict(image_path);
@@ -330,20 +350,95 @@ impl VisionModel for OpenClipModel {
     }
 }
 
+/// Built-in vision models selectable via `settings.model` / `settings.model_tier`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltinModel {
+    Clip,
+    MobileNet,
+    OpenClip,
+}
+
+impl BuiltinModel {
+    fn instance(self) -> &'static dyn VisionModel {
+        match self {
+            Self::Clip => &ClipModel,
+            Self::MobileNet => &MobileNetModel,
+            Self::OpenClip => &OpenClipModel,
+        }
+    }
+}
+
+/// Compute device. Only the CPU is implemented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Device {
+    Cpu,
+}
+
+/// Device names that are known but not implemented yet.
+pub const UNSUPPORTED_DEVICES: &[&str] = &["mps", "cuda", "metal", "gpu"];
+
+/// Configurable parameters of the AI tagging plugin (`config.yaml` `settings`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiTaggingSettings {
+    /// Built-in model to use; `None` keeps the model passed to the constructor.
+    pub model: Option<BuiltinModel>,
+    pub embedding_dim: usize,
+    pub device: Device,
+}
+
+impl Default for AiTaggingSettings {
+    fn default() -> Self {
+        Self {
+            model: None,
+            embedding_dim: DEFAULT_EMBEDDING_DIM,
+            device: Device::Cpu,
+        }
+    }
+}
+
+const MODEL_OPTIONS: &[(&[&str], BuiltinModel)] = &[
+    (&["CLIP-ViT-B/32", "clip"], BuiltinModel::Clip),
+    (&["MobileNetV3", "mobilenet"], BuiltinModel::MobileNet),
+    (&["OpenCLIP-ConvNeXt-Large", "openclip"], BuiltinModel::OpenClip),
+];
+
+const TIER_OPTIONS: &[(&[&str], BuiltinModel)] = &[
+    (&["lightweight"], BuiltinModel::MobileNet),
+    (&["heavy"], BuiltinModel::OpenClip),
+];
+
+impl PluginSettings for AiTaggingSettings {
+    const PLUGIN: &'static str = "ai-tagging";
+
+    fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        // `model` wins over `model_tier`; both keys are always read so neither counts as unknown.
+        let model = r.opt_choice("model", &[], MODEL_OPTIONS, &[], BuiltinModel::Clip);
+        let tier = r.opt_choice("model_tier", &[], TIER_OPTIONS, &[], BuiltinModel::MobileNet);
+        Self {
+            model: model.or(tier).or(base.model),
+            embedding_dim: r.u32("embedding_dim", &[], 64..=2048, base.embedding_dim as u32) as usize,
+            device: r.choice("device", &[], &[(&["cpu"], Device::Cpu)], UNSUPPORTED_DEVICES, base.device),
+        }
+    }
+}
+
 /// Swappable AI tagging plugin supporting ONNX Runtime model swapping.
 pub struct AiTaggingPlugin {
     model: Box<dyn VisionModel>,
+    settings: SettingsCache<AiTaggingSettings>,
 }
 
 impl AiTaggingPlugin {
     pub fn new() -> Self {
-        Self {
-            model: Box::new(ClipModel),
-        }
+        Self::with_model(Box::new(ClipModel))
     }
 
+    /// Uses `model` unless `settings.model` / `settings.model_tier` selects a built-in model.
     pub fn with_model(model: Box<dyn VisionModel>) -> Self {
-        Self { model }
+        Self {
+            model,
+            settings: SettingsCache::new(AiTaggingSettings::default()),
+        }
     }
 }
 
@@ -357,13 +452,19 @@ impl Plugin for AiTaggingPlugin {
     }
 
     fn process(&self, mut doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument> {
+        let settings = self.settings.get_or_parse(ctx);
+        let model: &dyn VisionModel = match settings.model {
+            Some(builtin) => builtin.instance(),
+            None => self.model.as_ref(),
+        };
         ctx.capabilities.log(
             "info",
-            &format!("Running AI inference with model '{}'", self.model.model_name()),
+            &format!("Running AI inference with model '{}'", model.model_name()),
         );
 
         let image_bytes = ctx.capabilities.fs_read(&doc.file.path).unwrap_or_default();
-        let (tags, description, embedding) = self.model.predict_from_bytes(&doc.file.path, &image_bytes);
+        let (tags, description, embedding) =
+            model.predict_from_bytes_with_dim(&doc.file.path, &image_bytes, settings.embedding_dim);
 
         doc.ai = Some(AiInfo { tags, description, embedding });
         Ok(doc)

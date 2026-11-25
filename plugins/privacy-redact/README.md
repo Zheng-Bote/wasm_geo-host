@@ -64,11 +64,14 @@ All `settings` values are passed to the plugin as **strings** (`HashMap<String, 
 
 ### 2.3 Parsing Rules
 
-- **Canonical key wins**: if both `style` and `redaction_style` are set, `style` is used (same for all aliases).
-- **Invalid values are ignored silently** and the default stays active, e.g. `block_size: "abc"`, `gps_decimal_places: "-1"`, `style: "sepia"`, `output_dir: "../x"` or an empty `output_dir`.
-- **Booleans**: only `true` (case-insensitive) means *true*. **Every other value means `false`** — `"yes"`, `"1"` or `"on"` disable the feature.
-- **Out-of-range numbers are clamped**, not rejected (`block_size: "500"` → `128`).
-- **No `#` in values**: the host YAML reader treats `#` as the start of a comment.
+The plugin uses the shared SDK rules (`flagme_sdk::settings`):
+
+- **Canonical key wins**: if both `style` and `redaction_style` are set, `style` is used and the alias is reported (same for all aliases).
+- **Invalid values** (e.g. `block_size: "abc"`, `gps_decimal_places: "-1"`, `style: "sepia"`, `output_dir: "../x"`) produce a warning `settings[privacy-redact]: invalid value …` and the default stays active.
+- **Booleans**: `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0` (case-insensitive); any other value → warning and default.
+- **Out-of-range numbers are clamped** with a warning (`block_size: "500"` → `128`).
+- **Unknown keys** produce a warning `settings[privacy-redact]: unknown key '<key>' ignored`.
+- **`#` in values** must be quoted (`"a#b"`); unquoted, it starts a comment.
 
 ### 2.4 GPS Precision Reference (`gps_decimal_places`)
 

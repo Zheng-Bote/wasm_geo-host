@@ -12,7 +12,7 @@ The `ocr-text` plugin extracts visible text (signs, documents, posters) as text 
 | Reads | `doc.file.path` (file bytes and file name) |
 | Writes | `doc.ocr` (`OcrInfo`) |
 | Capabilities | `filesystem` |
-| Configurable via `settings` | **No** — engine selection only via the Rust API (§6.3) |
+| Configurable via `settings` | **Yes** (2 parameters, see §2.2) |
 
 ---
 
@@ -42,18 +42,21 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → no `doc.ocr`, empty `ocr_text` in the search index. |
 | `capabilities` | list | `[filesystem]` | See §4. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters**. The host always registers `OcrTextPlugin::new()` (= `DefaultOcrEngine`). Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+| Key | Type / values | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `engine` | `default` | engine of the constructor (`new()` → `DefaultOcrEngine`) | `default` selects `DefaultOcrEngine`. `PaddleOCR-v4-Server`, `CRAFT-CRNN-Quantized`, `tesseract` are known but not supported yet → warning. |
+| `min_confidence` | number 0.0–1.0 | `0.0` | Regions with lower confidence are dropped; `combined_text` is rebuilt, `primary_language` becomes `null` if no region is left. |
 
-> **Note:** the shipped profiles set keys that are **ignored**:
->
-> | Profile | Ignored keys |
-> | :--- | :--- |
-> | `config.docker.yaml` | `engine: "CRAFT-CRNN-Quantized"`, `max_image_dimension: "1024"` |
-> | `config.mac-studio.yaml` | `engine: "PaddleOCR-v4-Server"`, `max_image_dimension: "4096"` |
+```yaml
+    settings:
+      min_confidence: "0.8"
+```
+
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
 
 ### 2.3 Detection Rules of `DefaultOcrEngine` (first match wins)
 
@@ -145,6 +148,8 @@ impl OcrEngine for MyEngine {
 
 let plugin = OcrTextPlugin::with_engine(Box::new(MyEngine));
 ```
+
+The constructor engine is the default; `settings.engine: default` replaces it with `DefaultOcrEngine`.
 
 ### 6.4 SQLite
 

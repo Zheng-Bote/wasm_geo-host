@@ -1,13 +1,31 @@
 use flagme_sdk::{
-    CountryInfo, Plugin, PluginContext, PluginResult, UnifiedDocument,
+    CountryInfo, Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache,
+    SettingsReader, UnifiedDocument,
 };
 
+/// The country flag plugin has no parameters; the settings only exist so that unknown
+/// keys in `config.yaml` are reported.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CountryFlagSettings;
+
+impl PluginSettings for CountryFlagSettings {
+    const PLUGIN: &'static str = "countryflag";
+
+    fn from_reader(_base: &Self, _reader: &mut SettingsReader<'_>) -> Self {
+        Self
+    }
+}
+
 /// Offline Country and Flag emoji lookup database covering ISO-3166-1 alpha-2 codes.
-pub struct CountryFlagPlugin;
+pub struct CountryFlagPlugin {
+    settings: SettingsCache<CountryFlagSettings>,
+}
 
 impl CountryFlagPlugin {
     pub fn new() -> Self {
-        Self
+        Self {
+            settings: SettingsCache::new(CountryFlagSettings),
+        }
     }
 
     /// Computes the Unicode Regional Indicator Flag Emoji for any 2-letter ISO-3166 alpha-2 code.
@@ -126,6 +144,7 @@ impl Plugin for CountryFlagPlugin {
     }
 
     fn process(&self, mut doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument> {
+        let _settings = self.settings.get_or_parse(ctx);
         let country_code = match &doc.location {
             Some(loc) if loc.country_code.is_some() => loc.country_code.clone().unwrap(),
             _ => {

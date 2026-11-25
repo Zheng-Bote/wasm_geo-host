@@ -12,7 +12,7 @@ The `timeline` plugin determines the effective capture time `taken_at` of a phot
 | Reads | `doc.metadata.raw_tags`, `doc.file.filename`, `doc.file.path` (file system mtime) |
 | Writes | `doc.timeline` (`TimelineInfo`) |
 | Capabilities | `filesystem` (declared, see §4) |
-| Configurable via `settings` | **No** |
+| Configurable via `settings` | **Yes** (2 parameters, see §2.2) |
 
 ---
 
@@ -52,11 +52,22 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `enabled` | bool | `true` | `false` → no `doc.timeline`; `weather-enrich` then uses its default date (see its README). |
 | `capabilities` | list | `[filesystem]` | See §4. |
-| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+| `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
-This plugin has **no configurable parameters** (no time-zone setting, no custom priority order). Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+| Key | Type / values | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `timezone` | `UTC`, IANA name (`Europe/Berlin`) or offset (`+02:00`, `-0530`) | `UTC` | Zone for EXIF and file-name times **without** offset; daylight saving time is applied for IANA names. RFC 3339 values and epoch file names keep their own offset. |
+| `source_priority` | comma-separated list of `exif_datetime_original`, `exif_datetime_digitized`, `exif_datetime`, `xmp_create_date`, `filename_timestamp`, `filesystem_modified_time` | all six in this order | Order of the sources; sources not listed are skipped. `imported_timestamp_fallback` always comes last. |
+
+```yaml
+    settings:
+      timezone: "Europe/Berlin"
+      source_priority: "exif_datetime_original, filename_timestamp, filesystem_modified_time"
+```
+
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
 
 ### 2.3 Accepted Date Formats in Metadata
 
@@ -142,6 +153,6 @@ SELECT photo_id, taken_at, imported_at, modified_at, resolution_source FROM time
 
 ## 7. Limitations & Implementation Notes
 
-- **Local times are treated as UTC.** EXIF times without an offset (`OffsetTimeOriginal` is not evaluated) are stored unchanged as UTC — a photo taken at 09:49 CEST appears as `09:49Z`.
+- **Times without offset use `timezone`** (default `UTC`). `OffsetTimeOriginal` is not evaluated; with the default a photo taken at 09:49 CEST appears as `09:49Z`, with `timezone: Europe/Berlin` as `07:49Z`. Non-existent local times (DST spring-forward gap) are skipped and the next source is tried.
 - `SubSecTimeOriginal` is not evaluated (seconds precision).
 - Unparseable values in a higher-priority key do not stop the search; the next key is tried.

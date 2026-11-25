@@ -1,14 +1,51 @@
 use flagme_sdk::{
-    DuplicateInfo, Plugin, PluginContext, PluginResult, UnifiedDocument,
+    DuplicateInfo, Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache,
+    SettingsReader, UnifiedDocument,
 };
 use sha2::{Digest, Sha256};
 
+/// KV key of the perceptual-hash index used when `phash_threshold > 0`.
+pub const PHASH_INDEX_KEY: &str = "phash:index";
+
+/// Configurable parameters of the duplicate plugin (`config.yaml` `settings`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DuplicateSettings {
+    /// Maximum Hamming distance (0..=64) between two dHashes to count as duplicate.
+    /// `0` keeps the exact lookup without index.
+    pub phash_threshold: u32,
+}
+
+impl PluginSettings for DuplicateSettings {
+    const PLUGIN: &'static str = "duplicate";
+
+    fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        Self {
+            phash_threshold: r.u32("phash_threshold", &[], 0..=64, base.phash_threshold),
+        }
+    }
+}
+
+/// Hamming distance between two 16-digit hex dHashes; `None` if one is not valid hex.
+pub fn hamming_distance(a: &str, b: &str) -> Option<u32> {
+    let x = u64::from_str_radix(a, 16).ok()?;
+    let y = u64::from_str_radix(b, 16).ok()?;
+    Some((x ^ y).count_ones())
+}
+
 /// Duplicate detection plugin computing cryptographic SHA-256 and 64-bit difference perceptual hashes (dHash).
-pub struct DuplicatePlugin;
+pub struct DuplicatePlugin {
+    settings: SettingsCache<DuplicateSettings>,
+}
 
 impl DuplicatePlugin {
     pub fn new() -> Self {
-        Self
+        Self::with_settings(DuplicateSettings::default())
+    }
+
+    pub fn with_settings(settings: DuplicateSettings) -> Self {
+        Self {
+            settings: SettingsCache::new(settings),
+        }
     }
 
     /// Computes a 64-bit gradient difference hash (dHash) over 9x8 luminance samples derived from the image payload.
@@ -119,16 +156,57 @@ impl Plugin for DuplicatePlugin {
             let _ = ctx.capabilities.kv_set(&sha_key, &doc.id);
         }
 
-        if let Ok(Some(existing_id)) = ctx.capabilities.kv_get(&phash_key) {
-            if existing_id != doc.id && !duplicates.contains(&existing_id) {
-                ctx.capabilities.log(
-                    "warn",
-                    &format!("Duplicate detected matching photo id: {}", existing_id),
-                );
-                duplicates.push(existing_id);
+        let settings = self.settings.get_or_parse(ctx);
+        if settings.phash_threshold == 0 {
+            if let Ok(Some(existing_id)) = ctx.capabilities.kv_get(&phash_key) {
+                if existing_id != doc.id && !duplicates.contains(&existing_id) {
+                    ctx.capabilities.log(
+                        "warn",
+                        &format!("Duplicate detected matching photo id: {}", existing_id),
+                    );
+                    duplicates.push(existing_id);
+                }
+            } else {
+                let _ = ctx.capabilities.kv_set(&phash_key, &doc.id);
             }
         } else {
-            let _ = ctx.capabilities.kv_set(&phash_key, &doc.id);
+            // Linear scan over the index; each line is "<phash> <doc.id>".
+            let index = ctx
+                .capabilities
+                .kv_get(PHASH_INDEX_KEY)
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            let mut already_indexed = false;
+            for line in index.lines() {
+                let Some((other_hash, other_id)) = line.split_once(' ') else {
+                    continue;
+                };
+                if other_id == doc.id {
+                    already_indexed = true;
+                    continue;
+                }
+                if let Some(dist) = hamming_distance(&phash, other_hash) {
+                    if dist <= settings.phash_threshold && !duplicates.iter().any(|d| d == other_id) {
+                        ctx.capabilities.log(
+                            "warn",
+                            &format!(
+                                "Duplicate detected matching photo id: {} (Hamming distance {})",
+                                other_id, dist
+                            ),
+                        );
+                        duplicates.push(other_id.to_string());
+                    }
+                }
+            }
+            if !already_indexed {
+                let mut updated = index;
+                if !updated.is_empty() && !updated.ends_with('\n') {
+                    updated.push('\n');
+                }
+                updated.push_str(&format!("{} {}\n", phash, doc.id));
+                let _ = ctx.capabilities.kv_set(PHASH_INDEX_KEY, &updated);
+            }
         }
 
         doc.file.sha256 = Some(sha256.clone());

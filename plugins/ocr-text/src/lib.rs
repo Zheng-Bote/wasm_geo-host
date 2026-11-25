@@ -1,5 +1,6 @@
 use flagme_sdk::{
-    BoundingBox, OcrInfo, Plugin, PluginContext, PluginResult, TextRegion, UnifiedDocument,
+    BoundingBox, OcrInfo, Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache,
+    SettingsReader, TextRegion, UnifiedDocument,
 };
 
 /// Trait abstraction for swappable OCR detection & recognition engines.
@@ -169,20 +170,87 @@ impl OcrEngine for DefaultOcrEngine {
     }
 }
 
+/// Built-in OCR engines selectable via `settings.engine`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltinEngine {
+    Default,
+}
+
+/// Engine names that are known but not implemented yet.
+pub const UNSUPPORTED_ENGINES: &[&str] = &["PaddleOCR-v4-Server", "CRAFT-CRNN-Quantized", "tesseract"];
+
+/// Configurable parameters of the OCR plugin (`config.yaml` `settings`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OcrSettings {
+    /// Built-in engine; `None` keeps the engine passed to the constructor.
+    pub engine: Option<BuiltinEngine>,
+    /// Regions with a lower confidence are dropped.
+    pub min_confidence: f32,
+}
+
+impl Default for OcrSettings {
+    fn default() -> Self {
+        Self {
+            engine: None,
+            min_confidence: 0.0,
+        }
+    }
+}
+
+impl PluginSettings for OcrSettings {
+    const PLUGIN: &'static str = "ocr-text";
+
+    fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        Self {
+            engine: r
+                .opt_choice(
+                    "engine",
+                    &[],
+                    &[(&["default"], BuiltinEngine::Default)],
+                    UNSUPPORTED_ENGINES,
+                    BuiltinEngine::Default,
+                )
+                .or(base.engine),
+            min_confidence: r.f32("min_confidence", &[], 0.0..=1.0, base.min_confidence),
+        }
+    }
+}
+
+/// Drops regions below `min_confidence` and rebuilds `combined_text` / `primary_language`.
+pub fn filter_by_confidence(mut info: OcrInfo, min_confidence: f32) -> OcrInfo {
+    if min_confidence <= 0.0 {
+        return info;
+    }
+    info.regions.retain(|r| r.confidence >= min_confidence);
+    info.combined_text = info
+        .regions
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if info.regions.is_empty() {
+        info.primary_language = None;
+    }
+    info
+}
+
 /// OCR Text Recognition Plugin for WASM Geo Host.
 pub struct OcrTextPlugin {
     engine: Box<dyn OcrEngine>,
+    settings: SettingsCache<OcrSettings>,
 }
 
 impl OcrTextPlugin {
     pub fn new() -> Self {
-        Self {
-            engine: Box::new(DefaultOcrEngine),
-        }
+        Self::with_engine(Box::new(DefaultOcrEngine))
     }
 
+    /// Uses `engine` unless `settings.engine` selects a built-in engine.
     pub fn with_engine(engine: Box<dyn OcrEngine>) -> Self {
-        Self { engine }
+        Self {
+            engine,
+            settings: SettingsCache::new(OcrSettings::default()),
+        }
     }
 }
 
@@ -201,9 +269,14 @@ impl Plugin for OcrTextPlugin {
             &format!("Running OCR text extraction on '{}'", doc.file.path),
         );
 
+        let settings = self.settings.get_or_parse(ctx);
+        let engine: &dyn OcrEngine = match settings.engine {
+            Some(BuiltinEngine::Default) => &DefaultOcrEngine,
+            None => self.engine.as_ref(),
+        };
         let bytes = ctx.capabilities.fs_read(&doc.file.path).unwrap_or_default();
-        let ocr_info = self.engine.extract_text_from_bytes(&doc.file.path, &bytes);
-        doc.ocr = Some(ocr_info);
+        let ocr_info = engine.extract_text_from_bytes(&doc.file.path, &bytes);
+        doc.ocr = Some(filter_by_confidence(ocr_info, settings.min_confidence));
         Ok(doc)
     }
 }
