@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2021"
 description = "Duplicate Detection via SHA256 and Perceptual Hashing for WASM Geo Host"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }

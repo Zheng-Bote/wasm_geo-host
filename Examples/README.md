@@ -1,6 +1,6 @@
-# WASM Geo Host — Sample Media & Wasmtime Invocation Guide
+# WASM Geo Host — Sample Media & Execution Guide
 
-This directory contains test images containing complete **EXIF**, **IPTC**, and **XMP** metadata across three image formats, along with instructions on running plugins and inspecting components directly via `wasmtime`.
+This directory contains test images containing complete **EXIF**, **IPTC**, and **XMP** metadata across three image formats, along with execution instructions.
 
 ---
 
@@ -35,123 +35,58 @@ All sample files represent an identical media item captured in Berlin, Germany:
 
 ---
 
-## 2. Building WASI 0.2 Components
+## 2. Building Plugins for WASI 0.2 (`wasm32-wasip2`)
 
-Before invoking plugins with `wasmtime`, compile them for the native WebAssembly Component Model target (`wasm32-wasip2`):
+All plugins in `plugins/` are WebAssembly Component libraries (`crate-type = ["cdylib", "rlib"]`) implementing the `wit/media-plugin.wit` specification.
+
+To compile a plugin into a `.wasm` component:
 
 ```bash
-# Ensure target is installed
+# 1. Install wasip2 target if not already installed
 rustup target add wasm32-wasip2
 
-# Compile plugins to release components
+# 2. Build the plugin
 cargo build --package flagme-plugin-metadata --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-thumbnail --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-reversegeo --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-duplicate --target wasm32-wasip2 --release
 ```
 
-Compiled components are located in:
-`target/wasm32-wasip2/release/`
-
----
-
-## 3. Direct Wasmtime Invocations
-
-`wasmtime` (version 20+) executes WebAssembly Components directly with capability-based security isolation.
-
-### A. Inspecting the Component WIT Interface
-
-Inspect exports, imports, and WIT interfaces of the compiled component:
-
-```bash
-wasmtime component wit target/wasm32-wasip2/release/flagme_plugin_metadata.wasm
-```
-
-Expected output:
-```wit
-package wasmgeohost:media;
-
-world media-plugin {
-  import host-capabilities;
-  export name: func() -> string;
-  export version: func() -> string;
-  export process: func(doc: document) -> result<document, string>;
-}
+The compiled component is generated at:
+```text
+target/wasm32-wasip2/release/flagme_plugin_metadata.wasm
 ```
 
 ---
 
-### B. Invoking with JPEG Sample (`sample.jpg`)
+## 3. Running Media Processing via Host Engine (`flagme-host`)
 
-Run `wasmtime` granting sandboxed, read-only filesystem access strictly to the `Examples` directory:
-
-```bash
-# Grant access only to the Examples directory mapped to /media in guest
-wasmtime run \
-  --wasm component-model \
-  --dir Examples::/media \
-  target/wasm32-wasip2/release/flagme_plugin_metadata.wasm /media/sample.jpg
-```
-
----
-
-### C. Invoking with PNG Sample (`sample.png`)
+In the WebAssembly Component Model, plugins are **reactor libraries** (they export `process(UnifiedDocument)` and import host capabilities like filesystem, kv, and http). They are loaded and orchestrated by the host engine:
 
 ```bash
-wasmtime run \
-  --wasm component-model \
-  --dir Examples::/media \
-  target/wasm32-wasip2/release/flagme_plugin_metadata.wasm /media/sample.png
-```
-
----
-
-### D. Invoking with HEIC Sample (`sample.heic`)
-
-```bash
-wasmtime run \
-  --wasm component-model \
-  --dir Examples::/media \
-  target/wasm32-wasip2/release/flagme_plugin_metadata.wasm /media/sample.heic
-```
-
----
-
-### E. Capability Isolation Testing (Security Verification)
-
-To test capability denial (verifying that unauthorized filesystem or network operations are blocked by Wasmtime):
-
-```bash
-# 1. Block all network access (offline isolation)
-wasmtime run \
-  --wasm component-model \
-  --net=none \
-  --dir Examples::/media \
-  target/wasm32-wasip2/release/flagme_plugin_countryflag.wasm
-
-# 2. Restrict guest memory to 256MB (matching config.yaml max_memory_bytes)
-wasmtime run \
-  --wasm component-model \
-  --max-wasm-stack 2097152 \
-  --dir Examples::/media \
-  target/wasm32-wasip2/release/flagme_plugin_thumbnail.wasm /media/sample.jpg
-```
-
----
-
-## 4. End-to-End Execution via Host Engine
-
-To pass these sample files through the complete multi-stage pipeline (Metadata → ReverseGeo → CountryFlag → Thumbnail → AI-Tagging → Duplicate → Timeline → SQLite):
-
-```bash
-# 1. Process sample.jpg
+# Process sample.jpg through the full pipeline
 cargo run --bin flagme-host -- process Examples/sample.jpg --config config.yaml
 
-# 2. Process sample.png
+# Process sample.png
 cargo run --bin flagme-host -- process Examples/sample.png --config config.yaml
 
-# 3. Process sample.heic
+# Process sample.heic
 cargo run --bin flagme-host -- process Examples/sample.heic --config config.yaml
 ```
 
-The output will print the enriched JSON document, and all metadata, locations, and thumbnail cache keys will be saved in `media.db`.
+The command will:
+1. Load and parse the media file.
+2. Execute each configured plugin in sequence according to `config.yaml`.
+3. Print the enriched `UnifiedDocument` JSON output to `stdout`.
+4. Persist the records into the SQLite database (`media.db`).
+
+---
+
+## 4. Inspecting Components with Wasmtime & Wasm-Tools
+
+Because these plugins export the custom WIT world `media-plugin` rather than the standalone `wasi:cli/run` command interface, you can inspect their component structure and disassembly using:
+
+```bash
+# Explore component disassembly
+wasmtime explore target/wasm32-wasip2/release/flagme_plugin_metadata.wasm
+
+# Inspect WIT interface with wasm-tools
+wasm-tools component wit target/wasm32-wasip2/release/flagme_plugin_metadata.wasm
+```

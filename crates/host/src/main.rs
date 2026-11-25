@@ -1,4 +1,11 @@
 use flagme_host::{AppConfig, Pipeline, PluginRuntime, Storage};
+use flagme_plugin_ai_tagging::AiTaggingPlugin;
+use flagme_plugin_countryflag::CountryFlagPlugin;
+use flagme_plugin_duplicate::DuplicatePlugin;
+use flagme_plugin_metadata::MetadataPlugin;
+use flagme_plugin_reversegeo::ReverseGeoPlugin;
+use flagme_plugin_thumbnail::ThumbnailPlugin;
+use flagme_plugin_timeline::TimelinePlugin;
 use wasm_geo_models::{FileInfo, UnifiedDocument};
 use std::path::Path;
 use std::sync::Arc;
@@ -11,7 +18,16 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    let file_path = &args[1];
+    let file_path = if args[1] == "process" {
+        if args.len() < 3 {
+            eprintln!("Usage: flagme-host process <FILE> [--config <CONFIG>]");
+            std::process::exit(1);
+        }
+        &args[2]
+    } else {
+        &args[1]
+    };
+
     let config_path = args
         .iter()
         .position(|arg| arg == "--config")
@@ -28,7 +44,15 @@ async fn main() -> anyhow::Result<()> {
     let storage = Arc::new(Storage::new(&config.database_path));
     storage.init_schema()?;
 
-    let runtime = PluginRuntime::new(config.clone());
+    let mut runtime = PluginRuntime::new(config.clone());
+    runtime.register_plugin(Arc::new(MetadataPlugin::new()));
+    runtime.register_plugin(Arc::new(ReverseGeoPlugin::new()));
+    runtime.register_plugin(Arc::new(CountryFlagPlugin::new()));
+    runtime.register_plugin(Arc::new(ThumbnailPlugin::new()));
+    runtime.register_plugin(Arc::new(AiTaggingPlugin::new()));
+    runtime.register_plugin(Arc::new(DuplicatePlugin::new()));
+    runtime.register_plugin(Arc::new(TimelinePlugin::new()));
+
     let pipeline = Pipeline::new(config, runtime, storage);
 
     let file_meta = std::fs::metadata(file_path)?;

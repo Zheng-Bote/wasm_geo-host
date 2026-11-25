@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2021"
 description = "Lossless Metadata Extraction Plugin for WASM Geo Host"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
