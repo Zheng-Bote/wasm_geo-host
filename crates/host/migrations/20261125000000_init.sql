@@ -90,3 +90,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS photos_fts USING fts5(
     raw_tags
 );
 
+-- Dense Vector Embeddings (512-dim Float32 BLOBs)
+CREATE TABLE IF NOT EXISTS photo_embeddings (
+    photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+    embedding BLOB NOT NULL,
+    model TEXT NOT NULL
+);
+

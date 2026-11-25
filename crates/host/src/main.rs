@@ -14,13 +14,51 @@ use std::sync::Arc;
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: flagme-host [process|stream|search] <FILE|QUERY> [--config <CONFIG>]");
+        eprintln!("Usage: flagme-host [process|stream|search|similar] <FILE|QUERY|PHOTO_ID> [--config <CONFIG>] [--limit <N>]");
         std::process::exit(1);
     }
 
+    let is_similar = args[1] == "similar";
     let is_search = args[1] == "search";
     let is_stream = args[1] == "stream";
     let is_process = args[1] == "process";
+
+    if is_similar {
+        if args.len() < 3 {
+            eprintln!("Usage: flagme-host similar <PHOTO_ID> [--limit <N>] [--config <CONFIG>]");
+            std::process::exit(1);
+        }
+        let photo_id = &args[2];
+        let config_path = args
+            .iter()
+            .position(|arg| arg == "--config")
+            .and_then(|idx| args.get(idx + 1))
+            .map(|s| s.as_str())
+            .unwrap_or("config.yaml");
+
+        let limit: usize = args
+            .iter()
+            .position(|arg| arg == "--limit")
+            .and_then(|idx| args.get(idx + 1))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
+
+        let config = if Path::new(config_path).exists() {
+            AppConfig::load_from_file(config_path)?
+        } else {
+            AppConfig::default()
+        };
+
+        let storage = Storage::new(&config.database_path);
+        storage.init_schema()?;
+
+        let results = storage.find_similar(photo_id, limit)?;
+        println!("Vector Similarity Results for '{}': {} match(es)", photo_id, results.len());
+        for (idx, res) in results.iter().enumerate() {
+            println!("  [{}] photo_id: {} | cosine_score: {:.4}", idx + 1, res.photo_id, res.score);
+        }
+        return Ok(());
+    }
 
     if is_search {
         if args.len() < 3 {

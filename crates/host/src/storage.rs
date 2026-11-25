@@ -12,6 +12,13 @@ pub struct SearchResult {
     pub rank: f64,
 }
 
+/// Similarity search result item returned by vector cosine similarity matching.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SimilarityResult {
+    pub photo_id: String,
+    pub score: f32,
+}
+
 /// SQLite storage implementation for WASM Geo Host.
 pub struct Storage {
     db_path: String,
@@ -241,6 +248,26 @@ impl Storage {
             escape_sql(&raw_tags_str)
         ));
 
+        // Persist dense vector embedding as SQLite BLOB if present
+        if let Some(ai) = &doc.ai {
+            if let Some(emb) = &ai.embedding {
+                let mut blob_hex = String::with_capacity(emb.len() * 8);
+                for val in emb {
+                    for b in val.to_le_bytes() {
+                        use std::fmt::Write;
+                        let _ = write!(&mut blob_hex, "{:02x}", b);
+                    }
+                }
+                let model = ai.tags.first().map(|t| t.model.as_str()).unwrap_or("CLIP");
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO photo_embeddings (photo_id, embedding, model) VALUES ('{}', X'{}', '{}');\n",
+                    escape_sql(&doc.id),
+                    blob_hex,
+                    escape_sql(model)
+                ));
+            }
+        }
+
         if let Ok(mut child) = Command::new("sqlite3")
             .arg(&self.db_path)
             .stdin(Stdio::piped())
@@ -331,6 +358,110 @@ impl Storage {
         }
 
         Ok(results)
+    }
+
+    /// Retrieves the raw 512-D float embedding vector for a given photo.
+    pub fn get_embedding(&self, photo_id: &str) -> Option<Vec<f32>> {
+        let sql = format!(
+            "SELECT quote(embedding) FROM photo_embeddings WHERE photo_id = '{}';",
+            escape_sql(photo_id)
+        );
+
+        let output = Command::new("sqlite3")
+            .arg(&self.db_path)
+            .arg(&sql)
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // Format from quote(blob) is X'010203...'
+        let hex_str = raw.strip_prefix("X'")?.strip_suffix('\'')?;
+        decode_hex_to_floats(hex_str)
+    }
+
+    /// Finds top-K similar photos using Cosine Similarity over stored embeddings.
+    pub fn find_similar(&self, target_id: &str, limit: usize) -> anyhow::Result<Vec<SimilarityResult>> {
+        let target_emb = self
+            .get_embedding(target_id)
+            .ok_or_else(|| anyhow::anyhow!("Embedding not found for photo_id: {}", target_id))?;
+
+        let sql = format!(
+            "SELECT photo_id, quote(embedding) FROM photo_embeddings WHERE photo_id != '{}';",
+            escape_sql(target_id)
+        );
+
+        let output = Command::new("sqlite3")
+            .arg(&self.db_path)
+            .arg("-separator")
+            .arg("\t")
+            .arg(&sql)
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!("Failed to query embeddings"));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut candidates = Vec::new();
+
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                let photo_id = parts[0].trim().to_string();
+                let raw_hex = parts[1].trim();
+                if let Some(hex_str) = raw_hex.strip_prefix("X'").and_then(|s| s.strip_suffix('\'')) {
+                    if let Some(emb) = decode_hex_to_floats(hex_str) {
+                        let score = cosine_similarity(&target_emb, &emb);
+                        candidates.push(SimilarityResult { photo_id, score });
+                    }
+                }
+            }
+        }
+
+        // Sort descending by similarity score
+        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.truncate(limit);
+
+        Ok(candidates)
+    }
+}
+
+fn decode_hex_to_floats(hex: &str) -> Option<Vec<f32>> {
+    if hex.len() % 8 != 0 {
+        return None;
+    }
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect();
+
+    if bytes.len() % 4 != 0 {
+        return None;
+    }
+
+    let floats: Vec<f32> = bytes
+        .chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect();
+
+    Some(floats)
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm_a > 0.0 && norm_b > 0.0 {
+        dot / (norm_a * norm_b)
+    } else {
+        0.0
     }
 }
 
