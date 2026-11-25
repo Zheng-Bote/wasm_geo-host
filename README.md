@@ -9,6 +9,12 @@
 
 ---
 
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
+---
+
 ## Architecture (C4 Model)
 
 ```mermaid
@@ -75,15 +81,15 @@ flowchart LR
 
 ## Included Plugins
 
-| Plugin | Capability Requirements | Description |
-|---|---|---|
-| **`metadata`** | `filesystem` | Lossless extraction of EXIF, IPTC, and XMP tags; preserves all vendor metadata in `raw_tags`. |
-| **`reversegeo`** | `http`, `kv` | Resolves lat/lon coordinates to country, region, county, and city via offline Natural Earth and online OSM fallback. |
-| **`countryflag`** | *(none)* | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g., 🇩🇪), continents, and regions. |
-| **`thumbnail`** | `filesystem` | Deterministic generation of 128px, 512px, and 1024px image variants for JPEG, PNG, WebP, TIFF, HEIC, and AVIF. |
-| **`ai-tagging`** | `filesystem` | Swappable vision model interface supporting ONNX Runtime, MobileNetV3, CLIP, and OpenCLIP classifiers. |
-| **`duplicate`** | `filesystem`, `kv` | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to flag duplicate media. |
-| **`timeline`** | `filesystem` | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime). |
+| Plugin            | Capability Requirements | Description                                                                                                                      |
+| ----------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **`metadata`**    | `filesystem`            | Lossless extraction of EXIF, IPTC, and XMP tags; preserves all vendor metadata in `raw_tags`.                                    |
+| **`reversegeo`**  | `http`, `kv`            | Resolves lat/lon coordinates to country, region, county, and city via offline Natural Earth and online OSM fallback.             |
+| **`countryflag`** | _(none)_                | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g., 🇩🇪), continents, and regions. |
+| **`thumbnail`**   | `filesystem`            | Deterministic generation of 128px, 512px, and 1024px image variants for JPEG, PNG, WebP, TIFF, HEIC, and AVIF.                   |
+| **`ai-tagging`**  | `filesystem`            | Swappable vision model interface supporting ONNX Runtime, MobileNetV3, CLIP, and OpenCLIP classifiers.                           |
+| **`duplicate`**   | `filesystem`, `kv`      | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to flag duplicate media.                               |
+| **`timeline`**    | `filesystem`            | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime).                         |
 
 ---
 
@@ -151,11 +157,11 @@ cargo build --package flagme-plugin-timeline --target wasm32-wasip2 --release
 Edit `config.yaml` to specify which plugins are enabled, their execution order, and their granted capabilities:
 
 ```yaml
-database_path: "media.db"
+database_path: 'media.db'
 
 resource_limits:
   max_memory_bytes: 268435456 # 256 MB
-  timeout_ms: 10000           # 10s
+  timeout_ms: 10000 # 10s
 
 pipeline:
   - metadata
@@ -169,30 +175,31 @@ pipeline:
 plugins:
   metadata:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
   reversegeo:
     enabled: true
-    capabilities: ["http", "kv"]
+    capabilities: ['http', 'kv']
   countryflag:
     enabled: true
     capabilities: []
   thumbnail:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
   ai-tagging:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
   duplicate:
     enabled: true
-    capabilities: ["filesystem", "kv"]
+    capabilities: ['filesystem', 'kv']
   timeline:
     enabled: true
-    capabilities: ["filesystem"]
+    capabilities: ['filesystem']
 ```
 
 ### 2. Process Media Files
 
 #### Mode 1: In-Process Host Execution
+
 Runs the pipeline within the `flagme-host` process, sharing memory safely across plugins:
 
 ```bash
@@ -202,6 +209,7 @@ cargo run --bin flagme-host -- process Examples/sample.jpg --config config.yaml
 The CLI outputs the enriched `UnifiedDocument` as structured JSON, while concurrently persisting records to the SQLite database `media.db`.
 
 #### Mode 2c: Host Subprocess Streaming Supervisor
+
 Spawns each WASM plugin as an isolated child process, streaming JSON between them via stdin/stdout:
 
 ```bash
@@ -213,10 +221,12 @@ cargo run --bin flagme-host -- stream Examples/sample.jpg --config config.yaml
 ## Dual-Mode & Advanced Pipeline Execution Models
 
 Every plugin in `plugins/*` supports **Dual-Mode** compilation:
+
 1. **Library Component (`cdylib`/`rlib`)**: Used for high-throughput, in-process embedding inside `flagme-host`.
 2. **Standalone WASI CLI Binary (`bin`)**: Executable directly via `wasmtime run -S cli-exit-with-code <plugin>.wasm`.
 
 ### Advanced Pipeline Models
+
 - **[Model 2a: Unix CLI Streaming Pipeline](docs/pipeline_unix_pipes.md)** — Pipe plugins together using standard shell pipes (`|`):
   ```bash
   wasmtime run -S cli-exit-with-code --dir Examples::/media \
