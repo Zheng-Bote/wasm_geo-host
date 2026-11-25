@@ -121,6 +121,7 @@ dependencies = [
  "flagme-plugin-face-detection",
  "flagme-plugin-metadata",
  "flagme-plugin-ocr-text",
+ "flagme-plugin-privacy-redact",
  "flagme-plugin-reversegeo",
  "flagme-plugin-thumbnail",
  "flagme-plugin-timeline",
@@ -172,6 +173,14 @@ dependencies = [
 
 [[package]]
 name = "flagme-plugin-ocr-text"
+version = "0.1.0"
+dependencies = [
+ "flagme-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "flagme-plugin-privacy-redact"
 version = "0.1.0"
 dependencies = [
  "flagme-sdk",
