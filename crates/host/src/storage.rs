@@ -136,7 +136,7 @@ impl Storage {
 
         if let Some(loc) = &doc.location {
             sql.push_str(&format!(
-                "INSERT OR REPLACE INTO locations (photo_id, latitude, longitude, altitude, country, country_code, region, county, city) VALUES ('{}', {}, {}, {}, '{}', '{}', '{}', '{}', '{}');\n",
+                "INSERT OR REPLACE INTO locations (photo_id, latitude, longitude, altitude, country, country_code, region, county, city, local_country, local_region, local_city, local_language) VALUES ('{}', {}, {}, {}, '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');\n",
                 escape_sql(&doc.id),
                 loc.latitude.unwrap_or(0.0),
                 loc.longitude.unwrap_or(0.0),
@@ -145,7 +145,11 @@ impl Storage {
                 escape_sql(loc.country_code.as_deref().unwrap_or("")),
                 escape_sql(loc.region.as_deref().unwrap_or("")),
                 escape_sql(loc.county.as_deref().unwrap_or("")),
-                escape_sql(loc.city.as_deref().unwrap_or(""))
+                escape_sql(loc.city.as_deref().unwrap_or("")),
+                escape_sql(loc.local_country.as_deref().unwrap_or("")),
+                escape_sql(loc.local_region.as_deref().unwrap_or("")),
+                escape_sql(loc.local_city.as_deref().unwrap_or("")),
+                escape_sql(loc.local_language.as_deref().unwrap_or(""))
             ));
         }
 

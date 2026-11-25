@@ -31,7 +31,11 @@ CREATE TABLE IF NOT EXISTS locations (
     country_code TEXT,
     region TEXT,
     county TEXT,
-    city TEXT
+    city TEXT,
+    local_country TEXT,
+    local_region TEXT,
+    local_city TEXT,
+    local_language TEXT
 );
 
 CREATE TABLE IF NOT EXISTS countries (
