@@ -1,0 +1,216 @@
+# WASM Geo Host
+
+[![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
+[![WebAssembly Component Model](https://img.shields.io/badge/wasm-component--model-purple.svg)](https://component-model.bytecodealliance.org/)
+[![Wasmtime](https://img.shields.io/badge/runtime-wasmtime-blue.svg)](https://wasmtime.dev/)
+[![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-green.svg)](NOTICE)
+
+**WASM Geo Host** is a modular media processing platform written in 100% Rust. It executes image enrichment, geolocation, computer vision tagging, and duplicate detection inside isolated WebAssembly Components using Wasmtime and WASI.
+
+---
+
+## Architecture (C4 Model)
+
+```mermaid
+flowchart TD
+    user["User / Client Application"]
+
+    subgraph Platform["WASM Geo Host Platform"]
+        cli["CLI Engine\n(flagme-host)"]
+        config["Config Manager\n(config.yaml)"]
+        cap_manager["Capability Sandbox\n(Least Privilege Guard)"]
+        orchestrator["Pipeline Orchestrator\n(Sequential / Chained)"]
+        runtime["WASM Component Runtime\n(Wasmtime + WASI)"]
+        storage["Storage Engine\n(SQLite / sqlx)"]
+    end
+
+    subgraph Plugins["WASM Component Plugins (wit/media-plugin.wit)"]
+        p_meta["metadata.wasm"]
+        p_geo["reversegeo.wasm"]
+        p_flag["countryflag.wasm"]
+        p_thumb["thumbnail.wasm"]
+        p_ai["ai-tagging.wasm"]
+        p_dup["duplicate.wasm"]
+        p_time["timeline.wasm"]
+    end
+
+    subgraph External["Host System & External Services"]
+        fs["Host Filesystem\n(Sandboxed Media Files)"]
+        net["Geocoding APIs\n(Nominatim / OSM)"]
+        db[("media.db\n(SQLite Database)")]
+    end
+
+    user -->|"Processes Media File"| cli
+    cli --> config
+    cli --> orchestrator
+    orchestrator -->|"Enforces Limits & Grants"| cap_manager
+    cap_manager -->|"Invokes via WIT"| runtime
+    runtime --> p_meta & p_geo & p_flag & p_thumb & p_ai & p_dup & p_time
+
+    cap_manager -.->|"Authorized fs_read"| fs
+    cap_manager -.->|"Authorized http_get"| net
+    orchestrator -->|"Persists UnifiedDocument"| storage
+    storage --> db
+```
+
+---
+
+## Pipeline Execution Workflow
+
+Every media file is passed sequentially as a `UnifiedDocument` through the configured plugin pipeline:
+
+```mermaid
+flowchart LR
+    photo["Input Photo"] --> meta["1. metadata\n(EXIF, IPTC, XMP)"]
+    meta --> geo["2. reversegeo\n(Coordinates to City/Region)"]
+    geo --> flag["3. countryflag\n(ISO Code to Flag Emoji)"]
+    flag --> thumb["4. thumbnail\n(128px, 512px, 1024px)"]
+    thumb --> ai["5. ai-tagging\n(MobileNet / CLIP Tags)"]
+    ai --> dup["6. duplicate\n(SHA256 & pHash Indexing)"]
+    dup --> time["7. timeline\n(Timestamp Conflict Resolution)"]
+    time --> db[("8. SQLite Persistence\n(Relational Storage)")]
+```
+
+---
+
+## Included Plugins
+
+| Plugin | Capability Requirements | Description |
+|---|---|---|
+| **`metadata`** | `filesystem` | Lossless extraction of EXIF, IPTC, and XMP tags; preserves all vendor metadata in `raw_tags`. |
+| **`reversegeo`** | `http`, `kv` | Resolves lat/lon coordinates to country, region, county, and city via offline Natural Earth and online OSM fallback. |
+| **`countryflag`** | *(none)* | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g., 🇩🇪), continents, and regions. |
+| **`thumbnail`** | `filesystem` | Deterministic generation of 128px, 512px, and 1024px image variants for JPEG, PNG, WebP, TIFF, HEIC, and AVIF. |
+| **`ai-tagging`** | `filesystem` | Swappable vision model interface supporting ONNX Runtime, MobileNetV3, CLIP, and OpenCLIP classifiers. |
+| **`duplicate`** | `filesystem`, `kv` | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to flag duplicate media. |
+| **`timeline`** | `filesystem` | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime). |
+
+---
+
+## Setup & Prerequisites
+
+### macOS
+
+1. **Install Rust**:
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+2. **Add WASM target & tools**:
+   ```bash
+   rustup target add wasm32-wasip2
+   brew install sqlite
+   ```
+
+### Linux (Ubuntu / Debian / RHEL)
+
+1. **Install Rust and build essentials**:
+   ```bash
+   # Debian / Ubuntu
+   sudo apt update && sudo apt install -y build-essential pkg-config libssl-dev sqlite3 curl
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+2. **Add WASM target**:
+   ```bash
+   rustup target add wasm32-wasip2
+   ```
+
+---
+
+## Build & Test
+
+Build the entire workspace:
+
+```bash
+cargo build --all
+```
+
+Run the complete test suite (covering all SDD acceptance criteria):
+
+```bash
+cargo test --all
+```
+
+To compile individual plugins as native WebAssembly Components (`wasm32-wasip2`):
+
+```bash
+cargo build --package flagme-plugin-metadata --target wasm32-wasip2 --release
+cargo build --package flagme-plugin-reversegeo --target wasm32-wasip2 --release
+cargo build --package flagme-plugin-countryflag --target wasm32-wasip2 --release
+cargo build --package flagme-plugin-thumbnail --target wasm32-wasip2 --release
+cargo build --package flagme-plugin-ai-tagging --target wasm32-wasip2 --release
+cargo build --package flagme-plugin-duplicate --target wasm32-wasip2 --release
+cargo build --package flagme-plugin-timeline --target wasm32-wasip2 --release
+```
+
+---
+
+## Usage
+
+### 1. Configure Capabilities and Pipeline (`config.yaml`)
+
+Edit `config.yaml` to specify which plugins are enabled, their execution order, and their granted capabilities:
+
+```yaml
+database_path: "media.db"
+
+resource_limits:
+  max_memory_bytes: 268435456 # 256 MB
+  timeout_ms: 10000           # 10s
+
+pipeline:
+  - metadata
+  - reversegeo
+  - countryflag
+  - thumbnail
+  - ai-tagging
+  - duplicate
+  - timeline
+
+plugins:
+  metadata:
+    enabled: true
+    capabilities: ["filesystem"]
+  reversegeo:
+    enabled: true
+    capabilities: ["http", "kv"]
+  countryflag:
+    enabled: true
+    capabilities: []
+  thumbnail:
+    enabled: true
+    capabilities: ["filesystem"]
+  ai-tagging:
+    enabled: true
+    capabilities: ["filesystem"]
+  duplicate:
+    enabled: true
+    capabilities: ["filesystem", "kv"]
+  timeline:
+    enabled: true
+    capabilities: ["filesystem"]
+```
+
+### 2. Process Media Files
+
+Run the `flagme-host` binary with the target media file and configuration:
+
+```bash
+cargo run --bin flagme-host -- process /path/to/sample.jpg --config config.yaml
+```
+
+The CLI outputs the enriched `UnifiedDocument` as structured JSON, while concurrently persisting records to the SQLite database `media.db`.
+
+---
+
+## Documentation
+
+- [Build Instructions](docs/build-instructions.md)
+- [Deployment Guide](docs/deployment-guide.md)
+- [Plugin Development Guide](docs/plugin-development-guide.md)
+- [Verfassung & SDD Spezifikationen](constitution.md)
+
+---
+
+## License & Attribution
+
+Licensed under the MIT or Apache 2.0 license. See [NOTICE](NOTICE) for third-party component acknowledgments.

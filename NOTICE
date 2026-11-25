@@ -1,0 +1,11 @@
+WASM Geo Host
+Copyright 2026 WASM Geo Host Contributors
+
+This product includes software developed by the WASM Geo Host Project.
+
+Third-Party Components & Attributions:
+- Natural Earth (public domain map and country boundary dataset)
+- OpenStreetMap / Nominatim (ODbL / Attribution)
+- Wasmtime & Bytecode Alliance Component Model tooling (Apache-2.0 WITH LLVM-exception / MIT)
+- SQLite (Public Domain)
+- Rust ecosystem libraries (MIT / Apache-2.0)
