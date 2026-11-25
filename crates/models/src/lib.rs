@@ -27,6 +27,8 @@ pub struct UnifiedDocument {
     pub ocr: Option<OcrInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub faces: Option<FacesInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub privacy: Option<PrivacyInfo>,
     #[serde(default)]
     pub custom: HashMap<String, serde_json::Value>,
 }
@@ -46,6 +48,7 @@ impl UnifiedDocument {
             weather: None,
             ocr: None,
             faces: None,
+            privacy: None,
             custom: HashMap::new(),
         }
     }
@@ -207,6 +210,18 @@ pub struct FaceLandmarks {
     pub nose: (f32, f32),
     pub mouth_left: (f32, f32),
     pub mouth_right: (f32, f32),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct PrivacyInfo {
+    pub is_redacted: bool,
+    pub faces_redacted_count: usize,
+    pub license_plates_redacted_count: usize,
+    pub original_gps_fuzzed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redacted_image_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub applied_rules: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

@@ -33,6 +33,7 @@ pub struct Storage {
     weather: Arc<Mutex<HashMap<String, WeatherInfo>>>,
     ocr: Arc<Mutex<HashMap<String, OcrInfo>>>,
     faces: Arc<Mutex<HashMap<String, FacesInfo>>>,
+    privacy: Arc<Mutex<HashMap<String, PrivacyInfo>>>,
 }
 
 impl Storage {
@@ -50,6 +51,7 @@ impl Storage {
             weather: Arc::new(Mutex::new(HashMap::new())),
             ocr: Arc::new(Mutex::new(HashMap::new())),
             faces: Arc::new(Mutex::new(HashMap::new())),
+            privacy: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -139,19 +141,29 @@ impl Storage {
                 let mut faces = self.faces.lock().unwrap();
                 faces.insert(doc.id.clone(), f.clone());
             }
+
+            if let Some(p) = &doc.privacy {
+                let mut privacy = self.privacy.lock().unwrap();
+                privacy.insert(doc.id.clone(), p.clone());
+            }
         }
 
         // 2. Persist to disk SQLite database file via SQL statements
         let mut sql = String::new();
         let sha256_val = doc.file.sha256.as_deref().unwrap_or("");
+        let is_redacted = if doc.privacy.as_ref().map(|p| p.is_redacted).unwrap_or(false) { 1 } else { 0 };
+        let redacted_path = doc.privacy.as_ref().and_then(|p| p.redacted_image_path.as_deref()).unwrap_or("");
+
         sql.push_str(&format!(
-            "INSERT OR REPLACE INTO photos (id, file_path, filename, size_bytes, mime_type, sha256) VALUES ('{}', '{}', '{}', {}, '{}', '{}');\n",
+            "INSERT OR REPLACE INTO photos (id, file_path, filename, size_bytes, mime_type, sha256, is_redacted, redacted_file_path) VALUES ('{}', '{}', '{}', {}, '{}', '{}', {}, '{}');\n",
             escape_sql(&doc.id),
             escape_sql(&doc.file.path),
             escape_sql(&doc.file.filename),
             doc.file.size_bytes,
             escape_sql(&doc.file.mime_type),
-            escape_sql(sha256_val)
+            escape_sql(sha256_val),
+            is_redacted,
+            escape_sql(redacted_path)
         ));
 
         if let Some(meta) = &doc.metadata {
@@ -171,8 +183,9 @@ impl Storage {
         }
 
         if let Some(loc) = &doc.location {
+            let is_gps_fuzzed = if doc.privacy.as_ref().map(|p| p.original_gps_fuzzed).unwrap_or(false) { 1 } else { 0 };
             sql.push_str(&format!(
-                "INSERT OR REPLACE INTO locations (photo_id, latitude, longitude, altitude, country, country_code, region, county, city, local_country, local_region, local_city, local_language) VALUES ('{}', {}, {}, {}, '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');\n",
+                "INSERT OR REPLACE INTO locations (photo_id, latitude, longitude, altitude, country, country_code, region, county, city, local_country, local_region, local_city, local_language, is_gps_fuzzed) VALUES ('{}', {}, {}, {}, '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', {});\n",
                 escape_sql(&doc.id),
                 loc.latitude.unwrap_or(0.0),
                 loc.longitude.unwrap_or(0.0),
@@ -185,7 +198,8 @@ impl Storage {
                 escape_sql(loc.local_country.as_deref().unwrap_or("")),
                 escape_sql(loc.local_region.as_deref().unwrap_or("")),
                 escape_sql(loc.local_city.as_deref().unwrap_or("")),
-                escape_sql(loc.local_language.as_deref().unwrap_or(""))
+                escape_sql(loc.local_language.as_deref().unwrap_or("")),
+                is_gps_fuzzed
             ));
         }
 
@@ -394,6 +408,7 @@ impl Storage {
         let weather = self.weather.lock().unwrap().get(id).cloned();
         let ocr = self.ocr.lock().unwrap().get(id).cloned();
         let faces = self.faces.lock().unwrap().get(id).cloned();
+        let privacy = self.privacy.lock().unwrap().get(id).cloned();
 
         let country = if let Some(loc) = &location {
             if let Some(code) = &loc.country_code {
@@ -418,6 +433,7 @@ impl Storage {
             weather,
             ocr,
             faces,
+            privacy,
             custom: HashMap::new(),
         })
     }

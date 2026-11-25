@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS photos (
     size_bytes INTEGER NOT NULL,
     mime_type TEXT NOT NULL,
     sha256 TEXT,
+    is_redacted INTEGER DEFAULT 0,
+    redacted_file_path TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -35,7 +37,8 @@ CREATE TABLE IF NOT EXISTS locations (
     local_country TEXT,
     local_region TEXT,
     local_city TEXT,
-    local_language TEXT
+    local_language TEXT,
+    is_gps_fuzzed INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS countries (
