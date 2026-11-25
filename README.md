@@ -5,7 +5,7 @@
 [![Wasmtime](https://img.shields.io/badge/runtime-wasmtime-blue.svg)](https://wasmtime.dev/)
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-green.svg)](NOTICE)
 
-**WASM Geo Host** is a modular media processing platform written in 100% Rust. It executes image enrichment, geolocation, computer vision tagging, and duplicate detection inside isolated WebAssembly Components using Wasmtime and WASI.
+**WASM Geo Host** is a production-ready media processing and ingestion platform written in 100% Rust. It executes image enrichment, geolocation, computer vision tagging, duplicate detection, weather context, OCR, face detection, and privacy redaction inside isolated WebAssembly Components using Wasmtime and WASI 0.2.
 
 ---
 
@@ -16,19 +16,23 @@
 
 - [Architecture (C4 Model)](#architecture-c4-model)
 - [Pipeline Execution Workflow](#pipeline-execution-workflow)
-- [Included Plugins](#included-plugins)
+- [Included Plugins (11 WASI Plugins)](#included-plugins-11-wasi-plugins)
 - [Setup & Prerequisites](#setup-prerequisites)
   - [macOS](#macos)
   - [Linux (Ubuntu / Debian / RHEL)](#linux-ubuntu-debian-rhel)
 - [Build & Test](#build-test)
-- [Usage](#usage)
+- [Usage & CLI Commands](#usage-cli-commands)
   - [1. Configure Capabilities and Pipeline (`config.yaml`)](#1-configure-capabilities-and-pipeline-configyaml)
-  - [2. Process Media Files](#2-process-media-files)
-    - [Mode 1: In-Process Host Execution](#mode-1-in-process-host-execution)
-    - [Mode 2c: Host Subprocess Streaming Supervisor](#mode-2c-host-subprocess-streaming-supervisor)
+  - [2. Single Media Processing (`flagme-host process`)](#2-single-media-processing-flagme-host-process)
+  - [3. Subprocess Streaming Supervisor (`flagme-host stream`)](#3-subprocess-streaming-supervisor-flagme-host-stream)
+  - [4. Full-Text Search FTS5 (`flagme-host search`)](#4-full-text-search-fts5-flagme-host-search)
+  - [5. Vector Similarity Search (`flagme-host similar`)](#5-vector-similarity-search-flagme-host-similar)
+  - [6. Directory Watcher & Batch Ingest (`flagme-host watch`)](#6-directory-watcher-batch-ingest-flagme-host-watch)
+  - [7. Embedded Web Dashboard & REST/GeoJSON API (`flagme-host serve`)](#7-embedded-web-dashboard-restgeojson-api-flagme-host-serve)
+    - [REST & GeoJSON Endpoints:](#rest-geojson-endpoints)
 - [Dual-Mode & Advanced Pipeline Execution Models](#dual-mode-advanced-pipeline-execution-models)
   - [Advanced Pipeline Models](#advanced-pipeline-models)
-- [Documentation](#documentation)
+- [Documentation & Spec-Driven Development (SDD)](#documentation-spec-driven-development-sdd)
 - [License & Attribution](#license-attribution)
 
 </details>
@@ -41,15 +45,17 @@
 
 ```mermaid
 flowchart TD
-    user["User / Client Application"]
+    user["User / Browser / Ingest Client"]
 
-    subgraph Platform["WASM Geo Host Platform"]
-        cli["CLI Engine\n(flagme-host)"]
+    subgraph Platform["WASM Geo Host Platform (flagme-host)"]
+        cli["CLI Engine\n(process, stream, search, similar, watch, serve)"]
+        web["Embedded Axum Web Server\n(Dashboard, REST, GeoJSON)"]
+        watcher["Directory Watcher\n(notify + Worker Task Pool)"]
         config["Config Manager\n(config.yaml)"]
         cap_manager["Capability Sandbox\n(Least Privilege Guard)"]
         orchestrator["Pipeline Orchestrator\n(Sequential / Chained)"]
-        runtime["WASM Component Runtime\n(Wasmtime + WASI)"]
-        storage["Storage Engine\n(SQLite / sqlx)"]
+        runtime["WASM Component Runtime\n(Wasmtime + WASI 0.2)"]
+        storage["Storage Engine\n(SQLite media.db + FTS5 + Vector Embeddings)"]
     end
 
     subgraph Plugins["WASM Component Plugins (wit/media-plugin.wit)"]
@@ -60,58 +66,72 @@ flowchart TD
         p_ai["ai-tagging.wasm"]
         p_dup["duplicate.wasm"]
         p_time["timeline.wasm"]
+        p_weather["weather-enrich.wasm"]
+        p_ocr["ocr-text.wasm"]
+        p_face["face-detection.wasm"]
+        p_privacy["privacy-redact.wasm"]
     end
 
     subgraph External["Host System & External Services"]
-        fs["Host Filesystem\n(Sandboxed Media Files)"]
-        net["Geocoding APIs\n(Nominatim / OSM)"]
-        db[("media.db\n(SQLite Database)")]
+        fs["Host Filesystem\n(Incoming Media / Library)"]
+        net["External APIs\n(Nominatim / Open-Meteo)"]
+        db[("media.db\n(SQLite + FTS5 + Vectors)")]
     end
 
-    user -->|"Processes Media File"| cli
-    cli --> config
+    user -->|"CLI / Web / Import"| cli & web
+    cli --> watcher
+    watcher --> orchestrator
     cli --> orchestrator
     orchestrator -->|"Enforces Limits & Grants"| cap_manager
     cap_manager -->|"Invokes via WIT"| runtime
-    runtime --> p_meta & p_geo & p_flag & p_thumb & p_ai & p_dup & p_time
+    runtime --> Plugins
 
-    cap_manager -.->|"Authorized fs_read"| fs
+    cap_manager -.->|"Authorized fs_read/fs_write"| fs
     cap_manager -.->|"Authorized http_get"| net
     orchestrator -->|"Persists UnifiedDocument"| storage
     storage --> db
+    web --> storage
 ```
 
 ---
 
 ## Pipeline Execution Workflow
 
-Every media file is passed sequentially as a `UnifiedDocument` through the configured plugin pipeline:
+Every media file is passed as a `UnifiedDocument` through the configured plugin pipeline:
 
 ```mermaid
 flowchart LR
     photo["Input Photo"] --> meta["1. metadata\n(EXIF, IPTC, XMP)"]
-    meta --> geo["2. reversegeo\n(Coordinates to City/Region)"]
+    meta --> geo["2. reversegeo\n(Coordinates to City)"]
     geo --> flag["3. countryflag\n(ISO Code to Flag Emoji)"]
     flag --> thumb["4. thumbnail\n(128px, 512px, 1024px)"]
-    thumb --> ai["5. ai-tagging\n(MobileNet / CLIP Tags)"]
+    thumb --> ai["5. ai-tagging\n(CLIP & MobileNet Tags)"]
     ai --> dup["6. duplicate\n(SHA256 & pHash Indexing)"]
-    dup --> time["7. timeline\n(Timestamp Conflict Resolution)"]
-    time --> db[("8. SQLite Persistence\n(Relational Storage)")]
+    dup --> time["7. timeline\n(Timestamp Resolution)"]
+    time --> weather["8. weather-enrich\n(Open-Meteo Historical)"]
+    weather --> ocr["9. ocr-text\n(Signage Transcription)"]
+    ocr --> face["10. face-detection\n(ArcFace / UltraFace)"]
+    face --> privacy["11. privacy-redact\n(Pixelate / Blur / GPS Fuzz)"]
+    privacy --> db[("12. SQLite Persistence\n(FTS5 & Vector Embeddings)")]
 ```
 
 ---
 
-## Included Plugins
+## Included Plugins (11 WASI Plugins)
 
-| Plugin            | Capability Requirements | Description                                                                                                                      |
-| ----------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **`metadata`**    | `filesystem`            | Lossless extraction of EXIF, IPTC, and XMP tags; preserves all vendor metadata in `raw_tags`.                                    |
-| **`reversegeo`**  | `http`, `kv`            | Resolves lat/lon coordinates to country, region, county, and city via offline Natural Earth and online OSM fallback.             |
-| **`countryflag`** | _(none)_                | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g., 🇩🇪), continents, and regions. |
-| **`thumbnail`**   | `filesystem`            | Deterministic generation of 128px, 512px, and 1024px image variants for JPEG, PNG, WebP, TIFF, HEIC, and AVIF.                   |
-| **`ai-tagging`**  | `filesystem`            | Swappable vision model interface supporting ONNX Runtime, MobileNetV3, CLIP, and OpenCLIP classifiers.                           |
-| **`duplicate`**   | `filesystem`, `kv`      | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to flag duplicate media.                               |
-| **`timeline`**    | `filesystem`            | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime).                         |
+| Plugin | Capability Requirements | Description |
+| :--- | :--- | :--- |
+| **`metadata`** | `filesystem` | Lossless extraction of EXIF, IPTC, and XMP tags; preserves all vendor metadata in `raw_tags`. |
+| **`reversegeo`** | `http`, `kv` | Resolves lat/lon coordinates to country, region, county, and city via offline Natural Earth and online OSM fallback. |
+| **`countryflag`** | _(none)_ | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g. 🇩🇪), continents, and regions. |
+| **`thumbnail`** | `filesystem` | Deterministic generation of 128px, 512px, and 1024px image variants for JPEG, PNG, WebP, TIFF, HEIC, and AVIF. |
+| **`ai-tagging`** | `filesystem` | Swappable vision model interface supporting MobileNetV3 and 512-D dense CLIP vector embeddings. |
+| **`duplicate`** | `filesystem`, `kv` | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to detect duplicates. |
+| **`timeline`** | `filesystem` | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime). |
+| **`weather-enrich`** | `http`, `kv` | Historical weather enrichment via Open-Meteo API (temperature, WMO weather codes, weather emojis, humidity). |
+| **`ocr-text`** | `filesystem` | Optical Character Recognition (OCR) for signage and text transcription indexed into full-text search. |
+| **`face-detection`** | `filesystem` | Detects human faces, bounding boxes, facial landmarks, and 512-D identity embeddings (UltraFace / ArcFace). |
+| **`privacy-redact`** | `filesystem` | Privacy sanitization: visual obfuscation of detected faces/text (pixelate/blur), EXIF serial stripping, and GPS coordinate fuzzing. |
 
 ---
 
@@ -152,31 +172,35 @@ Build the entire workspace:
 cargo build --all
 ```
 
-Run the complete test suite (covering all SDD acceptance criteria):
+Run the complete test suite (48+ unit and integration tests covering all SDD acceptance criteria):
 
 ```bash
 cargo test --all
 ```
 
-To compile individual plugins as native WebAssembly Components (`wasm32-wasip2`):
+Compile all WASI plugins to native WebAssembly Components (`wasm32-wasip2`):
 
 ```bash
-cargo build --package flagme-plugin-metadata --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-reversegeo --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-countryflag --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-thumbnail --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-ai-tagging --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-duplicate --target wasm32-wasip2 --release
-cargo build --package flagme-plugin-timeline --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-metadata --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-reversegeo --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-countryflag --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-thumbnail --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-ai-tagging --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-duplicate --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-timeline --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-weather-enrich --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-ocr-text --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-face-detection --target wasm32-wasip2 --release
+cargo build -p flagme-plugin-privacy-redact --target wasm32-wasip2 --release
 ```
 
 ---
 
-## Usage
+## Usage & CLI Commands
 
 ### 1. Configure Capabilities and Pipeline (`config.yaml`)
 
-Edit `config.yaml` to specify which plugins are enabled, their execution order, and their granted capabilities:
+Edit `config.yaml` to specify which plugins are enabled, execution order, and granted sandbox permissions:
 
 ```yaml
 database_path: 'media.db'
@@ -193,6 +217,10 @@ pipeline:
   - ai-tagging
   - duplicate
   - timeline
+  - weather-enrich
+  - ocr-text
+  - face-detection
+  - privacy-redact
 
 plugins:
   metadata:
@@ -216,27 +244,92 @@ plugins:
   timeline:
     enabled: true
     capabilities: ['filesystem']
+  weather-enrich:
+    enabled: true
+    capabilities: ['http', 'kv']
+  ocr-text:
+    enabled: true
+    capabilities: ['filesystem']
+  face-detection:
+    enabled: true
+    capabilities: ['filesystem']
+  privacy-redact:
+    enabled: true
+    capabilities: ['filesystem']
 ```
 
-### 2. Process Media Files
+---
 
-#### Mode 1: In-Process Host Execution
+### 2. Single Media Processing (`flagme-host process`)
 
-Runs the pipeline within the `flagme-host` process, sharing memory safely across plugins:
+Processes a single media file in-process through the configured pipeline and stores the result in `media.db`:
 
 ```bash
-cargo run --bin flagme-host -- process Examples/sample.jpg --config config.yaml
+cargo run -p flagme-host -- process Examples/sample.jpg --config config.yaml
 ```
 
-The CLI outputs the enriched `UnifiedDocument` as structured JSON, while concurrently persisting records to the SQLite database `media.db`.
+---
 
-#### Mode 2c: Host Subprocess Streaming Supervisor
+### 3. Subprocess Streaming Supervisor (`flagme-host stream`)
 
-Spawns each WASM plugin as an isolated child process, streaming JSON between them via stdin/stdout:
+Executes the pipeline in subprocess streaming mode via standard pipes:
 
 ```bash
-cargo run --bin flagme-host -- stream Examples/sample.jpg --config config.yaml
+cargo run -p flagme-host -- stream Examples/sample.jpg --config config.yaml
 ```
+
+---
+
+### 4. Full-Text Search FTS5 (`flagme-host search`)
+
+Queries the built-in SQLite FTS5 full-text index across AI tags, locations, country, camera model, description, and OCR text with BM25 ranking:
+
+```bash
+cargo run -p flagme-host -- search "Berlin Sony sunset" --config config.yaml
+```
+
+---
+
+### 5. Vector Similarity Search (`flagme-host similar`)
+
+Finds visually and semantically similar photos using cosine similarity ranking over stored 512-D CLIP embedding vectors:
+
+```bash
+cargo run -p flagme-host -- similar "doc_photo_1" --limit 10 --config config.yaml
+```
+
+---
+
+### 6. Directory Watcher & Batch Ingest (`flagme-host watch`)
+
+Runs a real-time event-driven directory ingestion daemon (using `notify`) with concurrent worker task pools, duplicate skipping, and automatic target directory organization:
+
+```bash
+cargo run -p flagme-host -- watch /media/import/ \
+  --target-dir /media/library/ \
+  --organize-by "{year}/{month}/{country}/{city}" \
+  --workers 4 \
+  --config config.yaml
+```
+
+---
+
+### 7. Embedded Web Dashboard & REST/GeoJSON API (`flagme-host serve`)
+
+Launches the embedded HTTP web server powered by Axum with an interactive Leaflet world map, gallery view, full-text search, and REST/GeoJSON endpoints:
+
+```bash
+cargo run -p flagme-host -- serve --port 8080 --bind 0.0.0.0 --config config.yaml
+```
+
+Open your browser at `http://localhost:8080` to view the media dashboard.
+
+#### REST & GeoJSON Endpoints:
+- `GET /api/photos?page=1&limit=50`: Paginated list of unified media documents.
+- `GET /api/photos/:id`: Detailed `UnifiedDocument` JSON payload.
+- `GET /api/photos/:id/thumbnail/:size`: Cached thumbnail image stream with HTTP `ETag` and `Cache-Control`.
+- `GET /api/map/markers`: GeoJSON `FeatureCollection` containing all geotagged photos with GPS Point coordinates and metadata.
+- `GET /api/search?q=:query`: FTS5 full-text search API.
 
 ---
 
@@ -262,16 +355,21 @@ Every plugin in `plugins/*` supports **Dual-Mode** compilation:
 
 ---
 
-## Documentation
+## Documentation & Spec-Driven Development (SDD)
 
+This repository strictly adheres to **Spec-Driven Development (SDD)** with zero-tolerance for untested code or specification drift:
+
+- [Project Constitution](constitution.md)
+- [Agent Guidelines (AGENTS.md)](AGENTS.md)
 - [Build Instructions](docs/build-instructions.md)
 - [Deployment Guide](docs/deployment-guide.md)
 - [Plugin Development Guide](docs/plugin-development-guide.md)
 - [Pipeline Model 2a: Unix CLI Streaming](docs/pipeline_unix_pipes.md)
 - [Pipeline Model 2b: Component Composition](docs/pipeline_component_composition.md)
 - [Pipeline Model 2c: Host Streaming Supervisor](docs/pipeline_host_supervisor.md)
-- [Verfassung & SDD Spezifikationen](constitution.md)
-- [GitHub Feature Specification Template](.github/ISSUE_TEMPLATE/feature_spec.md)
+- **PRD Specifications**: `docs/prd/*.md`
+- **Technical Design Specs**: `docs/design/*.md`
+- **Implementation Plans**: `docs/plans/*.md`
 
 ---
 
