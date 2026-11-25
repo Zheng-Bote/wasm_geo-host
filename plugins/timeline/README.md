@@ -1,46 +1,44 @@
 # Timeline Plugin (`flagme-plugin-timeline`)
 
 ## Overview
-The `timeline` plugin resolves and normalizes temporal timestamps across competing EXIF tags, XMP blocks, and filesystem metadata, creating a unified timeline for media libraries.
+
+The `timeline` plugin determines the effective capture time `taken_at` of a photo from competing sources (EXIF, XMP, file name, file system) and records where the value came from (`resolution_source`).
+
+| Property | Value |
+| :--- | :--- |
+| Plugin name (`config.yaml`) | `timeline` |
+| Crate | `flagme-plugin-timeline` (`cdylib` + `rlib` + `[[bin]]`) |
+| Version | `0.1.0` |
+| Reads | `doc.metadata.raw_tags`, `doc.file.filename`, `doc.file.path` (file system mtime) |
+| Writes | `doc.timeline` (`TimelineInfo`) |
+| Capabilities | `filesystem` (declared, see §4) |
+| Configurable via `settings` | **No** |
 
 ---
 
-## Key Features
+## 1. Key Features
 
-1. **Deterministic Conflict Resolution Order**:
-   Resolves the effective capture time (`taken_at`) using the following strict priority hierarchy:
-   1. **EXIF `DateTimeOriginal` / `SubSecTimeOriginal`**: Camera shutter time (highest priority).
-   2. **EXIF `CreateDate`**: Digital digitization time.
-   3. **XMP `xmp:CreateDate`**: Authoring metadata block.
-   4. **Filesystem `Modified`**: File write timestamp.
-   5. **Host `Imported`**: Time of arrival in the WASM Geo Host pipeline (fallback).
-2. **Provenance & Source Tracking**:
-   - Explicitly records `resolution_source` (e.g. `exif_datetime_original`, `imported_timestamp_fallback`), providing full transparency on how the timestamp was determined.
-3. **UTC Time Normalization**:
-   - Converts all timestamps to UTC ISO-8601 representation via `chrono::DateTime<Utc>`.
-4. **Dual-Mode Execution**:
-   - **Library Component (`cdylib`)**: Loaded into `flagme-host`.
-   - **Standalone CLI Binary (`[[bin]]`)**: Streams in Unix pipelines.
+1. **Fixed Priority Order** for `taken_at` (first match wins):
 
----
+   | Prio | Source | `raw_tags` key / origin | `resolution_source` |
+   | :---: | :--- | :--- | :--- |
+   | 1 | EXIF DateTimeOriginal | `Exif.Photo.DateTimeOriginal`, `Exif.DateTimeOriginal`, `Exif.Date/Time Original` | `exif_datetime_original` |
+   | 2 | EXIF DateTimeDigitized | `Exif.Photo.DateTimeDigitized`, `Exif.DateTimeDigitized` | `exif_datetime_digitized` |
+   | 3 | EXIF DateTime | `Exif.Image.DateTime`, `Exif.DateTime` | `exif_datetime` |
+   | 4 | XMP CreateDate | `XMP.xmp.CreateDate` | `xmp_create_date` |
+   | 5 | File name | `doc.file.filename` (patterns in §2.4) | `filename_timestamp` |
+   | 6 | File system | mtime of `doc.file.path` | `filesystem_modified_time` |
+   | 7 | Fallback | current time | `imported_timestamp_fallback` |
 
-## Data Model Output (`TimelineInfo`)
-
-```rust
-pub struct TimelineInfo {
-    pub taken_at: Option<DateTime<Utc>>,        // 2026-11-25T12:00:00Z
-    pub imported_at: DateTime<Utc>,             // 2026-11-25T12:00:52Z
-    pub modified_at: Option<DateTime<Utc>>,     // 2026-11-25T10:23:21Z
-    pub resolution_source: String,              // "exif_datetime_original"
-}
-```
+2. **Provenance** — `resolution_source` makes the decision traceable.
+3. **UTC Normalization** — all values as `chrono::DateTime<Utc>` (ISO 8601).
+4. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 
-## Required Capabilities
+## 2. Configuration & Parameters
 
-When executing under sandboxed host control (`config.yaml`), the plugin requires:
-- `filesystem`: Access to read file system timestamps when EXIF/XMP tags are absent.
+### 2.1 Plugin Entry (`config.yaml`)
 
 ```yaml
 plugins:
@@ -50,26 +48,100 @@ plugins:
       - filesystem
 ```
 
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `enabled` | bool | `true` | `false` → no `doc.timeline`; `weather-enrich` then uses its default date (see its README). |
+| `capabilities` | list | `[filesystem]` | See §4. |
+| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+
+### 2.2 `settings`
+
+This plugin has **no configurable parameters** (no time-zone setting, no custom priority order). Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+
+### 2.3 Accepted Date Formats in Metadata
+
+| Format | Example |
+| :--- | :--- |
+| EXIF | `2025:10:25 09:49:18` |
+| ISO without `T` | `2025-10-25 09:49:18` |
+| RFC 3339 | `2025-10-25T09:49:18+02:00`, `2025-10-25T07:49:18Z` |
+| File-name style | `2025-10-25_094918` |
+
+Surrounding quotes and whitespace are removed.
+
+### 2.4 File-Name Patterns (Prio 5)
+
+| Pattern (start of file stem) | Example | Result |
+| :--- | :--- | :--- |
+| `YYYY-MM-DD_HHMMSS` | `2025-10-25_094918.jpg` | `2025-10-25T09:49:18Z` |
+| `YYYY-MM-DD` | `2026-03-04_Stromzaehler.jpg` | `2026-03-04T12:00:00Z` (noon) |
+| 13-digit Unix epoch in ms (anywhere) | `app_inventor_1554303518406.jpg` | `2019-04-03T14:58:38.406Z` |
+
 ---
 
-## Usage Examples
+## 3. Pipeline Dependencies & Ordering
 
-### 1. In Host Pipeline
-```bash
-cargo run --bin flagme-host -- process Examples/sample.jpg --config config.yaml
-```
+1. **`metadata`** (before) → provides `raw_tags`. Without it the plugin starts at Prio 5.
+2. **`timeline`**.
+3. **`weather-enrich`** (after) → uses `taken_at` for date and hour.
 
-### 2. Standalone WASM CLI via Unix Pipe
-```bash
-cat doc.json | wasmtime run -S cli-exit-with-code target/wasm32-wasip2/release/flagme-plugin-timeline.wasm
-```
+---
 
-### 3. Verification in Document JSON
-```json
-"timeline": {
-  "taken_at": "2026-11-25T12:00:52.266045Z",
-  "imported_at": "2026-11-25T12:00:52.266045Z",
-  "modified_at": "2026-11-25T10:23:21.101882Z",
-  "resolution_source": "imported_timestamp_fallback"
+## 4. Required Capabilities
+
+| Capability | Used for | Note |
+| :--- | :--- | :--- |
+| `filesystem` | mtime of the file (Prio 6, `modified_at`) | The plugin currently calls `std::fs::metadata` **directly**, not via the host capability. In native host mode it works even without the grant; in a Wasm sandbox it needs a preopened directory. Tracked in [#25](https://github.com/Zheng-Bote/wasm_geo-host/issues/25). |
+
+---
+
+## 5. Data Model Output (`TimelineInfo`)
+
+```rust
+pub struct TimelineInfo {
+    pub taken_at: Option<DateTime<Utc>>,     // effective capture time (always set)
+    pub imported_at: DateTime<Utc>,          // time this plugin ran
+    pub modified_at: Option<DateTime<Utc>>,  // file system mtime, if readable
+    pub resolution_source: String,           // see table in §1
 }
 ```
+
+```json
+"timeline": {
+  "taken_at": "2025-10-25T09:49:18Z",
+  "imported_at": "2026-11-25T12:00:52.266045Z",
+  "modified_at": "2025-10-25T10:23:21.101882Z",
+  "resolution_source": "exif_datetime_original"
+}
+```
+
+---
+
+## 6. Usage Examples
+
+### 6.1 Host Pipeline
+
+```bash
+cargo run --bin flagme-host -- process Examples/2025/10/Germany/Munich/2025-10-25_094918.jpg --config config.yaml
+```
+
+### 6.2 Standalone CLI
+
+```bash
+cat doc.json | wasmtime run -S cli-exit-with-code --dir . \
+  target/wasm32-wasip2/release/flagme-plugin-timeline.wasm
+```
+
+### 6.3 SQLite
+
+```sql
+SELECT photo_id, taken_at, imported_at, modified_at, resolution_source FROM timelines;
+```
+
+---
+
+## 7. Limitations & Implementation Notes
+
+- **Local times are treated as UTC.** EXIF times without an offset (`OffsetTimeOriginal` is not evaluated) are stored unchanged as UTC — a photo taken at 09:49 CEST appears as `09:49Z`.
+- `SubSecTimeOriginal` is not evaluated (seconds precision).
+- Unparseable values in a higher-priority key do not stop the search; the next key is tried.

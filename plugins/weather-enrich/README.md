@@ -1,24 +1,133 @@
 # Weather Enrichment Plugin (`flagme-plugin-weather-enrich`)
 
-The **Weather Enrichment Plugin** enriches media items with historical environmental and meteorological conditions at the exact time and location of exposure.
+## Overview
+
+The `weather-enrich` plugin adds the historical weather at the place and hour a photo was taken: temperature, WMO weather code with label and emoji, humidity, precipitation and day/night. Data source is the free Open-Meteo Historical Weather API (ERA5 reanalysis). Without network access it uses a climatological estimate.
+
+| Property | Value |
+| :--- | :--- |
+| Plugin name (`config.yaml`) | `weather-enrich` |
+| Crate | `flagme-plugin-weather-enrich` (`cdylib` + `rlib` + `[[bin]]`) |
+| Version | `0.1.0` |
+| Reads | `doc.location.latitude/longitude`, `doc.timeline.taken_at` |
+| Writes | `doc.weather` (`WeatherInfo`) |
+| Capabilities | `http`, `kv` |
+| Configurable via `settings` | **No** |
 
 ---
 
-## 1. Features
-- **Historical Weather Lookup**: Integrates with the free and open Open-Meteo Historical Weather API (ERA5 reanalysis).
-- **Standard WMO Codes**: Maps World Meteorological Organization weather interpretation codes (0-99) to human-readable labels and emoji icons (e.g., `Clear Sky ☀️`, `Snow Fall ❄️`, `Thunderstorm ⛈️`).
-- **Capability-Based Caching**: Caches meteorological observations in the host KV-store using coordinate-hour keys (`weather:<lat>:<lon>:<date_hour>`) to minimize network bandwidth.
-- **WASI 0.2 Component**: Compiles to standard WebAssembly targeting `wasm32-wasip2`.
+## 1. Key Features
+
+1. **Historical Hourly Weather** — Open-Meteo archive, value of the capture hour (UTC).
+2. **WMO Code Mapping** — codes 0–99 → label + emoji (table in §2.4).
+3. **KV Caching** — per coordinate (2 decimals) and hour.
+4. **Offline Fallback** — climatological model from latitude, month and hour.
+5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 
-## 2. Capabilities Required
-- `kv`: Key-value storage for observation caching.
-- `http`: Outbound HTTP access to `archive-api.open-meteo.com`.
+## 2. Configuration & Parameters
+
+### 2.1 Plugin Entry (`config.yaml`)
+
+```yaml
+plugins:
+  weather-enrich:
+    enabled: true
+    capabilities:
+      - http     # archive-api.open-meteo.com
+      - kv       # cache
+```
+
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `enabled` | bool | `true` | `false` → no `doc.weather`. |
+| `capabilities` | list | `[http, kv]` | See §4. |
+| `settings` | map | `{}` | **Not evaluated** by this plugin. |
+
+### 2.2 `settings`
+
+This plugin has **no configurable parameters** (no API endpoint, API key or unit setting). An API key is not required for Open-Meteo. Settings support for all plugins is planned in [#26](https://github.com/Zheng-Bote/wasm_geo-host/issues/26).
+
+### 2.3 Built-in Parameters (fixed in code)
+
+| Parameter | Value | Effect |
+| :--- | :--- | :--- |
+| Endpoint | `https://archive-api.open-meteo.com/v1/archive` | |
+| Query | `latitude`/`longitude` (2 decimals), `start_date` = `end_date` = capture date, `hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,is_day` | one request per photo and day |
+| Coordinate precision | 2 decimals (≈ 1.1 km) | for request and cache key |
+| Cache key | `weather:{lat:.2}:{lon:.2}:{YYYY-MM-DD-HH}` | |
+| Hour selection | hour of `taken_at` (0–23), index into the `hourly` arrays | |
+| Missing `taken_at` | date `2025-07-15`, hour `12`, cache suffix `default-date` | |
+| HTTP timeout | 2 s (host capability) | |
+| Units | °C, %, mm | Open-Meteo defaults |
+
+### 2.4 WMO Code Mapping
+
+| WMO code | `condition` | `icon_emoji` |
+| :--- | :--- | :---: |
+| 0 | Clear Sky | ☀️ |
+| 1 | Mainly Clear | 🌤️ |
+| 2 | Partly Cloudy | ⛅ |
+| 3 | Overcast | ☁️ |
+| 45, 48 | Foggy | 🌫️ |
+| 51, 53, 55 | Drizzle | 🌦️ |
+| 56, 57 | Freezing Drizzle | 🌧️ |
+| 61, 63, 65 | Rain | 🌧️ |
+| 66, 67 | Freezing Rain | 🌧️ |
+| 71, 73, 75 | Snow Fall | ❄️ |
+| 77 | Snow Grains | ❄️ |
+| 80, 81, 82 | Rain Showers | 🌦️ |
+| 85, 86 | Snow Showers | 🌨️ |
+| 95 | Thunderstorm | ⛈️ |
+| 96, 99 | Thunderstorm with Hail | ⛈️ |
+| other | Variable Weather | 🌡️ |
+
+### 2.5 Climatological Fallback (offline)
+
+Used if the HTTP request fails or the response cannot be parsed:
+
+| Value | Formula / rule |
+| :--- | :--- |
+| `temperature` | `27 − 0.45 · abs(lat)` + seasonal swing `±11 °C` (peak July north / January south) + daily swing `±4 °C`, rounded to 0.1 |
+| `wmo_code` | `71` (snow) if temperature < −1 °C or `abs(lat) > 60`; otherwise deterministic from coordinates, month and hour: 0, 1, 2, 3 or 61 |
+| `is_day` | hour between 6 and 19 |
+| `humidity_percent` / `precipitation_mm` | fixed per code (e.g. rain 82 % / 2.4 mm, clear 55 % / 0.0 mm) |
 
 ---
 
-## 3. Data Output (`UnifiedDocument.weather`)
+## 3. Pipeline Dependencies & Ordering
+
+1. **`metadata`** (before) → coordinates. Without `latitude` **and** `longitude` the plugin logs `No GPS coordinates…` and returns the document unchanged.
+2. **`timeline`** (before) → `taken_at`.
+3. **`weather-enrich`**.
+4. **`privacy-redact`** (after) → otherwise the weather would be queried for rounded coordinates.
+
+---
+
+## 4. Required Capabilities
+
+| Capability | Used for | Without the grant |
+| :--- | :--- | :--- |
+| `http` | Open-Meteo request | Always the climatological fallback (estimated values!). |
+| `kv` | cache | Every photo triggers a new request. |
+
+---
+
+## 5. Data Model Output (`WeatherInfo`)
+
+```rust
+pub struct WeatherInfo {
+    pub temperature: Option<f32>,       // °C
+    pub condition: String,              // "Clear Sky"
+    pub wmo_code: u8,                   // 0
+    pub icon_emoji: String,             // "☀️"
+    pub humidity_percent: Option<u8>,   // 0..100
+    pub precipitation_mm: Option<f32>,
+    pub is_day: Option<bool>,
+}
+```
+
 ```json
 {
   "temperature": 21.5,
@@ -30,3 +139,37 @@ The **Weather Enrichment Plugin** enriches media items with historical environme
   "is_day": true
 }
 ```
+
+---
+
+## 6. Usage Examples
+
+### 6.1 Host Pipeline
+
+```bash
+cargo run --bin flagme-host -- process Examples/sample.jpg --config config.yaml
+```
+
+### 6.2 Standalone CLI
+
+```bash
+cat doc_with_location_and_timeline.json | wasmtime run -S cli-exit-with-code \
+  target/wasm32-wasip2/release/flagme-plugin-weather-enrich.wasm
+```
+
+The CLI has no HTTP capability → always the climatological fallback. Empty input prints `Plugin weather-enrich v0.1.0`.
+
+### 6.3 SQLite
+
+```sql
+SELECT photo_id, temperature, condition, wmo_code, icon_emoji, humidity_percent, precipitation_mm, is_day FROM weather;
+```
+
+---
+
+## 7. Limitations & Implementation Notes
+
+- **Fallback values are not marked.** `WeatherInfo` has no field that tells measured and estimated values apart; in the output, an estimate looks like real data.
+- Because `timeline` stores local times as UTC (see its README), the selected hour can be off by the time-zone offset.
+- The ERA5 archive has a delay of a few days; very recent photos may get no data and fall back to the estimate.
+- The KV cache lives in memory of the host process.
