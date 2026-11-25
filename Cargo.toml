@@ -11,4 +11,5 @@ members = [
     "plugins/ai-tagging",
     "plugins/duplicate",
     "plugins/timeline",
+    "plugins/weather-enrich",
 ]

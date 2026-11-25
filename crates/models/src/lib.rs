@@ -21,6 +21,8 @@ pub struct UnifiedDocument {
     pub duplicate: Option<DuplicateInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeline: Option<TimelineInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weather: Option<WeatherInfo>,
     #[serde(default)]
     pub custom: HashMap<String, serde_json::Value>,
 }
@@ -37,6 +39,7 @@ impl UnifiedDocument {
             ai: None,
             duplicate: None,
             timeline: None,
+            weather: None,
             custom: HashMap::new(),
         }
     }
@@ -134,6 +137,17 @@ pub struct AiTag {
     pub label: String,
     pub confidence: f32,
     pub model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct WeatherInfo {
+    pub temperature: Option<f32>,
+    pub condition: String,
+    pub wmo_code: u8,
+    pub icon_emoji: String,
+    pub humidity_percent: Option<u8>,
+    pub precipitation_mm: Option<f32>,
+    pub is_day: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

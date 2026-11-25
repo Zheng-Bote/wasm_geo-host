@@ -97,3 +97,19 @@ CREATE TABLE IF NOT EXISTS photo_embeddings (
     model TEXT NOT NULL
 );
 
+-- Historical Meteorological Weather Conditions
+CREATE TABLE IF NOT EXISTS weather (
+    photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+    temperature REAL,
+    condition TEXT NOT NULL,
+    wmo_code INTEGER NOT NULL,
+    icon_emoji TEXT NOT NULL,
+    humidity_percent INTEGER,
+    precipitation_mm REAL,
+    is_day INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_weather_condition ON weather(condition);
+CREATE INDEX IF NOT EXISTS idx_weather_temp ON weather(temperature);
+
+

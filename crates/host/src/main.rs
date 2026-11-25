@@ -6,6 +6,7 @@ use flagme_plugin_metadata::MetadataPlugin;
 use flagme_plugin_reversegeo::ReverseGeoPlugin;
 use flagme_plugin_thumbnail::ThumbnailPlugin;
 use flagme_plugin_timeline::TimelinePlugin;
+use flagme_plugin_weather_enrich::WeatherEnrichPlugin;
 use wasm_geo_models::{FileInfo, UnifiedDocument};
 use std::path::Path;
 use std::sync::Arc;
@@ -133,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
     runtime.register_plugin(Arc::new(AiTaggingPlugin::new()));
     runtime.register_plugin(Arc::new(DuplicatePlugin::new()));
     runtime.register_plugin(Arc::new(TimelinePlugin::new()));
+    runtime.register_plugin(Arc::new(WeatherEnrichPlugin::new()));
 
     let pipeline = Pipeline::new(config, runtime, storage);
 

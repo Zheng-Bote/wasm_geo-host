@@ -122,6 +122,7 @@ dependencies = [
  "flagme-plugin-reversegeo",
  "flagme-plugin-thumbnail",
  "flagme-plugin-timeline",
+ "flagme-plugin-weather-enrich",
  "flagme-sdk",
  "serde",
  "serde_json",
@@ -179,6 +180,14 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "flagme-sdk",
+]
+
+[[package]]
+name = "flagme-plugin-weather-enrich"
+version = "0.1.0"
+dependencies = [
+ "flagme-sdk",
+ "serde_json",
 ]
 
 [[package]]
