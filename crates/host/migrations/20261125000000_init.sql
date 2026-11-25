@@ -87,7 +87,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS photos_fts USING fts5(
     local_city,
     ai_tags,
     description,
-    raw_tags
+    raw_tags,
+    ocr_text
 );
 
 -- Dense Vector Embeddings (512-dim Float32 BLOBs)
@@ -111,5 +112,26 @@ CREATE TABLE IF NOT EXISTS weather (
 
 CREATE INDEX IF NOT EXISTS idx_weather_condition ON weather(condition);
 CREATE INDEX IF NOT EXISTS idx_weather_temp ON weather(temperature);
+
+-- OCR Optical Character Recognition Texts & Regions
+CREATE TABLE IF NOT EXISTS ocr_texts (
+    photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+    combined_text TEXT NOT NULL,
+    primary_language TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ocr_regions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    bbox_x REAL NOT NULL,
+    bbox_y REAL NOT NULL,
+    bbox_w REAL NOT NULL,
+    bbox_h REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocr_regions_photo ON ocr_regions(photo_id);
+
 
 

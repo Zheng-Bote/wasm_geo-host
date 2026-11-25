@@ -1,0 +1,16 @@
+[package]
+name = "flagme-plugin-ocr-text"
+version = "0.1.0"
+edition = "2021"
+description = "OCR Text Recognition Plugin for WASM Geo Host"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "flagme-plugin-ocr-text"
+path = "src/main.rs"
+
+[dependencies]
+flagme-sdk = { path = "../../crates/sdk" }
+serde_json = "1.0"

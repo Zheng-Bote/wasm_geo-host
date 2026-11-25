@@ -12,4 +12,5 @@ members = [
     "plugins/duplicate",
     "plugins/timeline",
     "plugins/weather-enrich",
+    "plugins/ocr-text",
 ]

@@ -19,6 +19,7 @@ flagme-plugin-ai-tagging = { path = "../../plugins/ai-tagging" }
 flagme-plugin-duplicate = { path = "../../plugins/duplicate" }
 flagme-plugin-timeline = { path = "../../plugins/timeline" }
 flagme-plugin-weather-enrich = { path = "../../plugins/weather-enrich" }
+flagme-plugin-ocr-text = { path = "../../plugins/ocr-text" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }

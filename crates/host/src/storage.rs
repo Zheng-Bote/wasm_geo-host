@@ -31,6 +31,7 @@ pub struct Storage {
     duplicates: Arc<Mutex<HashMap<String, DuplicateInfo>>>,
     timelines: Arc<Mutex<HashMap<String, TimelineInfo>>>,
     weather: Arc<Mutex<HashMap<String, WeatherInfo>>>,
+    ocr: Arc<Mutex<HashMap<String, OcrInfo>>>,
 }
 
 impl Storage {
@@ -46,6 +47,7 @@ impl Storage {
             duplicates: Arc::new(Mutex::new(HashMap::new())),
             timelines: Arc::new(Mutex::new(HashMap::new())),
             weather: Arc::new(Mutex::new(HashMap::new())),
+            ocr: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -124,6 +126,11 @@ impl Storage {
             if let Some(w) = &doc.weather {
                 let mut weather = self.weather.lock().unwrap();
                 weather.insert(doc.id.clone(), w.clone());
+            }
+
+            if let Some(o) = &doc.ocr {
+                let mut ocr = self.ocr.lock().unwrap();
+                ocr.insert(doc.id.clone(), o.clone());
             }
         }
 
@@ -235,13 +242,14 @@ impl Storage {
             m.raw_tags.values().map(|v| v.as_str()).collect::<Vec<_>>().join(" ")
         }).unwrap_or_default();
         let description = doc.custom.get("description").and_then(|v| v.as_str()).unwrap_or("");
+        let ocr_text_str = doc.ocr.as_ref().map(|o| o.combined_text.as_str()).unwrap_or("");
 
         sql.push_str(&format!(
             "DELETE FROM photos_fts WHERE photo_id = '{}';\n",
             escape_sql(&doc.id)
         ));
         sql.push_str(&format!(
-            "INSERT INTO photos_fts (photo_id, filename, camera_make, camera_model, country, local_country, city, local_city, ai_tags, description, raw_tags) VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');\n",
+            "INSERT INTO photos_fts (photo_id, filename, camera_make, camera_model, country, local_country, city, local_city, ai_tags, description, raw_tags, ocr_text) VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');\n",
             escape_sql(&doc.id),
             escape_sql(&doc.file.filename),
             escape_sql(camera_make),
@@ -252,7 +260,8 @@ impl Storage {
             escape_sql(local_city),
             escape_sql(&ai_tags_str),
             escape_sql(description),
-            escape_sql(&raw_tags_str)
+            escape_sql(&raw_tags_str),
+            escape_sql(ocr_text_str)
         ));
 
         // Persist dense vector embedding as SQLite BLOB if present
@@ -289,6 +298,28 @@ impl Storage {
             ));
         }
 
+        if let Some(ocr) = &doc.ocr {
+            let primary_lang = ocr.primary_language.as_deref().unwrap_or("");
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO ocr_texts (photo_id, combined_text, primary_language) VALUES ('{}', '{}', '{}');\n",
+                escape_sql(&doc.id),
+                escape_sql(&ocr.combined_text),
+                escape_sql(primary_lang)
+            ));
+            for reg in &ocr.regions {
+                sql.push_str(&format!(
+                    "INSERT INTO ocr_regions (photo_id, text, confidence, bbox_x, bbox_y, bbox_w, bbox_h) VALUES ('{}', '{}', {}, {}, {}, {}, {});\n",
+                    escape_sql(&doc.id),
+                    escape_sql(&reg.text),
+                    reg.confidence,
+                    reg.bbox.x,
+                    reg.bbox.y,
+                    reg.bbox.width,
+                    reg.bbox.height
+                ));
+            }
+        }
+
         if let Ok(mut child) = Command::new("sqlite3")
             .arg(&self.db_path)
             .stdin(Stdio::piped())
@@ -318,6 +349,7 @@ impl Storage {
         let duplicate = self.duplicates.lock().unwrap().get(id).cloned();
         let timeline = self.timelines.lock().unwrap().get(id).cloned();
         let weather = self.weather.lock().unwrap().get(id).cloned();
+        let ocr = self.ocr.lock().unwrap().get(id).cloned();
 
         let country = if let Some(loc) = &location {
             if let Some(code) = &loc.country_code {
@@ -340,6 +372,7 @@ impl Storage {
             duplicate,
             timeline,
             weather,
+            ocr,
             custom: HashMap::new(),
         })
     }
