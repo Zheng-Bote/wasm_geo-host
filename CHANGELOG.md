@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Plugin settings (#26)**: all plugins read and honour their `settings` from `config.yaml` via the shared SDK module `flagme_sdk::settings` (typed settings, shared parsing rules, warnings for invalid, unsupported and unknown keys). Parameters per plugin are documented in each plugin README §2.2.
+- `duplicate`: Hamming threshold `phash_threshold`; `timeline`: `timezone` (IANA via `chrono-tz`) and `source_priority`; `ai-tagging` / `face-detection` / `ocr-text`: model, tier and engine selected per call.
+
+### Changed
+- `privacy-redact`: booleans follow the shared rule — `yes`/`on`/`1` now enable a feature (previously only `true`).
+- Host YAML reader keeps `#` inside quoted values.
+- Profiles `config.docker.yaml` / `config.mac-studio.yaml`: removed keys without implementation (`device`, `ocr-text.engine`, `max_image_dimension`).
+
 ## [0.1.0] - 2026-11-25
 
 ### Added

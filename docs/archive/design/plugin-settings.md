@@ -1,6 +1,6 @@
 ---
 feature: plugin-settings
-status: accepted
+status: archived
 archive-after:
 touches:
   - crates/sdk/**
