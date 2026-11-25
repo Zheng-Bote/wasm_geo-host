@@ -11,6 +11,28 @@
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 
+<details>
+<summary>Table of Contents</summary>
+
+- [Architecture (C4 Model)](#architecture-c4-model)
+- [Pipeline Execution Workflow](#pipeline-execution-workflow)
+- [Included Plugins](#included-plugins)
+- [Setup & Prerequisites](#setup-prerequisites)
+  - [macOS](#macos)
+  - [Linux (Ubuntu / Debian / RHEL)](#linux-ubuntu-debian-rhel)
+- [Build & Test](#build-test)
+- [Usage](#usage)
+  - [1. Configure Capabilities and Pipeline (`config.yaml`)](#1-configure-capabilities-and-pipeline-configyaml)
+  - [2. Process Media Files](#2-process-media-files)
+    - [Mode 1: In-Process Host Execution](#mode-1-in-process-host-execution)
+    - [Mode 2c: Host Subprocess Streaming Supervisor](#mode-2c-host-subprocess-streaming-supervisor)
+- [Dual-Mode & Advanced Pipeline Execution Models](#dual-mode-advanced-pipeline-execution-models)
+  - [Advanced Pipeline Models](#advanced-pipeline-models)
+- [Documentation](#documentation)
+- [License & Attribution](#license-attribution)
+
+</details>
+
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ---
