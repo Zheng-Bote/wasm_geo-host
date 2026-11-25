@@ -1,4 +1,7 @@
-use flagme_host::{AppConfig, DirectoryWatcher, Pipeline, PluginRuntime, Storage, StreamSupervisor, WatcherConfig};
+use flagme_host::{
+    run_server, AppConfig, DirectoryWatcher, Pipeline, PluginRuntime, Storage, StreamSupervisor,
+    WatcherConfig,
+};
 use flagme_plugin_ai_tagging::AiTaggingPlugin;
 use flagme_plugin_countryflag::CountryFlagPlugin;
 use flagme_plugin_duplicate::DuplicatePlugin;
@@ -27,6 +30,44 @@ async fn main() -> anyhow::Result<()> {
     let is_stream = args[1] == "stream";
     let is_process = args[1] == "process";
     let is_watch = args[1] == "watch";
+    let is_serve = args[1] == "serve";
+
+    if is_serve {
+        let config_path = args
+            .iter()
+            .position(|arg| arg == "--config")
+            .and_then(|idx| args.get(idx + 1))
+            .map(|s| s.as_str())
+            .unwrap_or("config.yaml");
+
+        let port: u16 = args
+            .iter()
+            .position(|arg| arg == "--port")
+            .and_then(|idx| args.get(idx + 1))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(8080);
+
+        let bind_addr = args
+            .iter()
+            .position(|arg| arg == "--bind")
+            .and_then(|idx| args.get(idx + 1))
+            .cloned()
+            .unwrap_or_else(|| "0.0.0.0".to_string());
+
+        let config = if Path::new(config_path).exists() {
+            AppConfig::load_from_file(config_path)?
+        } else {
+            AppConfig::default()
+        };
+
+        let storage = Arc::new(Storage::new(&config.database_path));
+        storage.init_schema()?;
+
+        let socket_addr: std::net::SocketAddr = format!("{}:{}", bind_addr, port).parse()?;
+        println!("Starting flagme-host embedded web server at http://{}", socket_addr);
+        run_server(socket_addr, storage).await?;
+        return Ok(());
+    }
 
     if is_watch {
         if args.len() < 3 {

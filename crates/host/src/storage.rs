@@ -438,6 +438,27 @@ impl Storage {
         })
     }
 
+    /// Returns a list of all documents currently stored in memory or on disk.
+    pub fn list_documents(&self, page: usize, limit: usize) -> Vec<UnifiedDocument> {
+        let ids: Vec<String> = {
+            let photos = self.photos.lock().unwrap();
+            let mut list: Vec<String> = photos.keys().cloned().collect();
+            list.sort();
+            list
+        };
+
+        let start = page.saturating_sub(1) * limit;
+        if start >= ids.len() {
+            return Vec::new();
+        }
+
+        ids.into_iter()
+            .skip(start)
+            .take(limit)
+            .filter_map(|id| self.get_document(&id))
+            .collect()
+    }
+
     /// Checks if a file with the given SHA-256 hash has already been stored.
     pub fn has_sha256(&self, sha256_hash: &str) -> bool {
         if sha256_hash.is_empty() {
