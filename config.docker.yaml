@@ -1,0 +1,77 @@
+# config.docker.yaml - Optimized for Docker Containers & Resource-Constrained Environments (e.g. 512MB - 2GB RAM limits)
+database_path: "media.db"
+
+resource_limits:
+  max_memory_bytes: 536870912 # 512 MB per plugin sandbox
+  timeout_ms: 15000            # 15s timeout for CPU-only inference
+
+pipeline:
+  - metadata
+  - reversegeo
+  - countryflag
+  - thumbnail
+  - ai-tagging
+  - duplicate
+  - timeline
+  - weather-enrich
+  - ocr-text
+  - face-detection
+  - privacy-redact
+
+plugins:
+  metadata:
+    enabled: true
+    capabilities: ["filesystem"]
+  reversegeo:
+    enabled: true
+    capabilities: ["http", "kv"]
+    settings:
+      offline_cache: "true"
+  countryflag:
+    enabled: true
+    capabilities: []
+  thumbnail:
+    enabled: true
+    capabilities: ["filesystem"]
+    settings:
+      quality: "80"
+      max_dimension: "1024"
+  ai-tagging:
+    enabled: true
+    capabilities: ["filesystem"]
+    settings:
+      model: "MobileNetV3" # Quantized lightweight vision classifier (INT8)
+      model_tier: "lightweight"
+      embedding_dim: "512"
+  duplicate:
+    enabled: true
+    capabilities: ["filesystem", "kv"]
+    settings:
+      phash_threshold: "10"
+  timeline:
+    enabled: true
+    capabilities: ["filesystem"]
+  weather-enrich:
+    enabled: true
+    capabilities: ["http", "kv"]
+  ocr-text:
+    enabled: true
+    capabilities: ["filesystem"]
+    settings:
+      engine: "CRAFT-CRNN-Quantized" # Low-overhead text detection
+      max_image_dimension: "1024"
+  face-detection:
+    enabled: true
+    capabilities: ["filesystem"]
+    settings:
+      tier: "lightweight" # UltraFace-Slim-INT8 (128-D embeddings)
+      min_confidence: "0.85"
+  privacy-redact:
+    enabled: true
+    capabilities: ["filesystem"]
+    settings:
+      style: "pixelate"
+      block_size: "16"
+      fuzz_gps: "true"
+      gps_decimal_places: "2"
+      strip_serials: "true"

@@ -23,12 +23,13 @@
 - [Build & Test](#build-test)
 - [Usage & CLI Commands](#usage-cli-commands)
   - [1. Configure Capabilities and Pipeline (`config.yaml`)](#1-configure-capabilities-and-pipeline-configyaml)
-  - [2. Single Media Processing (`flagme-host process`)](#2-single-media-processing-flagme-host-process)
-  - [3. Subprocess Streaming Supervisor (`flagme-host stream`)](#3-subprocess-streaming-supervisor-flagme-host-stream)
-  - [4. Full-Text Search FTS5 (`flagme-host search`)](#4-full-text-search-fts5-flagme-host-search)
-  - [5. Vector Similarity Search (`flagme-host similar`)](#5-vector-similarity-search-flagme-host-similar)
-  - [6. Directory Watcher & Batch Ingest (`flagme-host watch`)](#6-directory-watcher-batch-ingest-flagme-host-watch)
-  - [7. Embedded Web Dashboard & REST/GeoJSON API (`flagme-host serve`)](#7-embedded-web-dashboard-restgeojson-api-flagme-host-serve)
+  - [2. Hardware & Environment Profiles (Docker vs. Mac Studio 32GB)](#2-hardware--environment-profiles-docker-vs-mac-studio-32gb)
+  - [3. Single Media Processing (`flagme-host process`)](#3-single-media-processing-flagme-host-process)
+  - [4. Subprocess Streaming Supervisor (`flagme-host stream`)](#4-subprocess-streaming-supervisor-flagme-host-stream)
+  - [5. Full-Text Search FTS5 (`flagme-host search`)](#5-full-text-search-fts5-flagme-host-search)
+  - [6. Vector Similarity Search (`flagme-host similar`)](#6-vector-similarity-search-flagme-host-similar)
+  - [7. Directory Watcher & Batch Ingest (`flagme-host watch`)](#7-directory-watcher-batch-ingest-flagme-host-watch)
+  - [8. Embedded Web Dashboard & REST/GeoJSON API (`flagme-host serve`)](#8-embedded-web-dashboard-restgeojson-api-flagme-host-serve)
     - [REST & GeoJSON Endpoints:](#rest-geojson-endpoints)
 - [Dual-Mode & Advanced Pipeline Execution Models](#dual-mode-advanced-pipeline-execution-models)
   - [Advanced Pipeline Models](#advanced-pipeline-models)
@@ -260,7 +261,35 @@ plugins:
 
 ---
 
-### 2. Single Media Processing (`flagme-host process`)
+### 2. Hardware & Environment Profiles (Docker vs. Mac Studio 32GB)
+
+The platform includes production-ready configuration profiles tailored for different hardware tiers:
+
+#### A. Docker / Container Profile (`config.docker.yaml`)
+Designed for CPU-constrained container environments (e.g. 512 MB – 2 GB RAM limit per container).
+- **Vision Model**: `MobileNetV3` (Quantized INT8 classification).
+- **Face Detection**: `UltraFace-Slim-INT8` (Lightweight 128-D embeddings).
+- **OCR Engine**: Quantized low-memory text recognition.
+- **Memory Limit**: 512 MB per sandbox instance.
+
+```bash
+cargo run -p flagme-host -- process /media/photo.jpg --config config.docker.yaml
+```
+
+#### B. Mac Studio M-Series / High-End Workstation Profile (`config.mac-studio.yaml`)
+Designed for Apple Silicon workstations with 32 GB+ Unified Memory (leveraging Metal / MPS acceleration where available).
+- **Vision Foundation Model**: `OpenCLIP-ConvNeXt-Large` (Dense 512-D vectors for semantic search).
+- **Face Detection & Recognition**: `SCRFD + ArcFace-ResNet100` (High-precision 512-D identity embeddings).
+- **OCR Engine**: High-resolution multi-lingual server-grade OCR engine.
+- **Memory Limit**: 4 GB per sandbox instance; supports 2048px high-fidelity thumbnail generation.
+
+```bash
+cargo run -p flagme-host -- process /media/photo.jpg --config config.mac-studio.yaml
+```
+
+---
+
+### 3. Single Media Processing (`flagme-host process`)
 
 Processes a single media file in-process through the configured pipeline and stores the result in `media.db`:
 
