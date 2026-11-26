@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Host YAML reader keeps `#` inside quoted values.
 - Profiles `config.docker.yaml` / `config.mac-studio.yaml`: removed keys without implementation (`device`, `ocr-text.engine`, `max_image_dimension`).
 
+### Fixed
+- `privacy-redact` (#22): faces are now redacted pixel-accurately inside each `DetectedFace.bbox` on the decoded image (`pixelate` with `block_size` px blocks, Gaussian `blur` with `blur_sigma`, `blackout`) and re-encoded as a valid JPEG (quality 90, no source metadata). Previously a byte range of the encoded file was overwritten. `redacted_<N>_faces_via_<style>` now counts only processed faces; read, decode or write failures log a warning and record no redaction. The `std::fs` write fallback was removed, so writes go through the `filesystem` capability only.
+
 ## [0.1.0] - 2026-11-25
 
 ### Added

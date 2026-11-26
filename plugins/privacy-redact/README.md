@@ -18,7 +18,7 @@ The `privacy-redact` plugin sanitizes personal data (GDPR / DSGVO) before media 
 
 ## 1. Key Features
 
-1. **Face Region Obfuscation** — if `doc.faces` contains at least one face, a redacted copy of the source file is written to `<output_dir>/<doc.id>.redacted.jpg`. Three styles: `pixelate` (default), `blur`, `blackout` (see §8 for the current implementation level).
+1. **Face Region Obfuscation** — if `doc.faces` contains at least one face, a redacted copy of the source file is written to `<output_dir>/<doc.id>.redacted.jpg`. The source is decoded (JPEG only), every `DetectedFace.bbox` is converted to a pixel rectangle and only that rectangle is obfuscated; the result is re-encoded as JPEG (quality 90, same dimensions, **no** EXIF/XMP/IPTC of the original). Three styles: `pixelate` (default), `blur`, `blackout`.
 2. **GPS Coordinate Fuzzing** — rounds `doc.location.latitude` / `longitude` to `gps_decimal_places` decimals, keeping city/district context for maps.
 3. **Hardware Serial Stripping** (on request, the only permitted change to `raw_tags`, see [ADR 0001](../../docs/adr/0001-raw-tags-original-serial-stripping.md)) — removes every `raw_tags` key containing `serialnumber` or `serial_number` (case-insensitive), e.g. `CameraSerialNumber`, `LensSerialNumber`, `Exif.BodySerialNumber`.
 4. **Audit Trail** — every applied rule is recorded in `doc.privacy.applied_rules` and persisted to SQLite.
@@ -54,9 +54,9 @@ All `settings` values are passed to the plugin as **strings** (`HashMap<String, 
 | Key *(aliases)* | Rust field (`PrivacySettings`) | Type | Default | Valid values / range | Effect |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `style` *(`redaction_style`)* | `style: RedactionStyle` | enum | `pixelate` | `pixelate` (`mosaic`), `blur` (`gaussian`), `blackout` (`solid`, `mask`) — case-insensitive | Obfuscation style for the redacted image. Adds rule `redacted_<N>_faces_via_<style>`. |
-| `block_size` | `block_size: u32` | integer | `16` | `2`–`128` (clamped) | Mosaic block width in bytes for `pixelate`. Larger = coarser. |
-| `blur_sigma` | `blur_sigma: f32` | float | `24.0` | `1.0`–`100.0` (clamped) | Intended Gaussian sigma for `blur`. **Currently parsed but without effect** (see §8). |
-| `redact_faces` | `redact_faces: bool` | bool | `true` | `true` / `false` | `true` → count faces from `doc.faces` and write the redacted copy. `false` → no image is written, `faces_redacted_count = 0`. |
+| `block_size` | `block_size: u32` | integer | `16` | `2`–`128` (clamped) | Edge length in pixels of the uniform mosaic blocks for `pixelate` (block colour = mean of its pixels). Larger = coarser. |
+| `blur_sigma` | `blur_sigma: f32` | float | `24.0` | `1.0`–`100.0` (clamped) | Gaussian sigma in pixels for `blur`. Larger = stronger blur. |
+| `redact_faces` | `redact_faces: bool` | bool | `true` | `true` / `false` | `true` → redact every face in `doc.faces` and write the redacted copy. `false` → no image is written, `faces_redacted_count = 0`. |
 | `fuzz_gps` *(`fuzz_gps_coordinates`)* | `fuzz_gps: bool` | bool | `true` | `true` / `false` | `true` → round `latitude`/`longitude` (only if both are present). Sets `original_gps_fuzzed = true` and adds rule `fuzzed_gps_precision_<d>_decimals`. |
 | `gps_decimal_places` | `gps_decimal_places: u32` | integer | `2` | `0`–`6` (values > 6 become 6) | Decimals kept: `round(coord × 10^d) / 10^d`. |
 | `strip_serial_numbers` *(`strip_serials`)* | `strip_serial_numbers: bool` | bool | `true` | `true` / `false` | `true` → remove serial-number keys from `raw_tags`. Adds rule `stripped_hardware_serial_numbers` only if at least one key was removed. |
@@ -115,7 +115,7 @@ If an upstream stage is missing, the respective step is skipped without error (n
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(doc.file.path)`, `fs_write(<output_dir>/…)` | No redacted image is created in the sandbox (see the fallback note in §8). GPS fuzzing and serial stripping still work. |
+| `filesystem` | `fs_read(doc.file.path)`, `fs_write(<output_dir>/…)` | No redacted image is created; a warning is logged and no `redacted_…` rule is recorded. GPS fuzzing and serial stripping still work. |
 
 ---
 
@@ -123,11 +123,11 @@ If an upstream stage is missing, the respective step is skipped without error (n
 
 ```rust
 pub struct PrivacyInfo {
-    pub is_redacted: bool,                    // true if faces > 0, GPS fuzzed, or any rule applied
-    pub faces_redacted_count: usize,          // number of entries in doc.faces.faces (0 if redact_faces = false)
+    pub is_redacted: bool,                    // true if at least one rule was applied
+    pub faces_redacted_count: usize,          // faces actually redacted (valid bbox, image written)
     pub license_plates_redacted_count: usize, // always 0 (not implemented yet)
     pub original_gps_fuzzed: bool,
-    pub redacted_image_path: Option<String>,  // Some(..) only if faces_redacted_count > 0
+    pub redacted_image_path: Option<String>,  // Some(..) only if the redacted copy was written
     pub applied_rules: Vec<String>,
 }
 ```
@@ -136,7 +136,7 @@ Possible `applied_rules` entries:
 
 | Rule | Condition |
 | :--- | :--- |
-| `redacted_<N>_faces_via_<style>` | `redact_faces = true` and `N > 0` faces |
+| `redacted_<N>_faces_via_<style>` | `redact_faces = true`, the image was decoded and written, and `N > 0` faces had a valid bbox |
 | `fuzzed_gps_precision_<d>_decimals` | `fuzz_gps = true` and latitude + longitude present |
 | `stripped_hardware_serial_numbers` | `strip_serial_numbers = true` and at least one key removed |
 
@@ -208,8 +208,7 @@ let plugin = PrivacyRedactPlugin::with_settings(PrivacySettings {
 
 ## 8. Limitations & Implementation Notes
 
-- **Image obfuscation is not bounding-box based yet.** The plugin overwrites a byte segment of the encoded file (offset `len/3`, length `len/4`, `0xFF` bytes kept; only files > 256 bytes). `DetectedFace.bbox` is not evaluated; `blur_sigma` has no effect. The output is a corrupted copy of the original, not a pixel-accurate redaction. Tracked in [#22](https://github.com/Zheng-Bote/wasm_geo-host/issues/22).
+- **Image redaction (JPEG only).** Other formats, unreadable files and write failures log `privacy-redact: faces in '<path>' NOT redacted: <reason>` and record no `redacted_…` rule. Bounding boxes are clamped to the image and refer to the stored pixel grid; EXIF orientation is not applied. A box without a valid area (zero size, `NaN`, fully outside) is skipped with a warning and not counted.
 - **`raw_tags` keeps the original values (by design).** GPS fuzzing only changes `doc.location`; EXIF tags such as `Exif.GPSLatitude` / `Exif.GPSLongitude` and the aggregated `Exif`, `IPTC`, `XMP` JSON strings in `raw_tags` are left untouched as the lossless original record ([ADR 0001](../../docs/adr/0001-raw-tags-original-serial-stripping.md)).
 - **Serial-number stripping is the only permitted change to `raw_tags`** and only when requested (`strip_serial_numbers`, [ADR 0001](../../docs/adr/0001-raw-tags-original-serial-stripping.md)). It currently filters *keys* only; `CameraSerialNumber` / `LensSerialNumber` inside the aggregated `raw_tags["Exif"]` JSON string remain.
-- **Write fallback:** if `fs_write` fails (e.g. capability missing), the plugin writes directly via `std::fs` in native host mode. Inside a Wasm sandbox without a preopened directory this fails silently. Tracked in [#25](https://github.com/Zheng-Bote/wasm_geo-host/issues/25).
 - `license_plates_redacted_count` is always `0`.
