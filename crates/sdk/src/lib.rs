@@ -47,6 +47,11 @@ pub trait HostCapabilities: Send + Sync {
         let _ = (path, data);
         Err(PluginError::CapabilityDenied("filesystem".to_string()))
     }
+    /// Last modification time of `path` as Unix seconds (capability `filesystem`).
+    fn fs_modified(&self, path: &str) -> PluginResult<u64> {
+        let _ = path;
+        Err(PluginError::CapabilityDenied("filesystem".to_string()))
+    }
     fn http_get(&self, url: &str) -> PluginResult<String>;
     fn kv_get(&self, key: &str) -> PluginResult<Option<String>>;
     fn kv_set(&self, key: &str, value: &str) -> PluginResult<()>;
@@ -86,6 +91,17 @@ pub trait Plugin: Send + Sync {
     fn process(&self, doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument>;
 }
 
+/// Modification time of a file as Unix seconds; used by capability implementations only.
+pub fn modified_unix_seconds(path: &Path) -> PluginResult<u64> {
+    let modified = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .map_err(|e| PluginError::Io(format!("fs_modified failed for {}: {}", path.display(), e)))?;
+    modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .map_err(|e| PluginError::Io(e.to_string()))
+}
+
 /// Standalone / test capabilities that allow reading existing local files when present.
 pub struct NoopCapabilities;
 
@@ -112,6 +128,12 @@ impl HostCapabilities for NoopCapabilities {
             }
         }
         std::fs::write(p, data).map_err(|e| PluginError::Io(e.to_string()))
+    }
+    fn fs_modified(&self, path: &str) -> PluginResult<u64> {
+        if path.contains("..") {
+            return Err(PluginError::Io("Path traversal forbidden".to_string()));
+        }
+        modified_unix_seconds(Path::new(path))
     }
     fn http_get(&self, _url: &str) -> PluginResult<String> {
         Err(PluginError::CapabilityDenied("http".to_string()))

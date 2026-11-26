@@ -52,3 +52,5 @@ plugins:
       - filesystem
       - kv
 ```
+
+Plugins access system resources **only** through `ctx.capabilities` (constitution *Security* 1–2): `fs_read`, `fs_write`, `fs_modified` (`filesystem`), `http_get` (`http`), `kv_get`/`kv_set` (`kv`), `secret_get`, `log`. Never use `std::fs`, `std::process` or external programs in a plugin; `crates/host/tests/capability_io_test.rs` checks this for every plugin under `plugins/*/src`. If a capability is denied, leave the affected field empty and log a warning ([ADR 0002](adr/0002-plugins-without-engine-no-output.md)).

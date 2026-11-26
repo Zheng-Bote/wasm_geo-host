@@ -102,7 +102,7 @@ Surrounding quotes and whitespace are removed.
 
 | Capability | Used for | Note |
 | :--- | :--- | :--- |
-| `filesystem` | mtime of the file (Prio 6, `modified_at`) | The plugin currently calls `std::fs::metadata` **directly**, not via the host capability. In native host mode it works even without the grant; in a Wasm sandbox it needs a preopened directory. Tracked in [#25](https://github.com/Zheng-Bote/wasm_geo-host/issues/25). |
+| `filesystem` | mtime of the file via `fs_modified` (Prio 6, `modified_at`) | `modified_at` stays `None`; Prio 6 never matches. |
 
 ---
 
