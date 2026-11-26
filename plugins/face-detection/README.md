@@ -11,7 +11,7 @@ The `face-detection` plugin writes detected faces with bounding boxes, landmarks
 | Plugin name (`config.yaml`) | `face-detection` |
 | Crate | `flagme-plugin-face-detection` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_face_detection.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-face-detection`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.1.0` |
+| Version | `0.2.0` |
 | Reads | image bytes of `doc.file.path` |
 | Writes | `doc.faces` (`FacesInfo`) — only if a detector is set |
 | Capabilities | `filesystem` |
@@ -132,7 +132,7 @@ cat doc.json | wasmtime run -S cli-exit-with-code --dir . \
   target/wasm32-wasip2/release/flagme-plugin-face-detection.wasm
 ```
 
-Empty input prints `Plugin face-detection v0.1.0`. The CLI uses `FaceDetectionPlugin::new()` and therefore returns the document unchanged.
+Empty input prints `Plugin face-detection v0.2.0`. The CLI uses `FaceDetectionPlugin::new()` and therefore returns the document unchanged.
 
 ### 6.3 SQLite
 

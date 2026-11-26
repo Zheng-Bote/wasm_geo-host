@@ -9,7 +9,7 @@ The `privacy-redact` plugin sanitizes personal data (GDPR / DSGVO) before media 
 | Plugin name (`config.yaml`) | `privacy-redact` |
 | Crate | `flagme-plugin-privacy-redact` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_privacy_redact.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-privacy-redact`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.1.0` |
+| Version | `0.2.0` |
 | Reads | `doc.file.path`, `doc.faces`, `doc.location`, `doc.metadata.raw_tags` |
 | Writes | `doc.privacy`; modifies `doc.location.latitude/longitude` and `doc.metadata.raw_tags` |
 | Capabilities | `filesystem` |
@@ -189,7 +189,7 @@ cargo run --bin flagme-host -- process Examples/2025/10/Germany/Munich/2025-10-2
 cat doc.json | cargo run -p flagme-plugin-privacy-redact
 ```
 
-The CLI always uses the **default settings** (`PrivacySettings::default()`); `config.yaml` is not read. Empty input prints `Plugin privacy-redact v0.1.0`.
+The CLI always uses the **default settings** (`PrivacySettings::default()`); `config.yaml` is not read. Empty input prints `Plugin privacy-redact v0.2.0`.
 
 ### 7.3 Rust API with Custom Parameters
 

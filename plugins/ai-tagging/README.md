@@ -11,7 +11,7 @@ The `ai-tagging` plugin writes semantic tags with confidence values, a short sce
 | Plugin name (`config.yaml`) | `ai-tagging` |
 | Crate | `flagme-plugin-ai-tagging` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_ai_tagging.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ai-tagging`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.1.0` |
+| Version | `0.2.0` |
 | Reads | image bytes of `doc.file.path` |
 | Writes | `doc.ai` (`AiInfo`: `tags`, `description`, `embedding`) — only if a model is set |
 | Capabilities | `filesystem` |

@@ -786,7 +786,7 @@ impl Plugin for ReverseGeoPlugin {
     }
 
     fn version(&self) -> &'static str {
-        "0.1.0"
+        env!("CARGO_PKG_VERSION")
     }
 
     fn process(

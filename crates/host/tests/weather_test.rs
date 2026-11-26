@@ -33,7 +33,7 @@ fn test_ac1_weather_info_serialization() {
 fn test_ac2_plugin_contract_metadata() {
     let plugin = WeatherEnrichPlugin::new();
     assert_eq!(plugin.name(), "weather-enrich");
-    assert_eq!(plugin.version(), "0.1.0");
+    assert_eq!(plugin.version(), env!("CARGO_PKG_VERSION"), "all crates share the workspace version");
 }
 
 // Mock capabilities for KV caching and HTTP observation

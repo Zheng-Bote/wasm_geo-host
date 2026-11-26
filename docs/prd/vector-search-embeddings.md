@@ -1,12 +1,12 @@
 ---
 feature: vector-search-embeddings
-status: draft
+status: accepted
 archive-after:
 touches:
-  - "crates/models/**"
-  - "plugins/ai-tagging/**"
-  - "crates/host/**"
-  - "crates/host/migrations/**"
+  - 'crates/models/**'
+  - 'plugins/ai-tagging/**'
+  - 'crates/host/**'
+  - 'crates/host/migrations/**'
 ---
 
 # PRD — vector-search-embeddings (`vector-search-embeddings`)
@@ -27,6 +27,7 @@ Ermöglichung einer semantischen Vektorähnlichkeitssuche (Vector Search) durch 
 ## Umfang
 
 Die Umsetzung umfasst:
+
 - Erweiterung von `AiInfo` in `wasm-geo-models` um ein optionales `embedding: Option<Vec<f32>>`.
 - Erweiterung des VisionModel-Traits und `ai-tagging`-Plugins um Vektorexport (z. B. normierte 512-dimensionale Float-Vektoren).
 - Schema-Erweiterung in SQLite um Tabelle `photo_embeddings` (BLOB-Speicherung).

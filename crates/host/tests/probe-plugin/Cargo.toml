@@ -1,6 +1,6 @@
 [package]
 name = "flagme-test-probe"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 publish = false
 description = "Test-only plugin component that probes the sandbox of flagme-host (ADR 0003); never shipped"

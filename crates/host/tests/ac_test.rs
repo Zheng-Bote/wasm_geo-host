@@ -39,7 +39,7 @@ fn test_ac1_unified_document_serialization() {
 fn test_ac2_plugin_sdk_contract() {
     let plugin = MetadataPlugin::new();
     assert_eq!(plugin.name(), "metadata");
-    assert_eq!(plugin.version(), "0.1.0");
+    assert_eq!(plugin.version(), env!("CARGO_PKG_VERSION"), "all crates share the workspace version");
 
     let dir = common::temp_dir("ac2_contract");
     let path = common::write_file(&dir, "dummy.jpg", &common::plain_jpeg(16, 16));

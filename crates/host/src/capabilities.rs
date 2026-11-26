@@ -114,7 +114,7 @@ impl HostCapabilities for CapabilityManager {
                 "--max-time",
                 &HTTP_TIMEOUT_SECS.to_string(),
                 "-H",
-                "User-Agent: flagme-host/0.1.0",
+                concat!("User-Agent: flagme-host/", env!("CARGO_PKG_VERSION")),
                 url,
             ])
             .output()

@@ -47,7 +47,7 @@ fn test_ac1_face_models_serialization() {
 fn test_ac2_plugin_contract_metadata() {
     let plugin = FaceDetectionPlugin::new();
     assert_eq!(plugin.name(), "face-detection");
-    assert_eq!(plugin.version(), "0.1.0");
+    assert_eq!(plugin.version(), env!("CARGO_PKG_VERSION"), "all crates share the workspace version");
 }
 
 // face-detection AC-4: Relational tables faces and persons are created in media.db and populated via Storage::save_document

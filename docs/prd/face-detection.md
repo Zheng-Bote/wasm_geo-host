@@ -1,13 +1,13 @@
 ---
 feature: face-detection
-status: draft
+status: accepted
 archive-after:
 touches:
-  - "crates/models/**"
-  - "plugins/face-detection/**"
-  - "crates/host/**"
-  - "crates/host/migrations/**"
-  - "Cargo.toml"
+  - 'crates/models/**'
+  - 'plugins/face-detection/**'
+  - 'crates/host/**'
+  - 'crates/host/migrations/**'
+  - 'Cargo.toml'
 ---
 
 # PRD — face-detection (`face-detection`)
@@ -27,6 +27,7 @@ Bereitstellung des Plugins `flagme-plugin-face-detection` zur Erkennung von Gesi
 ## Umfang
 
 Die Umsetzung umfasst:
+
 - Datenstrukturen `FacesInfo`, `DetectedFace` und `FaceLandmarks` in `wasm-geo-models` mit Serde-Serialisierung.
 - Plugin-Crate `plugins/face-detection` mit CDYLib & WASI-Binärsupport (`wasm32-wasip2`).
 - Konfigurierbare Modell-Tiers (`lightweight` und `heavy`).

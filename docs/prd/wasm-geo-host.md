@@ -1,17 +1,17 @@
 ---
 feature: wasm-geo-host
-status: draft
+status: accepted
 archive-after:
 touches:
-  - "crates/**"
-  - "plugins/**"
-  - "wit/**"
-  - "Cargo.toml"
-  - "Cargo.lock"
-  - "config.yaml"
-  - "docs/**"
-  - "data/**"
-  - "Examples/**"
+  - 'crates/**'
+  - 'plugins/**'
+  - 'wit/**'
+  - 'Cargo.toml'
+  - 'Cargo.lock'
+  - 'config.yaml'
+  - 'docs/**'
+  - 'data/**'
+  - 'Examples/**'
 ---
 
 # PRD — wasm-geo-host (`wasm-geo-host`)

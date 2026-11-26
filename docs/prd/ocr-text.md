@@ -1,13 +1,13 @@
 ---
 feature: ocr-text
-status: draft
+status: accepted
 archive-after:
 touches:
-  - "crates/models/**"
-  - "plugins/ocr-text/**"
-  - "crates/host/**"
-  - "crates/host/migrations/**"
-  - "Cargo.toml"
+  - 'crates/models/**'
+  - 'plugins/ocr-text/**'
+  - 'crates/host/**'
+  - 'crates/host/migrations/**'
+  - 'Cargo.toml'
 ---
 
 # PRD — ocr-text (`ocr-text`)
@@ -27,6 +27,7 @@ Bereitstellung des Plugins `flagme-plugin-ocr-text` zur Extraktion sichtbarer Te
 ## Umfang
 
 Die Umsetzung umfasst:
+
 - Datenstrukturen `OcrInfo`, `TextRegion` und `BoundingBox` in `wasm-geo-models` mit Serde-Serialisierung.
 - Plugin-Crate `plugins/ocr-text` mit CDYLib & WASI-Binärsupport (`wasm32-wasip2`).
 - Zweistufige Erkennungslogik: Textdetektion (Bounding Boxes) und Texterkennung (Transkription UTF-8 + Konfidenz).
