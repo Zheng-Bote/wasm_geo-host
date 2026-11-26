@@ -1,6 +1,6 @@
 ---
 feature: no-synthetic-output
-status: draft
+status: archived
 archive-after:
 touches:
   - plugins/metadata/**
@@ -18,7 +18,7 @@ touches:
 
 # Tech Spec — Keine synthetischen Plugin-Ergebnisse (`no-synthetic-output`)
 
-Setzt das PRD `docs/prd/no-synthetic-output.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0002](../adr/0002-plugins-without-engine-no-output.md).
+Setzt das PRD `docs/prd/no-synthetic-output.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0002](../../adr/0002-plugins-without-engine-no-output.md).
 
 ## Architektur
 
