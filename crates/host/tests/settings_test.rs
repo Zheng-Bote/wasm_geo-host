@@ -692,7 +692,10 @@ fn face_device() {
 }
 
 fn privacy_doc(dir: &Path) -> UnifiedDocument {
-    let src = write_file(dir, "src.jpg", &(0..4096u32).map(|i| (i % 200) as u8 + 1).collect::<Vec<u8>>());
+    let img = image::RgbImage::from_fn(64, 48, |x, y| image::Rgb([(x * 4) as u8, (y * 5) as u8, 128]));
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new(&mut jpeg).encode_image(&img).unwrap();
+    let src = write_file(dir, "src.jpg", &jpeg);
     let mut d = with_location(doc(&src), 52.518624, 13.376198);
     d.metadata = Some(MetadataInfo {
         raw_tags: map(&[("CameraSerialNumber", "123"), ("Exif.Model", "X")]),

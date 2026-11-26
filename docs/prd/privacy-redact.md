@@ -29,7 +29,7 @@ Bereitstellung des Plugins `flagme-plugin-privacy-redact` zur automatisierten Bi
 Die Umsetzung umfasst:
 - Datenstruktur `PrivacyInfo` in `wasm-geo-models` mit Serde-Serialisierung.
 - Plugin-Crate `plugins/privacy-redact` mit CDYLib & WASI-Binärsupport (`wasm32-wasip2`).
-- Optische Redaktions-Algorithmen (Pixelate, Blur, Blackout) für Bounding-Boxen.
+- Optische Redaktions-Algorithmen (Pixelate, Blur, Blackout) für Bounding-Boxen, angewandt auf dekodierte Pixel der Quelldatei und als gültiges JPEG neu kodiert (Issue #22).
 - Metadaten-Sanitisierung: GPS-Fuzzing (z. B. Rundung auf 2 Dezimalstellen ~1 km) und Säuberung von Seriennummern (`CameraSerialNumber`, `LensSerialNumber`).
 - SQLite-Persistierung von Anonymisierungs-Status und Exportpfaden.
 - Host-Pipeline-Registrierung in `flagme-host`.
@@ -38,6 +38,8 @@ Die Umsetzung umfasst:
 ## Nicht-Ziele
 
 - Keine Wiederherstellung originaler Pixel nach destruktivem Blackout (gewollte irreversible Sicherheit).
+- Keine Eingabeformate außer JPEG für die Bildredaktion; andere Formate gelten als nicht dekodierbar (AC-11).
+- Keine Auswertung der EXIF-Orientierung; Bounding-Boxen beziehen sich auf das gespeicherte Pixelraster.
 
 ## Akzeptanzkriterien
 
@@ -47,3 +49,8 @@ Die Umsetzung umfasst:
 - **AC-4** GPS Coordinate Fuzzing: GPS-Koordinaten werden auf konfigurierte Dezimalstellen gerundet, wenn `fuzz_gps_coordinates` aktiviert ist.
 - **AC-5** Hardware Serial Purging: Hardware-Seriennummern werden aus `raw_tags` entfernt, wenn `strip_serial_numbers` aktiviert ist.
 - **AC-6** Integration Verification: Integrationstests weisen die korrekte Anonymisierung von Bildbereichen und Metadaten nach.
+- **AC-7** Bounding-Box-genaue Redaktion: Pixel innerhalb jeder `DetectedFace.bbox` (normiert 0.0–1.0) weichen von der Quelle ab; Pixel außerhalb aller Bounding-Boxen bleiben unverändert (bei der Pixeloperation exakt, nach JPEG-Neukodierung innerhalb der Kodiertoleranz).
+- **AC-8** Blur-Stärke: Bei `style: blur` verändert `blur_sigma` das Ergebnis messbar (größeres Sigma → geringere Pixelvarianz innerhalb der Bounding-Box).
+- **AC-9** Mosaik-Blockgröße: Bei `style: pixelate` bestimmt `block_size` die Kantenlänge der einfarbigen Mosaikblöcke in Pixeln.
+- **AC-10** Gültige Ausgabe: `<output_dir>/<doc.id>.redacted.jpg` ist ein dekodierbares JPEG mit denselben Abmessungen wie die Quelle.
+- **AC-11** Ehrliche Protokollierung: Schlägt Lesen, Dekodieren oder Schreiben fehl oder hat keine Bounding-Box eine gültige Fläche, wird keine Regel `redacted_<N>_faces_via_<style>` und kein `redacted_image_path` gesetzt und eine Warnung geloggt; `faces_redacted_count` und `<N>` zählen nur tatsächlich bearbeitete Gesichter.

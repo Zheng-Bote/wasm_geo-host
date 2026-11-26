@@ -1,8 +1,9 @@
 use flagme_sdk::{
-    Plugin, PluginContext, PluginResult, PluginSettings, PrivacyInfo, SettingsCache,
-    SettingsReader, UnifiedDocument,
+    BoundingBox, DetectedFace, Plugin, PluginContext, PluginResult, PluginSettings, PrivacyInfo,
+    SettingsCache, SettingsReader, UnifiedDocument,
 };
-use std::path::Path;
+use image::codecs::jpeg::JpegEncoder;
+use image::{imageops, ImageFormat, Rgb, RgbImage};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RedactionStyle {
@@ -93,39 +94,177 @@ impl PrivacyRedactPlugin {
         }
     }
 
-    /// Destructively obfuscates image scanline data for detected bounding boxes and writes the redacted artifact to disk.
+    /// Reads, decodes and redacts the source image for every valid face bounding box, then
+    /// re-encodes it as JPEG and writes it through the `filesystem` capability.
+    ///
+    /// Returns the number of faces actually processed, or a human-readable failure reason.
     fn write_redacted_image(
         &self,
         source_path: &str,
         out_path: &str,
+        faces: &[DetectedFace],
         active_settings: &PrivacySettings,
         ctx: &PluginContext,
-    ) {
-        if let Ok(mut bytes) = ctx.capabilities.fs_read(source_path) {
-            let len = bytes.len();
-            if len > 256 {
-                let mid_start = len / 3;
-                let mid_end = (mid_start + (len / 4)).min(len.saturating_sub(2));
-                let block = (active_settings.block_size as usize).max(2);
-                for (idx, b) in bytes[mid_start..mid_end].iter_mut().enumerate() {
-                    if *b != 0xFF {
-                        *b = match active_settings.style {
-                            RedactionStyle::Blackout => 0x10,
-                            RedactionStyle::Pixelate => ((idx / block) as u8).wrapping_mul(17).max(1),
-                            RedactionStyle::Blur => ((idx / 8) as u8).wrapping_add(64).max(1),
-                        };
-                    }
+    ) -> Result<usize, String> {
+        let bytes = ctx
+            .capabilities
+            .fs_read(source_path)
+            .map_err(|e| format!("cannot read '{}': {}", source_path, e))?;
+        let (encoded, processed) = redact_jpeg(&bytes, faces, active_settings, |msg| {
+            ctx.capabilities.log("warn", msg)
+        })?;
+        ctx.capabilities
+            .fs_write(out_path, &encoded)
+            .map_err(|e| format!("cannot write '{}': {}", out_path, e))?;
+        Ok(processed)
+    }
+}
+
+/// JPEG quality used when re-encoding the redacted copy.
+pub const REDACTED_JPEG_QUALITY: u8 = 90;
+
+/// Pixel rectangle inside an image (`x`, `y` = top-left corner).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelRect {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl PixelRect {
+    /// True if the pixel (`px`, `py`) lies inside the rectangle.
+    pub fn contains(&self, px: u32, py: u32) -> bool {
+        px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
+    }
+}
+
+/// Converts a normalised bounding box (0.0–1.0) into a pixel rectangle that fully covers it.
+///
+/// Coordinates are clamped to the image; non-finite values or an empty area yield `None`.
+pub fn bbox_to_rect(bbox: &BoundingBox, img_width: u32, img_height: u32) -> Option<PixelRect> {
+    let vals = [bbox.x, bbox.y, bbox.width, bbox.height];
+    if vals.iter().any(|v| !v.is_finite()) || img_width == 0 || img_height == 0 {
+        return None;
+    }
+    let span = |start: f32, len: f32, size: u32| -> (u32, u32) {
+        let a = start.clamp(0.0, 1.0) as f64;
+        let b = (start + len).clamp(0.0, 1.0) as f64;
+        // EPS absorbs f32 representation error (e.g. 0.25 + 0.3 = 0.55000001).
+        const EPS: f64 = 1e-3;
+        let lo = (a * size as f64 + EPS).floor() as u32;
+        let hi = ((b * size as f64 - EPS).ceil().max(0.0) as u32).min(size);
+        (lo.min(size), hi)
+    };
+    let (x0, x1) = span(bbox.x, bbox.width, img_width);
+    let (y0, y1) = span(bbox.y, bbox.height, img_height);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    Some(PixelRect {
+        x: x0,
+        y: y0,
+        width: x1 - x0,
+        height: y1 - y0,
+    })
+}
+
+/// Destructively obfuscates `rect` in `img`. Pixels outside `rect` are left untouched.
+///
+/// `rect` must lie inside the image (as produced by [`bbox_to_rect`]).
+pub fn redact_region(
+    img: &mut RgbImage,
+    rect: PixelRect,
+    style: RedactionStyle,
+    block_size: u32,
+    blur_sigma: f32,
+) {
+    match style {
+        RedactionStyle::Blackout => {
+            for py in rect.y..rect.y + rect.height {
+                for px in rect.x..rect.x + rect.width {
+                    img.put_pixel(px, py, Rgb([0, 0, 0]));
                 }
-            }
-            if ctx.capabilities.fs_write(out_path, &bytes).is_err() {
-                let p = Path::new(out_path);
-                if let Some(parent) = p.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::write(p, &bytes);
             }
         }
+        RedactionStyle::Pixelate => {
+            let block = block_size.max(1);
+            let mut by = rect.y;
+            while by < rect.y + rect.height {
+                let bh = block.min(rect.y + rect.height - by);
+                let mut bx = rect.x;
+                while bx < rect.x + rect.width {
+                    let bw = block.min(rect.x + rect.width - bx);
+                    let mut sum = [0u64; 3];
+                    for py in by..by + bh {
+                        for px in bx..bx + bw {
+                            let p = img.get_pixel(px, py).0;
+                            for c in 0..3 {
+                                sum[c] += p[c] as u64;
+                            }
+                        }
+                    }
+                    let n = (bw as u64) * (bh as u64);
+                    let avg = Rgb([
+                        ((sum[0] + n / 2) / n) as u8,
+                        ((sum[1] + n / 2) / n) as u8,
+                        ((sum[2] + n / 2) / n) as u8,
+                    ]);
+                    for py in by..by + bh {
+                        for px in bx..bx + bw {
+                            img.put_pixel(px, py, avg);
+                        }
+                    }
+                    bx += bw;
+                }
+                by += bh;
+            }
+        }
+        RedactionStyle::Blur => {
+            let sub = imageops::crop_imm(img, rect.x, rect.y, rect.width, rect.height).to_image();
+            let blurred = imageops::blur(&sub, blur_sigma);
+            imageops::replace(img, &blurred, rect.x as i64, rect.y as i64);
+        }
     }
+}
+
+/// Decodes a JPEG, redacts every valid face bounding box and re-encodes it as JPEG.
+///
+/// Invalid boxes are skipped and reported through `warn`. Returns the encoded bytes and the
+/// number of processed faces, or an error if decoding/encoding fails or no box has a valid area.
+pub fn redact_jpeg(
+    source: &[u8],
+    faces: &[DetectedFace],
+    settings: &PrivacySettings,
+    mut warn: impl FnMut(&str),
+) -> Result<(Vec<u8>, usize), String> {
+    let decoded = image::load_from_memory_with_format(source, ImageFormat::Jpeg)
+        .map_err(|e| format!("cannot decode source image as JPEG: {}", e))?;
+    let mut img = decoded.to_rgb8();
+    let (w, h) = img.dimensions();
+
+    let mut processed = 0;
+    for face in faces {
+        match bbox_to_rect(&face.bbox, w, h) {
+            Some(rect) => {
+                redact_region(&mut img, rect, settings.style, settings.block_size, settings.blur_sigma);
+                processed += 1;
+            }
+            None => warn(&format!(
+                "privacy-redact: face '{}' skipped, bounding box {:?} has no valid area in {}x{} image",
+                face.id, face.bbox, w, h
+            )),
+        }
+    }
+    if processed == 0 {
+        return Err("no face bounding box with a valid area".to_string());
+    }
+
+    let mut out = Vec::new();
+    JpegEncoder::new_with_quality(&mut out, REDACTED_JPEG_QUALITY)
+        .encode_image(&img)
+        .map_err(|e| format!("cannot encode redacted JPEG: {}", e))?;
+    Ok((out, processed))
 }
 
 impl Plugin for PrivacyRedactPlugin {
@@ -147,18 +286,37 @@ impl Plugin for PrivacyRedactPlugin {
 
         let mut applied_rules = Vec::new();
         let mut faces_count = 0;
+        let mut redacted_path = None;
 
         // 1. Visual Obfuscation (Faces)
         if active_settings.redact_faces {
-            if let Some(faces_info) = &doc.faces {
-                faces_count = faces_info.faces.len();
-                if faces_count > 0 {
-                    let style_str = match active_settings.style {
-                        RedactionStyle::Pixelate => "pixelate",
-                        RedactionStyle::Blur => "blur",
-                        RedactionStyle::Blackout => "blackout",
-                    };
-                    applied_rules.push(format!("redacted_{}_faces_via_{}", faces_count, style_str));
+            if let Some(faces_info) = doc.faces.as_ref().filter(|f| !f.faces.is_empty()) {
+                let safe_id = doc.id.replace('/', "_");
+                let out_path = format!("{}/{}.redacted.jpg", active_settings.output_dir, safe_id);
+                match self.write_redacted_image(
+                    &doc.file.path,
+                    &out_path,
+                    &faces_info.faces,
+                    &active_settings,
+                    ctx,
+                ) {
+                    Ok(processed) => {
+                        let style_str = match active_settings.style {
+                            RedactionStyle::Pixelate => "pixelate",
+                            RedactionStyle::Blur => "blur",
+                            RedactionStyle::Blackout => "blackout",
+                        };
+                        applied_rules.push(format!("redacted_{}_faces_via_{}", processed, style_str));
+                        faces_count = processed;
+                        redacted_path = Some(out_path);
+                    }
+                    Err(reason) => ctx.capabilities.log(
+                        "warn",
+                        &format!(
+                            "privacy-redact: faces in '{}' NOT redacted: {}",
+                            doc.file.path, reason
+                        ),
+                    ),
                 }
             }
         }
@@ -194,17 +352,8 @@ impl Plugin for PrivacyRedactPlugin {
             }
         }
 
-        let redacted_path = if faces_count > 0 {
-            let safe_id = doc.id.replace('/', "_");
-            let out_path = format!("{}/{}.redacted.jpg", active_settings.output_dir, safe_id);
-            self.write_redacted_image(&doc.file.path, &out_path, &active_settings, ctx);
-            Some(out_path)
-        } else {
-            None
-        };
-
         doc.privacy = Some(PrivacyInfo {
-            is_redacted: faces_count > 0 || gps_fuzzed || !applied_rules.is_empty(),
+            is_redacted: !applied_rules.is_empty(),
             faces_redacted_count: faces_count,
             license_plates_redacted_count: 0,
             original_gps_fuzzed: gps_fuzzed,
