@@ -1,3 +1,5 @@
+mod common;
+
 use flagme_host::{AppConfig, Pipeline, PluginRuntime, Storage};
 use flagme_plugin_ai_tagging::AiTaggingPlugin;
 use flagme_plugin_countryflag::CountryFlagPlugin;
@@ -43,12 +45,14 @@ fn test_ac2_plugin_sdk_contract() {
     assert_eq!(plugin.name(), "metadata");
     assert_eq!(plugin.version(), "0.1.0");
 
+    let dir = common::temp_dir("ac2_contract");
+    let path = common::write_file(&dir, "dummy.jpg", &common::plain_jpeg(16, 16));
     let doc = UnifiedDocument::new(
         "doc-test-2",
         FileInfo {
-            path: "test/dummy.jpg".to_string(),
+            path,
             filename: "dummy.jpg".to_string(),
-            size_bytes: 512,
+            size_bytes: 0,
             mime_type: "image/jpeg".to_string(),
             sha256: None,
         },
@@ -57,6 +61,7 @@ fn test_ac2_plugin_sdk_contract() {
     let ctx = PluginContext::new(Arc::new(NoopCapabilities));
     let processed = plugin.process(doc, &ctx).expect("SDK contract execution failed");
     assert!(processed.metadata.is_some());
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // wasm-geo-host AC-3: Capability-based Plugin Host isolation and permission enforcement
@@ -88,13 +93,15 @@ fn test_ac3_host_capability_enforcement() {
 // wasm-geo-host AC-4: Lossless Metadata Plugin extraction with raw_tags preservation
 #[test]
 fn test_ac4_lossless_metadata_extraction() {
+    let dir = common::temp_dir("ac4_metadata");
+    let path = common::write_file(&dir, "sample.jpg", &common::jpeg_with_exif("Sony", "ILCE-7RM4", Some((52.520008, 13.404954))));
     let plugin = MetadataPlugin::new();
     let doc = UnifiedDocument::new(
         "doc-test-4",
         FileInfo {
-            path: "sample.jpg".to_string(),
+            path,
             filename: "sample.jpg".to_string(),
-            size_bytes: 4096,
+            size_bytes: 0,
             mime_type: "image/jpeg".to_string(),
             sha256: None,
         },
@@ -107,10 +114,13 @@ fn test_ac4_lossless_metadata_extraction() {
     assert_eq!(meta.camera_make.as_deref(), Some("Sony"));
     assert_eq!(meta.camera_model.as_deref(), Some("ILCE-7RM4"));
     assert!(!meta.raw_tags.is_empty(), "Raw tags must be preserved without data loss");
-    assert!(meta.raw_tags.contains_key("Exif.Image.Software"));
+    assert!(meta.raw_tags.keys().any(|k| k.starts_with("Exif.")), "individual EXIF tags are kept");
     assert!(meta.raw_tags.contains_key("Exif"), "raw_tags must contain structured Exif object");
     assert!(meta.raw_tags.contains_key("IPTC"), "raw_tags must contain structured IPTC object");
     assert!(meta.raw_tags.contains_key("XMP"), "raw_tags must contain structured XMP object");
+    let loc = enriched.location.expect("GPS from EXIF");
+    assert!((loc.latitude.unwrap() - 52.520008).abs() < 1e-4);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // wasm-geo-host AC-5: ReverseGeo and CountryFlag offline/online resolution with flag emoji
@@ -157,7 +167,7 @@ fn test_ac5_reversegeo_and_countryflag() {
 #[test]
 fn test_ac6_thumbnail_and_ai_tagging() {
     let thumb_plugin = ThumbnailPlugin::new();
-    let ai_plugin = AiTaggingPlugin::new();
+    let ai_plugin = AiTaggingPlugin::with_model(Box::new(common::ByteLenVisionModel));
 
     let doc = UnifiedDocument::new(
         "doc-test-6",
@@ -178,10 +188,16 @@ fn test_ac6_thumbnail_and_ai_tagging() {
     assert_eq!(doc.thumbnails[1].width, 512);
     assert_eq!(doc.thumbnails[2].width, 1024);
 
+    // AI tagging runs through an exchangeable VisionModel (ADR 0002); a test model stands in here.
+    let dir = common::temp_dir("ac6_ai");
+    let mut doc = doc;
+    doc.file.path = common::write_file(&dir, "landscape.jpg", &common::plain_jpeg(32, 24));
     let doc = ai_plugin.process(doc, &ctx).unwrap();
-    let ai = doc.ai.expect("AI tagging output missing");
+    let ai = doc.ai.clone().expect("AI tagging output missing");
     assert!(!ai.tags.is_empty());
     assert!(!ai.description.is_empty());
+    assert!(AiTaggingPlugin::new().process(doc, &ctx).unwrap().ai.is_some(), "existing result is kept without a model");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // wasm-geo-host AC-7: Duplicate detection (SHA256, pHash) and Timeline conflict resolution
@@ -263,12 +279,14 @@ fn test_ac9_end_to_end_pipeline() {
 
     let pipeline = Pipeline::new(config, runtime, storage.clone());
 
+    let dir = common::temp_dir("ac9_e2e");
+    let path = common::write_file(&dir, "complete_photo.jpg", &common::jpeg_with_exif("Sony", "ILCE-7RM4", Some((52.52, 13.405))));
     let doc = UnifiedDocument::new(
         "doc-e2e-final",
         FileInfo {
-            path: "complete_photo.jpg".to_string(),
+            path,
             filename: "complete_photo.jpg".to_string(),
-            size_bytes: 45678,
+            size_bytes: 0,
             mime_type: "image/jpeg".to_string(),
             sha256: None,
         },
@@ -279,7 +297,8 @@ fn test_ac9_end_to_end_pipeline() {
     assert!(processed.location.is_some());
     assert!(processed.country.is_some());
     assert_eq!(processed.thumbnails.len(), 3);
-    assert!(processed.ai.is_some());
+    // Experimental plugins without an engine are disabled by default and produce nothing (ADR 0002).
+    assert!(processed.ai.is_none() && processed.ocr.is_none() && processed.faces.is_none());
     assert!(processed.duplicate.is_some());
     assert!(processed.timeline.is_some());
 

@@ -79,6 +79,18 @@ impl<'a> SettingsReader<'a> {
         ));
     }
 
+    /// Consumes `key`; any value is reported as "not supported yet" and ignored.
+    ///
+    /// Used for settings that select an implementation which does not exist (ADR 0002).
+    pub fn not_supported(&mut self, key: &str, aliases: &[&str], reason: &str) {
+        if let Some((k, v)) = self.lookup(key, aliases) {
+            self.warn(format!(
+                "'{}' for '{}' is not supported yet ({}), ignored",
+                v, k, reason
+            ));
+        }
+    }
+
     /// Looks up the canonical key first, then the aliases. Marks all of them as seen.
     /// Returns the key that was used and its trimmed value.
     fn lookup(&mut self, key: &str, aliases: &[&str]) -> Option<(String, String)> {

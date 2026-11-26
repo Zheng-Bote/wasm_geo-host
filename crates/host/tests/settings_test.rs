@@ -1,9 +1,9 @@
 use chrono::{TimeZone, Utc};
 use flagme_host::AppConfig;
-use flagme_plugin_ai_tagging::{AiTaggingPlugin, AiTaggingSettings};
+use flagme_plugin_ai_tagging::{AiTaggingPlugin, AiTaggingSettings, VisionModel};
 use flagme_plugin_countryflag::CountryFlagSettings;
 use flagme_plugin_duplicate::{DuplicatePlugin, DuplicateSettings, PHASH_INDEX_KEY};
-use flagme_plugin_face_detection::{FaceDetectionPlugin, FaceDetectionSettings, FaceDetector, ModelTier};
+use flagme_plugin_face_detection::{FaceDetectionPlugin, FaceDetectionSettings, FaceDetector};
 use flagme_plugin_metadata::{MetadataPlugin, MetadataSettings};
 use flagme_plugin_ocr_text::{OcrEngine, OcrSettings, OcrTextPlugin};
 use flagme_plugin_privacy_redact::{PrivacyRedactPlugin, PrivacySettings};
@@ -13,7 +13,7 @@ use flagme_plugin_timeline::{TimelinePlugin, TimelineSettings};
 use flagme_plugin_weather_enrich::{WeatherEnrichPlugin, WeatherSettings};
 use flagme_sdk::{
     BoundingBox, DetectedFace, FacesInfo, FileInfo, HostCapabilities, LocationInfo, MetadataInfo,
-    OcrInfo, Plugin, PluginContext, PluginError, PluginResult, PluginSettings, TextRegion,
+    AiInfo, OcrInfo, Plugin, PluginContext, PluginError, PluginResult, PluginSettings, SettingsReader, TextRegion,
     TimelineInfo, UnifiedDocument,
 };
 use std::collections::HashMap;
@@ -194,6 +194,8 @@ fn bool_rule_in_privacy_redact() {
         raw_tags: map(&[("CameraSerialNumber", "123")]),
         ..MetadataInfo::default()
     });
+    // A (empty) face detection result keeps the ADR 0002 "no face result" warning out of this test.
+    d.faces = Some(FacesInfo { faces: vec![], detection_model: "test".into() });
 
     let out = plugin
         .process(d.clone(), &ctx(&caps, &[("fuzz_gps", "yes"), ("strip_serials", "off")]))
@@ -482,48 +484,29 @@ fn thumbnail_quality() {
     assert!(size_for("5") < size_for("100"));
 }
 
-// plugin-settings AC-4: ai-tagging model selects the built-in model
-#[test]
-fn ai_tagging_model() {
-    let plugin = AiTaggingPlugin::new();
-    let caps = Arc::new(RecordingCaps::default());
-    let out = plugin.process(doc("missing.jpg"), &ctx(&caps, &[("model", "MobileNetV3")])).unwrap();
-    assert!(out.ai.unwrap().tags.iter().all(|t| t.model == "MobileNetV3"));
-}
-
-// plugin-settings AC-4: ai-tagging model_tier selects a model when model is not set
-#[test]
-fn ai_tagging_model_tier() {
-    let plugin = AiTaggingPlugin::new();
-    let caps = Arc::new(RecordingCaps::default());
-    let heavy = plugin.process(doc("missing.jpg"), &ctx(&caps, &[("model_tier", "heavy")])).unwrap();
-    assert_eq!(heavy.ai.unwrap().tags[0].model, "OpenCLIP-ConvNeXt-Large");
-
-    let both = plugin
-        .process(doc("missing.jpg"), &ctx(&caps, &[("model_tier", "heavy"), ("model", "clip")]))
-        .unwrap();
-    assert_eq!(both.ai.unwrap().tags[0].model, "CLIP-ViT-B/32", "model wins over model_tier");
+/// Vision model returning an embedding of the requested dimension.
+struct DimModel;
+impl VisionModel for DimModel {
+    fn model_name(&self) -> &str {
+        "dim-test-model"
+    }
+    fn analyze(&self, _image: &[u8], dim: usize) -> Result<AiInfo, String> {
+        Ok(AiInfo { tags: vec![], description: String::new(), embedding: Some(vec![2.0; dim]) })
+    }
 }
 
 // plugin-settings AC-4: ai-tagging embedding_dim sets the embedding length
 #[test]
 fn ai_tagging_embedding_dim() {
-    let plugin = AiTaggingPlugin::new();
+    let dir = temp_dir("embdim");
+    let path = write_file(&dir, "img.jpg", &[1, 2, 3]);
+    let plugin = AiTaggingPlugin::with_model(Box::new(DimModel));
     let caps = Arc::new(RecordingCaps::default());
-    let out = plugin.process(doc("missing.jpg"), &ctx(&caps, &[("embedding_dim", "128")])).unwrap();
+    let out = plugin.process(doc(&path), &ctx(&caps, &[("embedding_dim", "128")])).unwrap();
     let emb = out.ai.unwrap().embedding.unwrap();
     assert_eq!(emb.len(), 128);
     let norm: f32 = emb.iter().map(|v| v * v).sum::<f32>().sqrt();
     assert!((norm - 1.0).abs() < 1e-4);
-}
-
-// plugin-settings AC-4: ai-tagging device accepts cpu without warning
-#[test]
-fn ai_tagging_device() {
-    let plugin = AiTaggingPlugin::new();
-    let caps = Arc::new(RecordingCaps::default());
-    plugin.process(doc("missing.jpg"), &ctx(&caps, &[("device", "CPU")])).unwrap();
-    assert!(caps.warnings().is_empty());
 }
 
 // plugin-settings AC-4: timeline timezone converts local EXIF times to UTC
@@ -619,45 +602,33 @@ fn weather_offline_fallback() {
     assert!(caps.kv_keys().is_empty(), "nothing is cached");
 }
 
-/// OCR engine returning two fixed regions; used to observe settings without the default engine.
+/// OCR engine returning two fixed regions; used to observe `min_confidence`.
 struct TwoRegionEngine;
 impl OcrEngine for TwoRegionEngine {
-    fn extract_text(&self, _path: &str) -> OcrInfo {
+    fn name(&self) -> &str {
+        "two-region-test-engine"
+    }
+    fn recognize(&self, _image: &[u8]) -> Result<OcrInfo, String> {
         let bbox = BoundingBox { x: 0.1, y: 0.1, width: 0.5, height: 0.1 };
-        OcrInfo {
+        Ok(OcrInfo {
             combined_text: "high low".into(),
             regions: vec![
                 TextRegion { text: "high".into(), confidence: 0.9, bbox: bbox.clone() },
                 TextRegion { text: "low".into(), confidence: 0.5, bbox },
             ],
             primary_language: Some("en".into()),
-        }
+        })
     }
-}
-
-// plugin-settings AC-4: ocr-text engine=default replaces the constructor engine
-#[test]
-fn ocr_engine() {
-    let plugin = OcrTextPlugin::with_engine(Box::new(TwoRegionEngine));
-    let caps = Arc::new(RecordingCaps::default());
-    let custom = plugin.process(doc("plain.jpg"), &ctx(&caps, &[])).unwrap();
-    assert_eq!(custom.ocr.unwrap().regions.len(), 2);
-
-    let builtin = plugin.process(doc("plain.jpg"), &ctx(&caps, &[("engine", "default")])).unwrap();
-    assert!(builtin.ocr.unwrap().regions.is_empty());
 }
 
 /// Face detector returning two faces with confidence 0.70 and 0.95.
 struct TwoFaceDetector;
 impl FaceDetector for TwoFaceDetector {
-    fn tier(&self) -> ModelTier {
-        ModelTier::Lightweight
-    }
-    fn model_name(&self) -> &'static str {
+    fn model_name(&self) -> &str {
         "two-face-test-detector"
     }
-    fn detect(&self, _path: &str) -> Vec<DetectedFace> {
-        [("a", 0.70f32), ("b", 0.95f32)]
+    fn detect(&self, _image: &[u8]) -> Result<Vec<DetectedFace>, String> {
+        Ok([("a", 0.70f32), ("b", 0.95f32)]
             .iter()
             .map(|(id, c)| DetectedFace {
                 id: id.to_string(),
@@ -667,28 +638,14 @@ impl FaceDetector for TwoFaceDetector {
                 embedding: None,
                 person_id: None,
             })
-            .collect()
+            .collect())
     }
 }
 
-// plugin-settings AC-4: face-detection tier selects the built-in detector
-#[test]
-fn face_tier() {
-    let plugin = FaceDetectionPlugin::with_detector(Box::new(TwoFaceDetector));
-    let caps = Arc::new(RecordingCaps::default());
-    let custom = plugin.process(doc("plain.jpg"), &ctx(&caps, &[])).unwrap();
-    assert_eq!(custom.faces.unwrap().detection_model, "two-face-test-detector");
-    let heavy = plugin.process(doc("plain.jpg"), &ctx(&caps, &[("tier", "heavy")])).unwrap();
-    assert_eq!(heavy.faces.unwrap().detection_model, "SCRFD-ArcFace-ResNet100");
-}
-
-// plugin-settings AC-4: face-detection device accepts cpu without warning
-#[test]
-fn face_device() {
-    let plugin = FaceDetectionPlugin::new();
-    let caps = Arc::new(RecordingCaps::default());
-    plugin.process(doc("plain.jpg"), &ctx(&caps, &[("device", "cpu")])).unwrap();
-    assert!(caps.warnings().is_empty());
+/// Readable dummy file for engines that do not decode the bytes.
+fn plain_file() -> String {
+    let dir = temp_dir("plain");
+    write_file(&dir, "plain.jpg", &[1, 2, 3, 4])
 }
 
 fn privacy_doc(dir: &Path) -> UnifiedDocument {
@@ -702,7 +659,7 @@ fn privacy_doc(dir: &Path) -> UnifiedDocument {
         ..MetadataInfo::default()
     });
     d.faces = Some(FacesInfo {
-        faces: TwoFaceDetector.detect(""),
+        faces: TwoFaceDetector.detect(&[]).unwrap(),
         detection_model: "test".into(),
     });
     d
@@ -813,38 +770,35 @@ fn defaults_match_previous_behaviour() {
     let p = PrivacySettings::default();
     assert_eq!((p.block_size, p.gps_decimal_places, p.output_dir.as_str()), (16, 2, "cache/redacted"));
 
-    let caps = Arc::new(RecordingCaps::default());
-    let ai = AiTaggingPlugin::new().process(doc("missing.jpg"), &ctx(&caps, &[])).unwrap();
-    assert_eq!(ai.ai.unwrap().tags[0].model, "CLIP-ViT-B/32");
-    let faces = FaceDetectionPlugin::new().process(doc("missing.jpg"), &ctx(&caps, &[])).unwrap();
-    assert_eq!(faces.faces.unwrap().detection_model, "UltraFace-Slim-INT8");
-    assert!(caps.warnings().is_empty());
 }
 
 // ---------------------------------------------------------------------------
 // AC-6
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TestDevice {
+    Cpu,
+}
+
+impl std::fmt::Display for TestDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "cpu")
+    }
+}
+
 // plugin-settings AC-6: values that need a missing implementation warn with the supported values and use the default
 #[test]
 fn unsupported_value_warns() {
     let caps = Arc::new(RecordingCaps::default());
-
-    let ai = AiTaggingPlugin::new().process(doc("missing.jpg"), &ctx(&caps, &[("device", "mps")])).unwrap();
-    assert!(ai.ai.is_some());
-    FaceDetectionPlugin::new().process(doc("missing.jpg"), &ctx(&caps, &[("device", "cuda")])).unwrap();
-    let ocr = OcrTextPlugin::new()
-        .process(doc("plain.jpg"), &ctx(&caps, &[("engine", "PaddleOCR-v4-Server")]))
-        .unwrap();
-    assert!(ocr.ocr.is_some());
-
+    let settings = map(&[("device", "mps")]);
+    let mut r = SettingsReader::from_parts("test-plugin", &settings, caps.as_ref());
+    let device = r.choice("device", &[], &[(&["cpu"], TestDevice::Cpu)], &["mps", "cuda"], TestDevice::Cpu);
+    r.finish();
+    assert_eq!(device, TestDevice::Cpu);
     assert_eq!(
         caps.warnings(),
-        vec![
-            "settings[ai-tagging]: 'mps' for 'device' is not supported yet (supported: cpu), using default 'cpu'".to_string(),
-            "settings[face-detection]: 'cuda' for 'device' is not supported yet (supported: cpu), using default 'cpu'".to_string(),
-            "settings[ocr-text]: 'PaddleOCR-v4-Server' for 'engine' is not supported yet (supported: default), using default 'default'".to_string(),
-        ]
+        vec!["settings[test-plugin]: 'mps' for 'device' is not supported yet (supported: cpu), using default 'cpu'".to_string()]
     );
 }
 
@@ -893,9 +847,10 @@ fn duplicate_phash_threshold() {
 #[test]
 fn min_confidence_filters() {
     let caps = Arc::new(RecordingCaps::default());
+    let path = plain_file();
 
     let faces = FaceDetectionPlugin::with_detector(Box::new(TwoFaceDetector))
-        .process(doc("plain.jpg"), &ctx(&caps, &[("min_confidence", "0.8")]))
+        .process(doc(&path), &ctx(&caps, &[("min_confidence", "0.8")]))
         .unwrap()
         .faces
         .unwrap()
@@ -904,7 +859,7 @@ fn min_confidence_filters() {
     assert!(faces.iter().all(|f| f.confidence >= 0.8));
 
     let ocr = OcrTextPlugin::with_engine(Box::new(TwoRegionEngine))
-        .process(doc("plain.jpg"), &ctx(&caps, &[("min_confidence", "0.6")]))
+        .process(doc(&path), &ctx(&caps, &[("min_confidence", "0.6")]))
         .unwrap()
         .ocr
         .unwrap();
@@ -912,33 +867,12 @@ fn min_confidence_filters() {
     assert_eq!(ocr.combined_text, "high");
 
     let none = OcrTextPlugin::with_engine(Box::new(TwoRegionEngine))
-        .process(doc("plain.jpg"), &ctx(&caps, &[("min_confidence", "1.0")]))
+        .process(doc(&path), &ctx(&caps, &[("min_confidence", "1.0")]))
         .unwrap()
         .ocr
         .unwrap();
     assert!(none.regions.is_empty());
     assert_eq!(none.primary_language, None);
-}
-
-// ---------------------------------------------------------------------------
-// AC-9
-// ---------------------------------------------------------------------------
-
-// plugin-settings AC-9: one plugin instance selects model and tier per call from ctx.settings
-#[test]
-fn model_and_tier_selected_per_call() {
-    let caps = Arc::new(RecordingCaps::default());
-    let ai = AiTaggingPlugin::new();
-    let a = ai.process(doc("missing.jpg"), &ctx(&caps, &[("model", "openclip")])).unwrap();
-    let b = ai.process(doc("missing.jpg"), &ctx(&caps, &[("model", "mobilenet")])).unwrap();
-    assert_eq!(a.ai.unwrap().tags[0].model, "OpenCLIP-ConvNeXt-Large");
-    assert_eq!(b.ai.unwrap().tags[0].model, "MobileNetV3");
-
-    let face = FaceDetectionPlugin::new();
-    let h = face.process(doc("missing.jpg"), &ctx(&caps, &[("tier", "heavy")])).unwrap();
-    let l = face.process(doc("missing.jpg"), &ctx(&caps, &[("tier", "lightweight")])).unwrap();
-    assert_eq!(h.faces.unwrap().detection_model, "SCRFD-ArcFace-ResNet100");
-    assert_eq!(l.faces.unwrap().detection_model, "UltraFace-Slim-INT8");
 }
 
 // ---------------------------------------------------------------------------
@@ -1032,7 +966,7 @@ const ALL_KEYS: &[(&str, &[(&str, &str)])] = &[
         "weather-enrich",
         &[("endpoint", "https://w.example.org/a"), ("coordinate_precision", "3"), ("offline_fallback", "false")],
     ),
-    ("ocr-text", &[("engine", "default"), ("min_confidence", "0.5")]),
+    ("ocr-text", &[("engine", "tesseract"), ("min_confidence", "0.5")]),
     ("face-detection", &[("tier", "heavy"), ("min_confidence", "0.5"), ("device", "cpu")]),
     (
         "privacy-redact",
@@ -1053,8 +987,9 @@ const ALL_KEYS: &[(&str, &[(&str, &str)])] = &[
 #[test]
 fn readmes_list_all_keys() {
     for (plugin, keys) in ALL_KEYS {
+        // Engine-selecting keys are known but "not supported yet" (ADR 0002); no key may be unknown or invalid.
         let w = parse_warnings(plugin, &map(keys));
-        assert!(w.is_empty(), "{}: {:?}", plugin, w);
+        assert!(w.iter().all(|m| m.contains("is not supported yet") && m.contains("ADR 0002")), "{}: {:?}", plugin, w);
 
         let readme = std::fs::read_to_string(repo_root().join("plugins").join(plugin).join("README.md")).unwrap();
         let section = readme

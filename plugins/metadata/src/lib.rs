@@ -261,34 +261,6 @@ impl MetadataPlugin {
         // 4. Extract all XMP (RDF attributes and elements) fields
         extract_xmp_tags(bytes, &mut raw_tags, &mut xmp_obj, settings.xmp_max_value_length);
 
-        // 5. Synthetic test buffer fallback ONLY when input is a tiny synthetic test stub (< 128 bytes)
-        let is_synthetic_stub = bytes.len() < 128;
-        if is_synthetic_stub && info.camera_make.is_none() && info.camera_model.is_none() {
-            raw_tags.insert("Exif.Image.Software".to_string(), "WASM Geo Engine 1.0".to_string());
-            raw_tags.insert("Exif.Photo.ColorSpace".to_string(), "sRGB".to_string());
-            raw_tags.insert("IPTC.Application2.RecordVersion".to_string(), "4".to_string());
-            raw_tags.insert("XMP.dc.format".to_string(), "image/jpeg".to_string());
-
-            exif_obj.insert("Image.Software".to_string(), serde_json::Value::String("WASM Geo Engine 1.0".to_string()));
-            exif_obj.insert("Photo.ColorSpace".to_string(), serde_json::Value::String("sRGB".to_string()));
-            iptc_obj.insert("Application2.RecordVersion".to_string(), serde_json::Value::String("4".to_string()));
-            xmp_obj.insert("dc.format".to_string(), serde_json::Value::String("image/jpeg".to_string()));
-
-            info.camera_make = Some("Sony".to_string());
-            info.camera_model = Some("ILCE-7RM4".to_string());
-            info.lens_model = Some("FE 24-70mm F2.8 GM".to_string());
-            info.iso = Some(100);
-            info.focal_length = Some(35.0);
-            info.f_number = Some(2.8);
-            info.exposure_time = Some("1/250".to_string());
-
-            if lat.is_none() && lon.is_none() {
-                lat = Some(52.520008);
-                lon = Some(13.404954);
-                alt = Some(34.0);
-            }
-        }
-
         // Store structured objects "Exif", "IPTC", and "XMP" in raw_tags
         raw_tags.insert(
             "Exif".to_string(),
@@ -680,8 +652,12 @@ impl Plugin for MetadataPlugin {
 
         let file_bytes = match ctx.capabilities.fs_read(&doc.file.path) {
             Ok(bytes) => bytes,
-            Err(_) => {
-                vec![0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x10, b'E', b'x', b'i', b'f', 0, 0]
+            Err(e) => {
+                ctx.capabilities.log(
+                    "warn",
+                    &format!("metadata: cannot read '{}': {}; metadata left empty", doc.file.path, e),
+                );
+                return Ok(doc);
             }
         };
 

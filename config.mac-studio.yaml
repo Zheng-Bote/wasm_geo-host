@@ -37,11 +37,10 @@ plugins:
       quality: '95'
       variants: '128,256,512,1024,2048'
   ai-tagging:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities: ['filesystem']
     settings:
-      model: 'OpenCLIP-ConvNeXt-Large' # High-accuracy multi-modal vision foundation model
-      model_tier: 'heavy'
       embedding_dim: '512'
   duplicate:
     enabled: true
@@ -55,13 +54,14 @@ plugins:
     enabled: true
     capabilities: ['http', 'kv']
   ocr-text:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities: ['filesystem']
   face-detection:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities: ['filesystem']
     settings:
-      tier: 'heavy' # SCRFD + ArcFace-ResNet100 (512-D identity embeddings)
       min_confidence: '0.80'
   privacy-redact:
     enabled: true

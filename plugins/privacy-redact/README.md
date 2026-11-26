@@ -107,7 +107,7 @@ The plugin uses the shared SDK rules (`flagme_sdk::settings`):
 4. **`face-detection`** → fills `doc.faces`.
 5. **`privacy-redact`** → redacts, rounds and strips.
 
-If an upstream stage is missing, the respective step is skipped without error (no faces → no image; no coordinates → no fuzzing).
+If an upstream stage is missing, the respective step is skipped (no coordinates → no fuzzing). If `redact_faces` is on but `doc.faces` is `None` (no face-detection result, e.g. because `face-detection` is disabled — the default, see [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)), the plugin logs `privacy-redact: no face detection result for '<path>'; faces NOT redacted` and records no face redaction. `doc.faces` with an empty list stays silent.
 
 ---
 

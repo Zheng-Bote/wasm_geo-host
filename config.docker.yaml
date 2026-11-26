@@ -37,11 +37,10 @@ plugins:
       quality: "80"
       max_dimension: "1024"
   ai-tagging:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities: ["filesystem"]
     settings:
-      model: "MobileNetV3" # Quantized lightweight vision classifier (INT8)
-      model_tier: "lightweight"
       embedding_dim: "512"
   duplicate:
     enabled: true
@@ -55,13 +54,14 @@ plugins:
     enabled: true
     capabilities: ["http", "kv"]
   ocr-text:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities: ["filesystem"]
   face-detection:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities: ["filesystem"]
     settings:
-      tier: "lightweight" # UltraFace-Slim-INT8 (128-D embeddings)
       min_confidence: "0.85"
   privacy-redact:
     enabled: true

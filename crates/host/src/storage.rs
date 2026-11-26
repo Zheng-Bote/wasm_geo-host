@@ -469,7 +469,7 @@ impl Storage {
                         let _ = write!(&mut blob_hex, "{:02x}", b);
                     }
                 }
-                let model = ai.tags.first().map(|t| t.model.as_str()).unwrap_or("CLIP");
+                let model = ai.tags.first().map(|t| t.model.as_str()).unwrap_or("unknown");
                 sql.push_str(&format!(
                     "INSERT OR REPLACE INTO photo_embeddings (photo_id, embedding, model) VALUES ('{}', X'{}', '{}');\n",
                     escape_sql(&doc.id),

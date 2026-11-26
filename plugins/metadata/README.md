@@ -66,7 +66,6 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 | XMP namespaces skipped | `x`, `rdf`, `xmlns`, `xml`, `Container` | Structural namespaces are not exported. |
 | XMP namespace alias | `Iptc4xmpCore` → `iptc` | e.g. `XMP.iptc.Location`. |
 | IPTC record | only record `2` (Application) | Known datasets get names (`Keywords`, `City`, `Caption`, …), others `Dataset<n>`. |
-| Synthetic-stub threshold | input < 128 bytes | See §7. |
 
 ### 2.4 `raw_tags` Key Schema
 
@@ -99,7 +98,7 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(doc.file.path)` | The read fails and the plugin falls back to a 12-byte JPEG stub → **synthetic values** (see §7). |
+| `filesystem` | `fs_read(doc.file.path)` | Warning `metadata: cannot read '<path>': …; metadata left empty`; `doc.metadata` and `doc.location` stay unchanged. |
 
 ---
 
@@ -154,6 +153,6 @@ SELECT photo_id, camera_make, camera_model, iso, focal_length, f_number FROM met
 
 ## 7. Limitations & Implementation Notes
 
-- **Synthetic fallback:** if the input has fewer than 128 bytes and contains no `Make`/`Model`, the plugin fills demo values (`Sony ILCE-7RM4`, ISO 100, 35 mm, f/2.8, GPS Berlin `52.520008, 13.404954`). This also happens when the file cannot be read (missing `filesystem` capability, wrong path). Tracked in [#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23).
+- **No synthetic values:** only tags present in the file are reported. An unreadable file leaves `doc.metadata` empty with a warning; a file without metadata yields no camera, exposure or GPS values ([ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md), [#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23)).
 - The CLI file mode always sets `mime_type = image/jpeg`, independent of the real format.
 - HEIC/WebP: format detection only; EXIF is read if an embedded `Exif\0\0` TIFF header is found.

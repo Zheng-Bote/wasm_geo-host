@@ -39,7 +39,8 @@ plugins:
       - filesystem
 
   ai-tagging:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities:
       - filesystem
 
@@ -61,12 +62,14 @@ plugins:
       - kv
 
   ocr-text:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities:
       - filesystem
 
   face-detection:
-    enabled: true
+  # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities:
       - filesystem
 

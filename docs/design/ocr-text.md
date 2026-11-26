@@ -74,7 +74,7 @@ Erfüllt **AC-1**: Typisierte Modelle für OCR-Informationen.
 ### 2. Plugin & OCR-Pipeline (AC-2, AC-3)
 In `plugins/ocr-text/src/lib.rs`:
 - Trait `OcrEngine: Send + Sync` mit Methode `extract_text(&self, path: &str) -> OcrInfo`.
-- Standard-Implementierung mit robuster Signalextraktion (z. B. Detektion von Straßenschildern, Markierungen oder simulierter Inferenz basierend auf Bildpfaden/Merkmalen).
+- Keine eingebaute Engine: `OcrEngine::recognize(image: &[u8])` erhält nur die Bildbytes; ohne Engine bleibt `doc.ocr` leer ([ADR 0002](../adr/0002-plugins-without-engine-no-output.md)).
 - Erzeugt Bounding-Boxen und Konfidenzwerte für jede erkannte Zeile.
 Erfüllt **AC-2** (WASI Kompilierung) und **AC-3** (Erkennungs-Pipeline).
 
