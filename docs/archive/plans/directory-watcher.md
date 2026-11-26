@@ -1,7 +1,8 @@
 ---
 feature: directory-watcher
-status: draft
+status: archived
 archive-after:
+release: 0.2.0
 ---
 
 # Plan — directory-watcher (`directory-watcher`)

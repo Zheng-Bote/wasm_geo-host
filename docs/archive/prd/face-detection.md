@@ -1,6 +1,6 @@
 ---
 feature: face-detection
-status: accepted
+status: archived
 archive-after:
 touches:
   - 'crates/models/**'
@@ -8,6 +8,7 @@ touches:
   - 'crates/host/**'
   - 'crates/host/migrations/**'
   - 'Cargo.toml'
+release: 0.2.0
 ---
 
 # PRD — face-detection (`face-detection`)
@@ -45,6 +46,6 @@ Die Umsetzung umfasst:
 
 - **AC-1** Model Extension: `wasm-geo-models` stellt `FacesInfo`, `DetectedFace` und `FaceLandmarks` mit vollständiger Serde-Serialisierung bereit.
 - **AC-2** Plugin Compilation: `flagme-plugin-face-detection` kompiliert als Plugin-Crate mit `cdylib` und `[[bin]]` unter `wasm32-wasip2`.
-- ~~**AC-3** Configurable Model Tiers: Das Plugin unterstützt konfigurierbare Modell-Tiers (`lightweight` vs. `heavy`) für flexible Ressourcennutzung.~~ Entfallen: Es gibt keine eingebauten Modelle; der Detektor wird über `FaceDetector` übergeben ([ADR 0002](../adr/0002-plugins-without-engine-no-output.md)).
+- ~~**AC-3** Configurable Model Tiers: Das Plugin unterstützt konfigurierbare Modell-Tiers (`lightweight` vs. `heavy`) für flexible Ressourcennutzung.~~ Entfallen: Es gibt keine eingebauten Modelle; der Detektor wird über `FaceDetector` übergeben ([ADR 0002](../../adr/0002-plugins-without-engine-no-output.md)).
 - **AC-4** Relational Storage: `Storage::save_document` persistiert Gesichter mit Bounding-Boxen und Binär-Embeddings in den relationalen Tabellen `faces` und `persons`.
-- **AC-5** Integration Verification: Integrationstests weisen nach, dass das Plugin Gesichter, Bounding-Boxen und Landmarks eines übergebenen `FaceDetector` übernimmt ([ADR 0002](../adr/0002-plugins-without-engine-no-output.md)).
+- **AC-5** Integration Verification: Integrationstests weisen nach, dass das Plugin Gesichter, Bounding-Boxen und Landmarks eines übergebenen `FaceDetector` übernimmt ([ADR 0002](../../adr/0002-plugins-without-engine-no-output.md)).

@@ -1,7 +1,8 @@
 ---
 feature: wasm-geo-host
-status: draft
+status: archived
 archive-after:
+release: 0.2.0
 ---
 
 # Plan — wasm-geo-host (`wasm-geo-host`)

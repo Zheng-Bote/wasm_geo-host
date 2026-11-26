@@ -1,6 +1,6 @@
 ---
 feature: face-detection
-status: draft
+status: archived
 archive-after:
 touches:
   - "crates/models/**"
@@ -8,6 +8,7 @@ touches:
   - "crates/host/**"
   - "crates/host/migrations/**"
   - "Cargo.toml"
+release: 0.2.0
 ---
 
 # Tech Spec — face-detection (`face-detection`)
@@ -79,7 +80,7 @@ Erfüllt **AC-1**: Typisierte Modelle für Gesichter und Merkmale.
 In `plugins/face-detection/src/lib.rs`:
 - Trait `FaceDetector: Send + Sync` mit Methode `detect_faces(&self, path: &str) -> Vec<DetectedFace>`.
 - Unterstützte Tiers:
-  - *Entfallen durch [ADR 0002](../adr/0002-plugins-without-engine-no-output.md):* ~~`ModelTier::Lightweight`: Kompakt, CPU-freundlich, 128-D Vektoren.~~
+  - *Entfallen durch [ADR 0002](../../adr/0002-plugins-without-engine-no-output.md):* ~~`ModelTier::Lightweight`: Kompakt, CPU-freundlich, 128-D Vektoren.~~
   - ~~`ModelTier::Heavy`: Maximale Präzision, 512-D Vektoren.~~
 Erfüllt **AC-2** (WASI Kompilierung). AC-3 (Modell-Tiers) ist entfallen; der Detektor wird über `FaceDetector::detect(image: &[u8])` übergeben.
 

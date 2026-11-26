@@ -1,6 +1,6 @@
 ---
 feature: ocr-text
-status: draft
+status: archived
 archive-after:
 touches:
   - "crates/models/**"
@@ -8,6 +8,7 @@ touches:
   - "crates/host/**"
   - "crates/host/migrations/**"
   - "Cargo.toml"
+release: 0.2.0
 ---
 
 # Tech Spec — ocr-text (`ocr-text`)
@@ -74,7 +75,7 @@ Erfüllt **AC-1**: Typisierte Modelle für OCR-Informationen.
 ### 2. Plugin & OCR-Pipeline (AC-2, AC-3)
 In `plugins/ocr-text/src/lib.rs`:
 - Trait `OcrEngine: Send + Sync` mit Methode `extract_text(&self, path: &str) -> OcrInfo`.
-- Keine eingebaute Engine: `OcrEngine::recognize(image: &[u8])` erhält nur die Bildbytes; ohne Engine bleibt `doc.ocr` leer ([ADR 0002](../adr/0002-plugins-without-engine-no-output.md)).
+- Keine eingebaute Engine: `OcrEngine::recognize(image: &[u8])` erhält nur die Bildbytes; ohne Engine bleibt `doc.ocr` leer ([ADR 0002](../../adr/0002-plugins-without-engine-no-output.md)).
 - Erzeugt Bounding-Boxen und Konfidenzwerte für jede erkannte Zeile.
 Erfüllt **AC-2** (WASI Kompilierung) und **AC-3** (Erkennungs-Pipeline).
 

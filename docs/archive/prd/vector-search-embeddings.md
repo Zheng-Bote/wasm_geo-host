@@ -1,12 +1,13 @@
 ---
 feature: vector-search-embeddings
-status: accepted
+status: archived
 archive-after:
 touches:
   - 'crates/models/**'
   - 'plugins/ai-tagging/**'
   - 'crates/host/**'
   - 'crates/host/migrations/**'
+release: 0.2.0
 ---
 
 # PRD — vector-search-embeddings (`vector-search-embeddings`)
@@ -43,6 +44,6 @@ Die Umsetzung umfasst:
 ## Akzeptanzkriterien
 
 - **AC-1** Model Extension: `AiInfo` in `wasm-geo-models` unterstützt optionale dichte Vektoreinbettungen (`embedding: Option<Vec<f32>>`).
-- **AC-2** Plugin Embedding Export: Das `ai-tagging`-Plugin exportiert die Vektoren seines `VisionModel` normiert und 512-dimensional im `UnifiedDocument` ([ADR 0002](../adr/0002-plugins-without-engine-no-output.md)).
+- **AC-2** Plugin Embedding Export: Das `ai-tagging`-Plugin exportiert die Vektoren seines `VisionModel` normiert und 512-dimensional im `UnifiedDocument` ([ADR 0002](../../adr/0002-plugins-without-engine-no-output.md)).
 - **AC-3** SQLite Binary BLOB Storage: `Storage` persistiert und lädt Vektor-Embeddings als Binär-BLOBs (Little-Endian IEEE 754 Floats) in `photo_embeddings`.
 - **AC-4** Similar CLI Subcommand: Der CLI-Befehl `flagme-host similar <PHOTO_ID>` berechnet die Kosinus-Ähnlichkeit über alle gespeicherten Einbettungen und liefert die Top-K ähnlichsten Fotos.

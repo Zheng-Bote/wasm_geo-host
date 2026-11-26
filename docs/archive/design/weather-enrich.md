@@ -1,6 +1,6 @@
 ---
 feature: weather-enrich
-status: draft
+status: archived
 archive-after:
 touches:
   - "crates/models/**"
@@ -8,6 +8,7 @@ touches:
   - "crates/host/**"
   - "crates/host/migrations/**"
   - "Cargo.toml"
+release: 0.2.0
 ---
 
 # Tech Spec — weather-enrich (`weather-enrich`)

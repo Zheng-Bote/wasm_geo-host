@@ -1,9 +1,10 @@
 ---
 feature: directory-watcher
-status: accepted
+status: archived
 archive-after:
 touches:
   - 'crates/host/**'
+release: 0.2.0
 ---
 
 # PRD — directory-watcher (`directory-watcher`)
