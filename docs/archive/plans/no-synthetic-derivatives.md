@@ -1,6 +1,6 @@
 ---
 feature: no-synthetic-derivatives
-status: draft
+status: archived
 archive-after:
 ---
 

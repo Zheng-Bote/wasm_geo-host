@@ -1,6 +1,6 @@
 ---
 feature: no-synthetic-derivatives
-status: draft
+status: archived
 archive-after:
 touches:
   - plugins/duplicate/**
@@ -19,7 +19,7 @@ touches:
 
 # Tech Spec — Keine erfundenen Hashes, Wetterdaten und Thumbnails (`no-synthetic-derivatives`)
 
-Setzt das PRD `docs/prd/no-synthetic-derivatives.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0002](../adr/0002-plugins-without-engine-no-output.md).
+Setzt das PRD `docs/prd/no-synthetic-derivatives.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0002](../../adr/0002-plugins-without-engine-no-output.md).
 
 ## Architektur
 
