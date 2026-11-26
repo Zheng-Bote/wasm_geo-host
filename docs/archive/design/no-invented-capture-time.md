@@ -1,6 +1,6 @@
 ---
 feature: no-invented-capture-time
-status: draft
+status: archived
 archive-after:
 touches:
   - plugins/timeline/**
@@ -12,7 +12,7 @@ touches:
 
 # Tech Spec — Keine erfundene Aufnahmezeit (`no-invented-capture-time`)
 
-Setzt das PRD `docs/prd/no-invented-capture-time.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0002](../adr/0002-plugins-without-engine-no-output.md).
+Setzt das PRD `docs/prd/no-invented-capture-time.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0002](../../adr/0002-plugins-without-engine-no-output.md).
 
 ## Architektur
 

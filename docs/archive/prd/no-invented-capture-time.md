@@ -1,6 +1,6 @@
 ---
 feature: no-invented-capture-time
-status: draft
+status: archived
 archive-after:
 touches:
   - plugins/timeline/**
@@ -14,7 +14,7 @@ touches:
 
 ## Problem
 
-Findet `timeline` in keiner Quelle (EXIF, XMP, Dateiname, Änderungszeit) eine Aufnahmezeit, setzt es `taken_at` auf den Importzeitpunkt (`resolution_source = "imported_timestamp_fallback"`). Das ist eine erfundene Aufnahmezeit und verstößt gegen die Verfassung (*Strikte Regeln* 2) und [ADR 0002](../adr/0002-plugins-without-engine-no-output.md), Regel 1 (Issue #44). Folgen:
+Findet `timeline` in keiner Quelle (EXIF, XMP, Dateiname, Änderungszeit) eine Aufnahmezeit, setzt es `taken_at` auf den Importzeitpunkt (`resolution_source = "imported_timestamp_fallback"`). Das ist eine erfundene Aufnahmezeit und verstößt gegen die Verfassung (_Strikte Regeln_ 2) und [ADR 0002](../../adr/0002-plugins-without-engine-no-output.md), Regel 1 (Issue #44). Folgen:
 
 - `weather-enrich` fragt das Wetter des Importtages ab und speichert es als Wetter zum Aufnahmezeitpunkt.
 - Der Watcher sortiert solche Fotos in den Importmonat; er greift bei fehlendem `taken_at` zusätzlich selbst auf `imported_at` zurück.
