@@ -7,7 +7,7 @@ The `reversegeo` plugin resolves GPS coordinates from the [`UnifiedDocument`](..
 - **International / English**: `country`, `country_code`, `region`, `county`, `city`.
 - **Native / localized**: `local_country`, `local_region`, `local_city`, `local_language` (e.g. `Deutschland` / `München` / `de`).
 
-Resolution order: **KV cache → offline table → online geocoder (Nominatim) → `Unknown Country` fallback**.
+Resolution order: **KV cache → offline table → online geocoder (Nominatim)**. If none of them resolves the coordinates, the name fields stay empty, the plugin logs `reversegeo: no location names for '<path>' (<lat>, <lon>): <cause>` and caches nothing; no placeholder location is invented ([#52](https://github.com/Zheng-Bote/wasm_geo-host/issues/52), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
 
 | Property | Value |
 | :--- | :--- |
@@ -57,7 +57,7 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `offline_cache` | bool | `true` | `false` → no KV cache reads or writes. |
 | `offline_lookup` | bool | `true` | `false` → skip the embedded city table and country boxes. |
-| `online_lookup` | bool | `true` | `false` → never query the online geocoder; unresolved coordinates become `Unknown Country` / `XX`. |
+| `online_lookup` | bool | `true` | `false` → never query the online geocoder; coordinates outside the offline data keep empty names (warning). |
 | `city_radius_km` | integer 1–2000 | `200` | Search radius around the reference cities (200 km = the former fixed 1.8°). |
 | `cache_precision` | integer 0–6 | `3` | Decimal places of the cache key `geo:<lat>:<lon>` (3 ≈ 111 m). |
 | `nominatim_url` | `http(s)://` URL | `https://nominatim.openstreetmap.org/reverse` | Base URL; the plugin appends `?format=jsonv2&lat=…&lon=…&accept-language=…`. |
@@ -79,7 +79,7 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 | Distance measure | `dist² = Δlat² + (Δlon · max(cos(lat), 0.2))²` in degrees, radius `city_radius_km / 111.1` | The nearest city within the radius wins. |
 | Online query | `<nominatim_url>?format=jsonv2&lat=…&lon=…&accept-language=<accept_language>` | Only if the offline lookup finds nothing and `online_lookup = true`. |
 | HTTP timeout | 2 s (host `curl --max-time 2`) | Defined by the host capability, not by the plugin. |
-| Fallback result | `country = "Unknown Country"`, `country_code = "XX"`, `region = "Global"`, `local_language = "en"` | When offline and online both fail. |
+| No result | Name fields stay `None`, coordinates are kept, warning with the cause (`online_lookup is off`, `unreadable geocoder response` or the `http_get` error), no cache entry | When offline and online both fail. |
 
 ### 2.4 Offline Reference Data
 
@@ -127,7 +127,7 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
 | `kv` | `kv_get` / `kv_set` with key `geo:<lat>:<lon>` | No caching; every document is resolved again. |
-| `http` | Nominatim request | Coordinates outside the offline data end up as `Unknown Country` / `XX`. |
+| `http` | Nominatim request | Coordinates outside the offline data keep empty names; warning with the cause. |
 
 ---
 

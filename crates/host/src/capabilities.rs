@@ -4,6 +4,9 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 
+/// Timeout of an outbound `http_get` request.
+pub const HTTP_TIMEOUT_SECS: u64 = 2;
+
 /// Capability enforcement manager for a specific plugin.
 pub struct CapabilityManager {
     plugin_name: String,
@@ -101,29 +104,34 @@ impl HostCapabilities for CapabilityManager {
 
         tracing::info!(plugin = %self.plugin_name, url = %url, "Executing HTTP GET");
 
-        // Attempt outbound HTTP fetch with strict 2-second timeout via system curl if network is available
-        if let Ok(output) = Command::new("curl")
+        // Outbound request via the system `curl` (2 s timeout). Every failure is reported as an
+        // error; the host never builds a response body itself (#52, ADR 0002).
+        let output = Command::new("curl")
             .args([
                 "-sS",
                 "-L",
+                "--fail",
                 "--max-time",
-                "2",
+                &HTTP_TIMEOUT_SECS.to_string(),
                 "-H",
                 "User-Agent: flagme-host/0.1.0",
                 url,
             ])
             .output()
-        {
-            if output.status.success() && !output.stdout.is_empty() {
-                if let Ok(body) = String::from_utf8(output.stdout) {
-                    if !body.trim().is_empty() {
-                        return Ok(body);
-                    }
-                }
-            }
-        }
+            .map_err(|e| PluginError::Io(format!("http_get {}: cannot run curl: {}", url, e)))?;
 
-        Ok(format!(r#"{{"status": "offline", "url": "{}"}}"#, url))
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let cause = stderr.trim().trim_start_matches("curl: ");
+            let code = output.status.code().map_or("signal".to_string(), |c| c.to_string());
+            return Err(PluginError::Io(format!("http_get {}: {} (curl exit {})", url, cause, code)));
+        }
+        let body = String::from_utf8(output.stdout)
+            .map_err(|_| PluginError::Io(format!("http_get {}: response is not UTF-8", url)))?;
+        if body.trim().is_empty() {
+            return Err(PluginError::Io(format!("http_get {}: empty response", url)));
+        }
+        Ok(body)
     }
 
     fn kv_get(&self, key: &str) -> PluginResult<Option<String>> {
