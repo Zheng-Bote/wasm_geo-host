@@ -95,7 +95,7 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 
 ### 2.5 No Measurement
 
-If the HTTP request fails or the response cannot be parsed, the plugin logs `weather-enrich: no measured weather for '<path>': …`, leaves `doc.weather` empty and caches nothing.
+If the HTTP request fails or the response cannot be parsed, the plugin logs `weather-enrich: no measured weather for '<path>': …`, leaves `doc.weather` empty and caches nothing. The host reports every failed request as an error naming the cause (unreachable server, timeout, HTTP status such as `404`/`500`, empty response, missing `curl`); it never substitutes a response body ([#52](https://github.com/Zheng-Bote/wasm_geo-host/issues/52)).
 
 ---
 

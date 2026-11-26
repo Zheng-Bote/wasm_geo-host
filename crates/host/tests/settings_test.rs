@@ -328,7 +328,10 @@ fn reversegeo_online_lookup() {
         .process(with_location(doc("a.jpg"), 0.0, 0.0), &ctx(&caps, &[("online_lookup", "false")]))
         .unwrap();
     assert!(caps.urls().is_empty());
-    assert_eq!(out.location.unwrap().country_code.as_deref(), Some("XX"));
+    // Unresolved coordinates keep empty names (no "Unknown Country"/"XX" placeholder, #52).
+    let loc = out.location.unwrap();
+    assert_eq!((loc.latitude, loc.longitude), (Some(0.0), Some(0.0)));
+    assert!(loc.country_code.is_none() && loc.country.is_none());
 }
 
 // plugin-settings AC-4: reversegeo city_radius_km limits the nearest-city search

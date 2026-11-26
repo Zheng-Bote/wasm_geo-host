@@ -847,35 +847,40 @@ impl Plugin for ReverseGeoPlugin {
                 .log("info", "Resolved via offline Natural Earth lookup");
             geo
         } else {
-            // 3. Fallback to online geocoder via HTTP capability
-            let online_parsed = if settings.online_lookup {
-                ctx.capabilities
-                    .log("info", "Querying online geocoder service");
-                let url = format!(
-                    "{}?format=jsonv2&lat={}&lon={}&accept-language={}",
-                    settings.nominatim_url, lat, lon, settings.accept_language
+            // 3. Fallback to online geocoder via HTTP capability. Without a result the names stay
+            //    empty and nothing is cached; no placeholder location is invented (#52, ADR 0002).
+            let unresolved = |cause: String| {
+                ctx.capabilities.log(
+                    "warn",
+                    &format!(
+                        "reversegeo: no location names for '{}' ({}, {}): {}",
+                        doc.file.path, lat, lon, cause
+                    ),
                 );
-                ctx.capabilities.http_get(&url).ok().and_then(|body| {
-                    self.parse_nominatim_response(&body, lat, lon, alt, &settings.accept_language)
-                })
-            } else {
-                None
             };
-
-            online_parsed.unwrap_or(LocationInfo {
-                latitude: Some(lat),
-                longitude: Some(lon),
-                altitude: alt,
-                country: Some("Unknown Country".to_string()),
-                country_code: Some("XX".to_string()),
-                region: Some("Global".to_string()),
-                county: None,
-                city: None,
-                local_country: Some("Unknown Country".to_string()),
-                local_region: Some("Global".to_string()),
-                local_city: None,
-                local_language: Some("en".to_string()),
-            })
+            if !settings.online_lookup {
+                unresolved("not in the offline data and online_lookup is off".to_string());
+                return Ok(doc);
+            }
+            ctx.capabilities
+                .log("info", "Querying online geocoder service");
+            let url = format!(
+                "{}?format=jsonv2&lat={}&lon={}&accept-language={}",
+                settings.nominatim_url, lat, lon, settings.accept_language
+            );
+            match ctx.capabilities.http_get(&url) {
+                Ok(body) => match self.parse_nominatim_response(&body, lat, lon, alt, &settings.accept_language) {
+                    Some(geo) => geo,
+                    None => {
+                        unresolved("unreadable geocoder response".to_string());
+                        return Ok(doc);
+                    }
+                },
+                Err(e) => {
+                    unresolved(e.to_string());
+                    return Ok(doc);
+                }
+            }
         };
 
         // Cache result in KV
