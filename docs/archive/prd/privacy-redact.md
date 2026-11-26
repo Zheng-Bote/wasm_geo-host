@@ -1,13 +1,13 @@
 ---
 feature: privacy-redact
-status: draft
+status: archived
 archive-after:
 touches:
-  - "crates/models/**"
-  - "plugins/privacy-redact/**"
-  - "crates/host/**"
-  - "crates/host/migrations/**"
-  - "Cargo.toml"
+  - 'crates/models/**'
+  - 'plugins/privacy-redact/**'
+  - 'crates/host/**'
+  - 'crates/host/migrations/**'
+  - 'Cargo.toml'
 ---
 
 # PRD — privacy-redact (`privacy-redact`)
@@ -27,6 +27,7 @@ Bereitstellung des Plugins `flagme-plugin-privacy-redact` zur automatisierten Bi
 ## Umfang
 
 Die Umsetzung umfasst:
+
 - Datenstruktur `PrivacyInfo` in `wasm-geo-models` mit Serde-Serialisierung.
 - Plugin-Crate `plugins/privacy-redact` mit CDYLib & WASI-Binärsupport (`wasm32-wasip2`).
 - Optische Redaktions-Algorithmen (Pixelate, Blur, Blackout) für Bounding-Boxen, angewandt auf dekodierte Pixel der Quelldatei und als gültiges JPEG neu kodiert (Issue #22).

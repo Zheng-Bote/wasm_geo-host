@@ -1,6 +1,6 @@
 ---
 feature: privacy-redact
-status: draft
+status: archived
 archive-after:
 touches:
   - "crates/models/**"
