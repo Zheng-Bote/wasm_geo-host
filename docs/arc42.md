@@ -10,7 +10,7 @@ Geändert: deutsche Übersetzung der Gliederung, Hilfetexte gekürzt (SDD Studio
 
 # Architekturdokumentation — wasm_geo-host
 
-Gliederung nach dem [arc42](https://arc42.org)-Template 9.1 (© Dr. Peter Hruschka, Dr. Gernot Starke und Mitwirkende), lizenziert unter [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); deutsche Fassung der Gliederung. `release:` im Kopf nennt den Stand, den diese Seite beschreibt. Diagramme in [Mermaid](https://mermaid.js.org); die Gerüste unten durch die Bausteine des Projekts ersetzen.
+Gliederung nach dem [arc42](https://arc42.org)-Template 9.1 (© Dr. Peter Hruschka, Dr. Gernot Starke und Mitwirkende), lizenziert unter [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); deutsche Fassung der Gliederung. `release:` im Kopf nennt den Stand, den diese Seite beschreibt. Diagramme in [Mermaid](https://mermaid.js.org).
 
 # Einführung und Ziele {#section-introduction-and-goals}
 
