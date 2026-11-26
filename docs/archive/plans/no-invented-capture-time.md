@@ -1,6 +1,6 @@
 ---
 feature: no-invented-capture-time
-status: draft
+status: archived
 archive-after:
 ---
 
