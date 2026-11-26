@@ -212,3 +212,5 @@ impl Plugin for WeatherEnrichPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(WeatherEnrichPlugin, WeatherEnrichPlugin::new);

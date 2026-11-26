@@ -1,6 +1,17 @@
-package wasmgeohost:media;
+package wasmgeohost:media@0.2.0;
 
+/// Mirror of `UnifiedDocument` (`crates/models`). Every field of the models crate has a
+/// counterpart here; `crates/host` and `crates/sdk` convert losslessly (ADR 0003).
 interface types {
+    /// Mirror of `flagme_sdk::PluginError`.
+    variant plugin-error {
+        serialization(string),
+        capability-denied(string),
+        io(string),
+        processing-failed(string),
+        config(string),
+    }
+
     record file-info {
         path: string,
         filename: string,
@@ -17,6 +28,7 @@ interface types {
         focal-length: option<f32>,
         f-number: option<f32>,
         exposure-time: option<string>,
+        /// Lossless original tags (ADR 0001), key/value pairs.
         raw-tags: list<tuple<string, string>>,
     }
 
@@ -29,6 +41,10 @@ interface types {
         region: option<string>,
         county: option<string>,
         city: option<string>,
+        local-country: option<string>,
+        local-region: option<string>,
+        local-city: option<string>,
+        local-language: option<string>,
     }
 
     record country-info {
@@ -53,17 +69,84 @@ interface types {
         model: string,
     }
 
-    record duplicate-info {
-        sha256: string,
-        phash: string,
-        duplicate-ids: list<string>,
+    record ai-info {
+        tags: list<ai-tag>,
+        description: string,
+        embedding: option<list<f32>>,
     }
 
+    record duplicate-info {
+        sha256: string,
+        phash: option<string>,
+        duplicates: list<string>,
+    }
+
+    /// Timestamps are RFC 3339 strings in UTC.
     record timeline-info {
         taken-at: option<string>,
         imported-at: string,
         modified-at: option<string>,
         resolution-source: string,
+    }
+
+    record weather-info {
+        temperature: option<f32>,
+        condition: string,
+        wmo-code: u8,
+        icon-emoji: string,
+        humidity-percent: option<u8>,
+        precipitation-mm: option<f32>,
+        is-day: option<bool>,
+    }
+
+    record bounding-box {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    }
+
+    record text-region {
+        text: string,
+        confidence: f32,
+        bbox: bounding-box,
+    }
+
+    record ocr-info {
+        combined-text: string,
+        regions: list<text-region>,
+        primary-language: option<string>,
+    }
+
+    record face-landmarks {
+        left-eye: tuple<f32, f32>,
+        right-eye: tuple<f32, f32>,
+        nose: tuple<f32, f32>,
+        mouth-left: tuple<f32, f32>,
+        mouth-right: tuple<f32, f32>,
+    }
+
+    record detected-face {
+        id: string,
+        bbox: bounding-box,
+        confidence: f32,
+        landmarks: option<face-landmarks>,
+        embedding: option<list<f32>>,
+        person-id: option<string>,
+    }
+
+    record faces-info {
+        faces: list<detected-face>,
+        detection-model: string,
+    }
+
+    record privacy-info {
+        is-redacted: bool,
+        faces-redacted-count: u64,
+        license-plates-redacted-count: u64,
+        original-gps-fuzzed: bool,
+        redacted-image-path: option<string>,
+        applied-rules: list<string>,
     }
 
     record document {
@@ -73,31 +156,46 @@ interface types {
         location: option<location-info>,
         country: option<country-info>,
         thumbnails: list<thumbnail-entry>,
-        ai-tags: list<ai-tag>,
+        ai: option<ai-info>,
         duplicate: option<duplicate-info>,
         timeline: option<timeline-info>,
+        weather: option<weather-info>,
+        ocr: option<ocr-info>,
+        faces: option<faces-info>,
+        privacy: option<privacy-info>,
+        /// `custom` as a JSON object (free-form values).
         custom-json: string,
     }
 }
 
+/// Host functions; every call is checked against the plugin's grants in `config.yaml`.
 interface host-capabilities {
-    use types.{document};
+    use types.{plugin-error};
 
-    fs-read: func(path: string) -> result<list<u8>, string>;
+    /// Capability `filesystem`.
+    fs-read: func(path: string) -> result<list<u8>, plugin-error>;
+    /// Capability `filesystem`; creates missing parent directories.
+    fs-write: func(path: string, data: list<u8>) -> result<_, plugin-error>;
     /// Last modification time of a file as Unix seconds (capability `filesystem`).
-    fs-modified: func(path: string) -> result<u64, string>;
-    http-get: func(url: string) -> result<string, string>;
-    kv-get: func(key: string) -> result<option<string>, string>;
-    kv-set: func(key: string, value: string) -> result<_, string>;
-    secret-get: func(name: string) -> result<option<string>, string>;
+    fs-modified: func(path: string) -> result<u64, plugin-error>;
+    /// Capability `http`.
+    http-get: func(url: string) -> result<string, plugin-error>;
+    /// Capability `kv`.
+    kv-get: func(key: string) -> result<option<string>, plugin-error>;
+    /// Capability `kv`.
+    kv-set: func(key: string, value: string) -> result<_, plugin-error>;
+    /// Capability `secrets`.
+    secret-get: func(name: string) -> result<option<string>, plugin-error>;
+    /// Always allowed; `level` is `error`, `warn`, `info` or `debug`.
     log-event: func(level: string, message: string);
 }
 
 world media-plugin {
+    use types.{document, plugin-error};
     import host-capabilities;
-    use types.{document};
 
     export name: func() -> string;
     export version: func() -> string;
-    export process: func(doc: document) -> result<document, string>;
+    /// `settings` are the plugin's `settings` from `config.yaml`.
+    export process: func(doc: document, settings: list<tuple<string, string>>) -> result<document, plugin-error>;
 }

@@ -8,6 +8,7 @@ The `duplicate` plugin finds exact copies (SHA-256) and visually similar images 
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `duplicate` |
 | Crate | `flagme-plugin-duplicate` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_duplicate.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-duplicate`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | `doc.id`, `doc.file.path` (file bytes) |
 | Writes | `doc.duplicate` (`DuplicateInfo`), `doc.file.sha256` |
@@ -22,7 +23,7 @@ The `duplicate` plugin finds exact copies (SHA-256) and visually similar images 
 2. **dHash (64 bit)** — the image is decoded (`image` crate: JPEG, PNG, WebP, TIFF, GIF), rotated per EXIF orientation, converted to grayscale and scaled to 9 × 8 pixels; 64 horizontal gradient comparisons → 16 hex digits. Robust against re-compression and resizing.
 3. **KV Hash Index** — first-seen photo per hash: `sha256:<hex>` → `doc.id`, `phash:<hex>` → `doc.id`.
 4. **Indexed SQLite Table** — `idx_duplicates_phash` on `duplicates(phash)`.
-5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+5. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 

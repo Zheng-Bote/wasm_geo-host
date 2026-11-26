@@ -312,3 +312,5 @@ impl Plugin for TimelinePlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(TimelinePlugin, TimelinePlugin::new);

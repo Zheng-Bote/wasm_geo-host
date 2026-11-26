@@ -2,6 +2,7 @@ pub use wasm_geo_models::*;
 pub use serde;
 pub use serde_json;
 
+pub mod component;
 pub mod settings;
 pub use settings::{PluginSettings, SettingsCache, SettingsReader};
 

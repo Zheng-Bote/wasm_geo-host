@@ -13,6 +13,7 @@ Resolution order: **KV cache → offline table → online geocoder (Nominatim) �
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `reversegeo` |
 | Crate | `flagme-plugin-reversegeo` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_reversegeo.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-reversegeo`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | `doc.location.latitude`, `longitude`, `altitude` |
 | Writes | `doc.location.{country, country_code, region, county, city, local_*}` (coordinates stay unchanged) |
@@ -27,7 +28,7 @@ Resolution order: **KV cache → offline table → online geocoder (Nominatim) �
 2. **Country Bounding-Box Fallback** — 7 country boxes (DE, FR, IT, US, JP, ES, GB) when no reference city is close enough.
 3. **Online Fallback** — Nominatim / OpenStreetMap (`accept-language` configurable, default `en`) for coordinates outside the offline data.
 4. **KV Caching** — results are stored per coordinate bucket (`geo:<lat>:<lon>`, default 3 decimals).
-5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+5. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 

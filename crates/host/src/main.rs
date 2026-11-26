@@ -1,18 +1,6 @@
 use flagme_host::{
-    run_server, AppConfig, DirectoryWatcher, Pipeline, PluginRuntime, Storage, StreamSupervisor,
-    WatcherConfig,
+    run_server, AppConfig, DirectoryWatcher, Pipeline, PluginRuntime, Storage, WatcherConfig,
 };
-use flagme_plugin_ai_tagging::AiTaggingPlugin;
-use flagme_plugin_countryflag::CountryFlagPlugin;
-use flagme_plugin_duplicate::DuplicatePlugin;
-use flagme_plugin_metadata::MetadataPlugin;
-use flagme_plugin_reversegeo::ReverseGeoPlugin;
-use flagme_plugin_thumbnail::ThumbnailPlugin;
-use flagme_plugin_timeline::TimelinePlugin;
-use flagme_plugin_weather_enrich::WeatherEnrichPlugin;
-use flagme_plugin_ocr_text::OcrTextPlugin;
-use flagme_plugin_face_detection::FaceDetectionPlugin;
-use flagme_plugin_privacy_redact::PrivacyRedactPlugin;
 use wasm_geo_models::{FileInfo, UnifiedDocument};
 use std::path::Path;
 use std::sync::Arc;
@@ -128,18 +116,7 @@ async fn main() -> anyhow::Result<()> {
         let storage = Arc::new(Storage::new(&config.database_path));
         storage.init_schema()?;
 
-        let mut runtime = PluginRuntime::new(config.clone());
-        runtime.register_plugin(Arc::new(MetadataPlugin::new()));
-        runtime.register_plugin(Arc::new(ReverseGeoPlugin::new()));
-        runtime.register_plugin(Arc::new(CountryFlagPlugin::new()));
-        runtime.register_plugin(Arc::new(ThumbnailPlugin::new()));
-        runtime.register_plugin(Arc::new(AiTaggingPlugin::new()));
-        runtime.register_plugin(Arc::new(DuplicatePlugin::new()));
-        runtime.register_plugin(Arc::new(TimelinePlugin::new()));
-        runtime.register_plugin(Arc::new(WeatherEnrichPlugin::new()));
-        runtime.register_plugin(Arc::new(OcrTextPlugin::new()));
-        runtime.register_plugin(Arc::new(FaceDetectionPlugin::new()));
-        runtime.register_plugin(Arc::new(PrivacyRedactPlugin::new()));
+        let runtime = PluginRuntime::new(config.clone())?;
 
         let pipeline = Arc::new(Pipeline::new(config, runtime, storage.clone()));
 
@@ -250,27 +227,9 @@ async fn main() -> anyhow::Result<()> {
     let storage = Arc::new(Storage::new(&config.database_path));
     storage.init_schema()?;
 
-    if is_stream {
-        let supervisor = StreamSupervisor::default_pipeline();
-        let final_json = supervisor.execute(file_path)?;
-        let doc: UnifiedDocument = serde_json::from_str(&final_json)?;
-        storage.save_document(&doc)?;
-        println!("{}", serde_json::to_string_pretty(&doc)?);
-        return Ok(());
-    }
-
-    let mut runtime = PluginRuntime::new(config.clone());
-    runtime.register_plugin(Arc::new(MetadataPlugin::new()));
-    runtime.register_plugin(Arc::new(ReverseGeoPlugin::new()));
-    runtime.register_plugin(Arc::new(CountryFlagPlugin::new()));
-    runtime.register_plugin(Arc::new(ThumbnailPlugin::new()));
-    runtime.register_plugin(Arc::new(AiTaggingPlugin::new()));
-    runtime.register_plugin(Arc::new(DuplicatePlugin::new()));
-    runtime.register_plugin(Arc::new(TimelinePlugin::new()));
-    runtime.register_plugin(Arc::new(WeatherEnrichPlugin::new()));
-    runtime.register_plugin(Arc::new(OcrTextPlugin::new()));
-    runtime.register_plugin(Arc::new(FaceDetectionPlugin::new()));
-    runtime.register_plugin(Arc::new(PrivacyRedactPlugin::new()));
+    // `stream` runs on the same embedded component runtime as `process`; every stage gets
+    // its own store (ADR 0003).
+    let runtime = PluginRuntime::new(config.clone())?;
 
     let pipeline = Pipeline::new(config, runtime, storage);
 

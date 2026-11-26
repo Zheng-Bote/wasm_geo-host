@@ -6,6 +6,9 @@ use std::path::Path;
 pub struct AppConfig {
     #[serde(default = "default_database_path")]
     pub database_path: String,
+    /// Directory with the plugin components; used for plugins without an explicit `path`.
+    #[serde(default = "default_plugin_dir")]
+    pub plugin_dir: String,
     #[serde(default)]
     pub resource_limits: ResourceLimits,
     #[serde(default)]
@@ -33,6 +36,13 @@ impl Default for ResourceLimits {
 
 fn default_database_path() -> String {
     "media.db".to_string()
+}
+
+/// Output directory of `cargo build --release --target wasm32-wasip2 --lib --features component`.
+pub const DEFAULT_PLUGIN_DIR: &str = "target/wasm32-wasip2/release";
+
+fn default_plugin_dir() -> String {
+    DEFAULT_PLUGIN_DIR.to_string()
 }
 
 fn default_max_memory_bytes() -> u64 {
@@ -66,7 +76,7 @@ impl Default for AppConfig {
             "metadata".to_string(),
             PluginConfig {
                 enabled: true,
-                path: Some("plugins/metadata.wasm".to_string()),
+                path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
             },
@@ -75,7 +85,7 @@ impl Default for AppConfig {
             "reversegeo".to_string(),
             PluginConfig {
                 enabled: true,
-                path: Some("plugins/reversegeo.wasm".to_string()),
+                path: None,
                 capabilities: vec!["http".to_string(), "kv".to_string()],
                 settings: HashMap::new(),
             },
@@ -84,7 +94,7 @@ impl Default for AppConfig {
             "countryflag".to_string(),
             PluginConfig {
                 enabled: true,
-                path: Some("plugins/countryflag.wasm".to_string()),
+                path: None,
                 capabilities: vec![],
                 settings: HashMap::new(),
             },
@@ -93,7 +103,7 @@ impl Default for AppConfig {
             "thumbnail".to_string(),
             PluginConfig {
                 enabled: true,
-                path: Some("plugins/thumbnail.wasm".to_string()),
+                path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
             },
@@ -103,7 +113,7 @@ impl Default for AppConfig {
             PluginConfig {
                 // experimental: no engine built in, produces no results (ADR 0002)
                 enabled: false,
-                path: Some("plugins/ai-tagging.wasm".to_string()),
+                path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
             },
@@ -112,7 +122,7 @@ impl Default for AppConfig {
             "duplicate".to_string(),
             PluginConfig {
                 enabled: true,
-                path: Some("plugins/duplicate.wasm".to_string()),
+                path: None,
                 capabilities: vec!["filesystem".to_string(), "kv".to_string()],
                 settings: HashMap::new(),
             },
@@ -121,7 +131,7 @@ impl Default for AppConfig {
             "timeline".to_string(),
             PluginConfig {
                 enabled: true,
-                path: Some("plugins/timeline.wasm".to_string()),
+                path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
             },
@@ -130,7 +140,7 @@ impl Default for AppConfig {
             "weather-enrich".to_string(),
             PluginConfig {
                 enabled: true,
-                path: Some("plugins/weather-enrich.wasm".to_string()),
+                path: None,
                 capabilities: vec!["http".to_string(), "kv".to_string()],
                 settings: HashMap::new(),
             },
@@ -140,7 +150,7 @@ impl Default for AppConfig {
             PluginConfig {
                 // experimental: no engine built in, produces no results (ADR 0002)
                 enabled: false,
-                path: Some("plugins/ocr-text.wasm".to_string()),
+                path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
             },
@@ -150,7 +160,7 @@ impl Default for AppConfig {
             PluginConfig {
                 // experimental: no engine built in, produces no results (ADR 0002)
                 enabled: false,
-                path: Some("plugins/face-detection.wasm".to_string()),
+                path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
             },
@@ -159,7 +169,7 @@ impl Default for AppConfig {
             "privacy-redact".to_string(),
             PluginConfig {
                 enabled: true,
-                path: Some("plugins/privacy-redact.wasm".to_string()),
+                path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
             },
@@ -167,6 +177,7 @@ impl Default for AppConfig {
 
         Self {
             database_path: default_database_path(),
+            plugin_dir: default_plugin_dir(),
             resource_limits: ResourceLimits::default(),
             pipeline: vec![
                 "metadata".to_string(),
@@ -187,6 +198,15 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// Component file of a plugin: its `path`, else `<plugin_dir>/flagme_plugin_<name>.wasm`
+    /// (`-` in the name becomes `_`, as in the Cargo artifact name).
+    pub fn component_path(&self, name: &str) -> std::path::PathBuf {
+        match self.plugins.get(name).and_then(|p| p.path.as_deref()) {
+            Some(path) => std::path::PathBuf::from(path),
+            None => Path::new(&self.plugin_dir).join(format!("flagme_plugin_{}.wasm", name.replace('-', "_"))),
+        }
+    }
+
     pub fn load_from_str(s: &str) -> anyhow::Result<Self> {
         if let Ok(cfg) = serde_json::from_str::<AppConfig>(s) {
             return Ok(cfg);
@@ -231,6 +251,12 @@ impl AppConfig {
                             section = Section::Root;
                             if !v.is_empty() {
                                 cfg.database_path = v;
+                            }
+                        }
+                        "plugin_dir" => {
+                            section = Section::Root;
+                            if !v.is_empty() {
+                                cfg.plugin_dir = v;
                             }
                         }
                         "resource_limits" => {
@@ -280,7 +306,7 @@ impl AppConfig {
                         let pname = trimmed.trim_end_matches(':').trim().to_string();
                         cfg.plugins.entry(pname.clone()).or_insert_with(|| PluginConfig {
                             enabled: true,
-                            path: Some(format!("plugins/{}.wasm", pname)),
+                            path: None,
                             capabilities: Vec::new(),
                             settings: HashMap::new(),
                         });

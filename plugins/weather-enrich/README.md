@@ -8,6 +8,7 @@ The `weather-enrich` plugin adds the historical weather at the place and hour a 
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `weather-enrich` |
 | Crate | `flagme-plugin-weather-enrich` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_weather_enrich.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-weather-enrich`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | `doc.location.latitude/longitude`, `doc.timeline.taken_at` |
 | Writes | `doc.weather` (`WeatherInfo`) |
@@ -22,7 +23,7 @@ The `weather-enrich` plugin adds the historical weather at the place and hour a 
 2. **WMO Code Mapping** — codes 0–99 → label + emoji (table in §2.4).
 3. **KV Caching** — per coordinate (`coordinate_precision`, default 2 decimals) and hour.
 4. **Measured data only** — if no measured value is available, `doc.weather` stays empty and a warning is logged; there is no estimate ([ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
-5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+5. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 

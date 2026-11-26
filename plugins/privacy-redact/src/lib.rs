@@ -373,3 +373,5 @@ impl Plugin for PrivacyRedactPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(PrivacyRedactPlugin, PrivacyRedactPlugin::new);

@@ -1,8 +1,6 @@
-use flagme_plugin_countryflag::CountryFlagPlugin;
+mod common;
+
 use flagme_plugin_metadata::MetadataPlugin;
-use flagme_plugin_privacy_redact::{PrivacyRedactPlugin, PrivacySettings};
-use flagme_plugin_reversegeo::ReverseGeoPlugin;
-use flagme_plugin_timeline::TimelinePlugin;
 use flagme_sdk::{FileInfo, NoopCapabilities, Plugin, PluginContext, UnifiedDocument};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -65,25 +63,47 @@ fn documented_output() -> Value {
     serde_json::from_str(json).expect("documented output is valid JSON")
 }
 
-// wasm-geo-host AC-12: the documented example output matches what the plugins determine from Examples/sample.jpg
+/// Runs `flagme-host stream Examples/sample.jpg` on the plugin components in a scratch directory
+/// that mirrors the repository layout (same relative path, hence same id and cache keys).
+fn real_stream_run() -> UnifiedDocument {
+    let dir = common::temp_dir("examples_ac12");
+    std::fs::create_dir_all(dir.join("Examples")).unwrap();
+    std::fs::copy(repo_root().join("Examples/sample.jpg"), dir.join("Examples/sample.jpg")).unwrap();
+    let config: String = std::fs::read_to_string(repo_root().join("config.yaml"))
+        .unwrap()
+        .lines()
+        .map(|l| {
+            if l.starts_with("database_path:") {
+                format!("database_path: \"{}\"", dir.join("media.db").display())
+            } else if l.starts_with("plugin_dir:") {
+                format!("plugin_dir: \"{}\"", common::components_dir().display())
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(dir.join("config.yaml"), config).unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_flagme-host"))
+        .args(["stream", "Examples/sample.jpg", "--config", "config.yaml"])
+        .current_dir(&dir)
+        .env_remove("RUST_LOG")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let doc = serde_json::from_slice(&out.stdout).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    doc
+}
+
+// wasm-geo-host AC-12: the documented example output matches a real flagme-host stream run of Examples/sample.jpg
 #[test]
 fn test_ac12_documented_output_matches_real_run() {
     let documented = documented_output();
-    let out_dir = std::env::temp_dir().join(format!("examples_ac12_{}", std::process::id()));
-    let privacy = PrivacyRedactPlugin::with_settings(PrivacySettings {
-        output_dir: out_dir.to_string_lossy().to_string(),
-        ..Default::default()
-    });
-
-    let c = ctx();
-    let doc = MetadataPlugin::new().process(sample_doc("sample.jpg"), &c).unwrap();
-    let doc = ReverseGeoPlugin::new().process(doc, &c).unwrap();
-    let doc = CountryFlagPlugin::new().process(doc, &c).unwrap();
-    let doc = TimelinePlugin::new().process(doc, &c).unwrap();
-    let doc = privacy.process(doc, &c).unwrap();
-    let actual = doc;
     let expected: UnifiedDocument = serde_json::from_value(documented.clone()).expect("documented output is a UnifiedDocument");
+    let actual = real_stream_run();
 
+    assert_eq!((&expected.id, &expected.file), (&actual.id, &actual.file), "id, file");
     let (mut doc_meta, mut real_meta) = (expected.metadata.unwrap(), actual.metadata.unwrap());
     let (doc_raw, real_raw) = (std::mem::take(&mut doc_meta.raw_tags), std::mem::take(&mut real_meta.raw_tags));
     assert_eq!(doc_meta, real_meta, "metadata");
@@ -93,11 +113,15 @@ fn test_ac12_documented_output_matches_real_run() {
 
     assert_eq!(expected.location, actual.location, "location");
     assert_eq!(expected.country, actual.country, "country");
+    assert_eq!(expected.thumbnails, actual.thumbnails, "thumbnails");
+    assert_eq!(expected.duplicate, actual.duplicate, "duplicate");
     assert_eq!(expected.privacy, actual.privacy, "privacy");
     let (et, at) = (expected.timeline.unwrap(), actual.timeline.unwrap());
     assert_eq!((et.taken_at, et.resolution_source), (at.taken_at, at.resolution_source), "timeline");
+    assert!(at.modified_at.is_some(), "fs-modified through the capability");
+    // `weather` depends on the network (live Open-Meteo request) and is not compared.
     for field in ["ai", "ocr", "faces"] {
         assert!(documented.get(field).is_none(), "{} must be absent (ADR 0002)", field);
     }
-    let _ = std::fs::remove_dir_all(&out_dir);
+    assert!(actual.ai.is_none() && actual.ocr.is_none() && actual.faces.is_none());
 }

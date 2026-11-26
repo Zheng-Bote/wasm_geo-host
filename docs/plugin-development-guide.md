@@ -12,6 +12,13 @@ name = "flagme-plugin-mycustom"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Export the `media-plugin` component (ADR 0003); build with `--lib --features component`.
+component = []
+
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
 ```
@@ -39,6 +46,21 @@ impl Plugin for MyCustomPlugin {
     }
 }
 ```
+
+Export it as a Wasm component at the end of `src/lib.rs`:
+
+```rust
+flagme_sdk::export_plugin!(MyCustomPlugin, || MyCustomPlugin);
+```
+
+The macro is active only on `wasm32` with the crate's `component` feature. It implements the `media-plugin` world of [`wit/media-plugin.wit`](../wit/media-plugin.wit): it converts the WIT `document` to `UnifiedDocument` and back, passes the `settings` from `config.yaml` as `ctx.settings` and routes `ctx.capabilities` to the host imports. Build and check:
+
+```bash
+cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-mycustom
+wasm-tools component wit target/wasm32-wasip2/release/flagme_plugin_mycustom.wasm
+```
+
+`name()` must return the plugin's key in `config.yaml`; the host rejects a component whose `name` differs. A new field in `UnifiedDocument` needs its counterpart in `wit/media-plugin.wit` and in both conversions (`crates/sdk/src/component.rs`, `crates/host/src/component.rs`); `crates/host/tests/component_runtime_test.rs` (AC-6) round-trips a fully populated document.
 
 ### 3. Request Host Capabilities in config.yaml
 

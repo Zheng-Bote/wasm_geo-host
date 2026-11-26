@@ -8,6 +8,7 @@ The `privacy-redact` plugin sanitizes personal data (GDPR / DSGVO) before media 
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `privacy-redact` |
 | Crate | `flagme-plugin-privacy-redact` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_privacy_redact.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-privacy-redact`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | `doc.file.path`, `doc.faces`, `doc.location`, `doc.metadata.raw_tags` |
 | Writes | `doc.privacy`; modifies `doc.location.latitude/longitude` and `doc.metadata.raw_tags` |
@@ -22,7 +23,7 @@ The `privacy-redact` plugin sanitizes personal data (GDPR / DSGVO) before media 
 2. **GPS Coordinate Fuzzing** — rounds `doc.location.latitude` / `longitude` to `gps_decimal_places` decimals, keeping city/district context for maps.
 3. **Hardware Serial Stripping** (on request, the only permitted change to `raw_tags`, see [ADR 0001](../../docs/adr/0001-raw-tags-original-serial-stripping.md)) — removes every `raw_tags` key containing `serialnumber` or `serial_number` (case-insensitive), e.g. `CameraSerialNumber`, `LensSerialNumber`, `Exif.BodySerialNumber`.
 4. **Audit Trail** — every applied rule is recorded in `doc.privacy.applied_rules` and persisted to SQLite.
-5. **Dual-Mode Execution** — library component loaded by `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+5. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 

@@ -8,7 +8,8 @@ This guide describes how to build, configure, and operate **WASM Geo Host** in a
 
 The containerized architecture packages:
 - The compiled `flagme-host` binary.
-- All 7 WebAssembly Component plugins (`*.wasm`) built natively for `wasm32-wasip2`.
+- All 11 plugins as WebAssembly components (`/app/plugins/flagme_plugin_*.wasm`, `wasm32-wasip2`), run in the embedded Wasmtime sandbox of the host ([ADR 0003](../docs/adr/0003-wasm-component-execution.md)).
+- `config.docker.yaml` as `/app/config.yaml` (`plugin_dir: /app/plugins`, 512 MB / 15 s per plugin call).
 - A minimal Debian Bookworm runtime with non-root security privileges (`appuser: 10001`).
 - Mountable `/data` and `/app/cache` volumes for inputs, thumbnail caching, and SQLite persistence.
 
@@ -22,7 +23,7 @@ Build the container image using the multi-stage Dockerfile:
 docker build -t wasm-geo-host -f Deployments/Dockerfile .
 ```
 
-*Note: The builder stage installs the `wasm32-wasip2` target and compiles both the host binary and all WASM plugins.*
+*Note: The builder stage installs the `wasm32-wasip2` target and compiles the host binary and all plugin components (`--lib --features component`).*
 
 ---
 

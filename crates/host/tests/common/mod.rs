@@ -13,7 +13,58 @@ use flagme_sdk::{
 use image::codecs::jpeg::JpegEncoder;
 use image::{Rgb, RgbImage};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+
+/// Workspace root.
+pub fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
+}
+
+/// Names of all plugin crates under `plugins/` (directory names).
+pub fn plugin_names() -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(repo_root().join("plugins"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().join("Cargo.toml").is_file())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+/// Builds the Wasm components of all plugins once per test binary
+/// (`cargo build --release --target wasm32-wasip2 --lib --features component`) and returns
+/// their directory. The host loads plugins only from these components (ADR 0003).
+pub fn components_dir() -> PathBuf {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let root = repo_root();
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+        let mut cmd = std::process::Command::new(cargo);
+        cmd.current_dir(&root)
+            .args(["build", "--release", "--target", "wasm32-wasip2", "--lib", "--features", "component"]);
+        for name in plugin_names() {
+            cmd.arg("-p").arg(format!("flagme-plugin-{}", name));
+        }
+        // Test-only sandbox probe (`tests/probe-plugin`), never part of a pipeline.
+        cmd.arg("-p").arg("flagme-test-probe");
+        let status = cmd.status().expect("cargo runs");
+        assert!(status.success(), "building the plugin components failed");
+        root.join("target/wasm32-wasip2/release")
+    })
+    .clone()
+}
+
+/// Component file of the test-only sandbox probe.
+pub fn probe_component() -> PathBuf {
+    components_dir().join("flagme_test_probe.wasm")
+}
+
+/// `config` with `plugin_dir` pointing at the freshly built components.
+pub fn with_components(mut config: flagme_host::AppConfig) -> flagme_host::AppConfig {
+    config.plugin_dir = components_dir().to_string_lossy().to_string();
+    config
+}
 
 /// Capabilities with real filesystem access that record every log message, keep an in-memory
 /// KV store and answer HTTP requests with a configurable body (default: request fails).

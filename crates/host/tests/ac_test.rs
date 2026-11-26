@@ -8,10 +8,6 @@ use flagme_plugin_metadata::MetadataPlugin;
 use flagme_plugin_reversegeo::ReverseGeoPlugin;
 use flagme_plugin_thumbnail::ThumbnailPlugin;
 use flagme_plugin_timeline::TimelinePlugin;
-use flagme_plugin_weather_enrich::WeatherEnrichPlugin;
-use flagme_plugin_ocr_text::OcrTextPlugin;
-use flagme_plugin_face_detection::FaceDetectionPlugin;
-use flagme_plugin_privacy_redact::PrivacyRedactPlugin;
 use flagme_sdk::{FileInfo, NoopCapabilities, Plugin, PluginContext, UnifiedDocument};
 use std::sync::Arc;
 
@@ -72,8 +68,8 @@ fn test_ac3_host_capability_enforcement() {
         plugin_cfg.capabilities = vec![];
     }
 
-    let mut runtime = PluginRuntime::new(config);
-    runtime.register_plugin(Arc::new(MetadataPlugin::new()));
+    config.pipeline = vec!["metadata".to_string()];
+    let runtime = PluginRuntime::new(common::with_components(config)).unwrap();
 
     let doc = UnifiedDocument::new(
         "doc-test-3",
@@ -265,22 +261,11 @@ fn test_ac8_sqlite_storage_and_persistence() {
 fn test_ac9_end_to_end_pipeline() {
     let db_path = std::env::temp_dir().join(format!("media_e2e_{}.db", uuid_simple()));
     let db_path_str = db_path.to_str().unwrap();
-    let config = AppConfig::default();
+    let config = common::with_components(AppConfig::default());
     let storage = Arc::new(Storage::new(db_path_str));
     storage.init_schema().unwrap();
 
-    let mut runtime = PluginRuntime::new(config.clone());
-    runtime.register_plugin(Arc::new(MetadataPlugin::new()));
-    runtime.register_plugin(Arc::new(ReverseGeoPlugin::new()));
-    runtime.register_plugin(Arc::new(CountryFlagPlugin::new()));
-    runtime.register_plugin(Arc::new(ThumbnailPlugin::new()));
-    runtime.register_plugin(Arc::new(AiTaggingPlugin::new()));
-    runtime.register_plugin(Arc::new(DuplicatePlugin::new()));
-    runtime.register_plugin(Arc::new(TimelinePlugin::new()));
-    runtime.register_plugin(Arc::new(WeatherEnrichPlugin::new()));
-    runtime.register_plugin(Arc::new(OcrTextPlugin::new()));
-    runtime.register_plugin(Arc::new(FaceDetectionPlugin::new()));
-    runtime.register_plugin(Arc::new(PrivacyRedactPlugin::new()));
+    let runtime = PluginRuntime::new(config.clone()).unwrap();
 
     let pipeline = Pipeline::new(config, runtime, storage.clone());
 

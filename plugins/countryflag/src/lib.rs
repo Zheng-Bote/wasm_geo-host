@@ -164,3 +164,5 @@ impl Plugin for CountryFlagPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(CountryFlagPlugin, CountryFlagPlugin::new);

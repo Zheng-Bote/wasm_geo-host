@@ -1,0 +1,15 @@
+[package]
+name = "flagme-test-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Test-only plugin component that probes the sandbox of flagme-host (ADR 0003); never shipped"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+component = []
+
+[dependencies]
+flagme-sdk = { path = "../../../sdk" }

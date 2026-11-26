@@ -1,8 +1,8 @@
-# Pipeline Execution Model 2c — Host Streaming Supervisor
+# Pipeline Execution Model 2c — `flagme-host stream`
 
-In this execution model, the host engine (`flagme-host`) acts as an active **Subprocess Streaming Supervisor**.
+`flagme-host stream` runs the configured pipeline on the **embedded Wasmtime runtime** of the host, exactly like `flagme-host process` ([ADR 0003](adr/0003-wasm-component-execution.md)). Every stage is a Wasm component (`media-plugin` world, [`wit/media-plugin.wit`](../wit/media-plugin.wit)) and runs in its own `Store`; the final `UnifiedDocument` is written to SQLite and printed on stdout.
 
-Instead of executing plugins in-process via shared memory, `flagme-host stream` dynamically spawns each plugin as a sandboxed `wasmtime` child process, connects their `stdin` and `stdout` streams, monitors resource consumption, and persists the final result to the SQLite database.
+Until #30, `stream` spawned the external `wasmtime` CLI per stage and piped JSON between the processes; capabilities, `enabled` and `settings` did not apply there. That supervisor is gone.
 
 ---
 
@@ -10,72 +10,75 @@ Instead of executing plugins in-process via shared memory, `flagme-host stream` 
 
 ```mermaid
 flowchart TD
-    subgraph Host["flagme-host (Streaming Supervisor)"]
-        CLI["CLI Command: flagme-host stream <FILE>"]
-        Supervisor["StreamSupervisor Engine"]
+    subgraph Host["flagme-host (embedded Wasmtime)"]
+        CLI["CLI: flagme-host stream|process <FILE>"]
+        Runtime["PluginRuntime: components from plugin_dir, compiled once"]
+        Caps["CapabilityManager per plugin (grants from config.yaml)"]
         Storage["SQLite Storage (media.db)"]
     end
 
-    subgraph Subprocesses["Sandboxed WASM Child Processes"]
+    subgraph Stages["Wasm components, one fresh Store per stage and document"]
         direction LR
-        C1["wasmtime (metadata.wasm)"] -->|"stdout -> stdin"| C2["reversegeo"]
-        C2 --> C3["countryflag"] --> C4["thumbnail"] --> C5["ai-tagging"] --> C6["duplicate"]
+        C1["metadata"] --> C2["reversegeo"] --> C3["countryflag"] --> C4["thumbnail"] --> C5["ai-tagging"] --> C6["duplicate"]
         C6 --> C7["timeline"] --> C8["weather-enrich"] --> C9["ocr-text"] --> C10["face-detection"] --> C11["privacy-redact"]
     end
 
-    CLI --> Supervisor
-    Supervisor -->|"Spawns & Pipes"| Subprocesses
-    Subprocesses -->|"Final JSON Stream"| Supervisor
-    Supervisor -->|"Persists"| Storage
+    CLI --> Runtime
+    Runtime -->|"process(doc, settings)"| Stages
+    Stages -->|"host-capabilities imports"| Caps
+    Runtime -->|"persists"| Storage
 ```
 
 ---
 
-## 1. How It Works in `flagme-host`
+## 1. How It Works
 
-The `StreamSupervisor` ([crates/host/src/stream.rs](../crates/host/src/stream.rs)) manages execution:
-1. Spawns Stage 0 (`metadata.wasm`) with the file path as argument and sandboxed filesystem access (`--dir Examples::/media`).
-2. Captures Stage 0 `stdout` and pipes it into Stage 1 (`reversegeo.wasm`) via `child.stdin`.
-3. Chains through all 11 stages (`StreamSupervisor::default_pipeline()`) up to `privacy-redact.wasm`.
-4. Aborts on a non-zero exit code of any stage.
-5. Ingests the final `UnifiedDocument` JSON and writes records into `media.db` (`database_path` from `--config`).
+1. The host reads `config.yaml` and loads every **enabled** plugin of `pipeline` from its component file: `path` of the plugin, else `<plugin_dir>/flagme_plugin_<name>.wasm` (`-` becomes `_`). A missing or invalid component stops the host with an error naming the file; there is no native fallback.
+2. For each stage the host creates a fresh `Store` with:
+   - a WASI context **without ambient authority** — no preopened directories, no environment variables, no stdin, no sockets; only clocks, random and stderr;
+   - the plugin's `CapabilityManager`: `fs-read`, `fs-write`, `fs-modified`, `http-get`, `kv-*`, `secret-get` succeed only with the grant in `config.yaml`;
+   - `resource_limits.max_memory_bytes` (linear memory) and `resource_limits.timeout_ms` (epoch interruption, 10 ms ticks).
+3. It calls `process(doc, settings)` with the plugin's `settings` from `config.yaml`.
+4. A failing stage (plugin error, trap, exceeded limit) fails the document with an error naming the stage; `watch` continues with the next file.
+5. The final document is written to `media.db` (`database_path`) and printed as JSON.
 
-Prerequisites: `wasmtime` on the `PATH` and the plugins built with `cargo build --release --target wasm32-wasip2 -p flagme-plugin-<name>` (the supervisor reads `target/wasm32-wasip2/release/flagme-plugin-*.wasm`).
+Prerequisite: the plugin components, built with
+
+```bash
+cargo build --release --target wasm32-wasip2 --lib --features component \
+  -p flagme-plugin-metadata -p flagme-plugin-reversegeo -p flagme-plugin-countryflag \
+  -p flagme-plugin-thumbnail -p flagme-plugin-ai-tagging -p flagme-plugin-duplicate \
+  -p flagme-plugin-timeline -p flagme-plugin-weather-enrich -p flagme-plugin-ocr-text \
+  -p flagme-plugin-face-detection -p flagme-plugin-privacy-redact
+```
+
+`plugin_dir` in `config.yaml` points at `target/wasm32-wasip2/release`. No `wasmtime` CLI is needed.
 
 ---
 
 ## 2. Invocation Example
 
-Run the supervisor streaming pipeline directly:
-
 ```bash
-cargo run --bin flagme-host -- stream Examples/sample.jpg --config config.yaml
-```
-
-### With Sample PNG:
-```bash
-cargo run --bin flagme-host -- stream Examples/sample.png --config config.yaml
-```
-
-### With Sample HEIC:
-```bash
-cargo run --bin flagme-host -- stream Examples/sample.heic --config config.yaml
+cargo run --release --bin flagme-host -- stream Examples/sample.jpg --config config.yaml
+cargo run --release --bin flagme-host -- stream Examples/sample.png --config config.yaml
+cargo run --release --bin flagme-host -- stream Examples/sample.heic --config config.yaml
 ```
 
 ---
 
 ## 3. Output
 
-Real output of `flagme-host stream Examples/sample.jpg --config config.yaml` (2026-11-26, wasmtime 42, sample generated by `Examples/generate_samples.py`, plugins after #40). `raw_tags` is shortened to 8 of 43 entries; all other values are unchanged.
+Real output of `flagme-host stream Examples/sample.jpg --config config.yaml` (2026-11-26, release build, plugins as Wasm components after #30, sample generated by `Examples/generate_samples.py`). `raw_tags` is shortened to 8 of 34 entries; all other values are unchanged.
 
 ```json
 {
-  "id": "cli-doc",
+  "id": "3f12502733adb127",
   "file": {
-    "path": "/media/sample.jpg",
+    "path": "Examples/sample.jpg",
     "filename": "sample.jpg",
     "size_bytes": 1664,
-    "mime_type": "image/jpeg"
+    "mime_type": "image/jpeg",
+    "sha256": "3cc6a7aa46e739568eccdc98b09c8760aee2b3053dce47776278a8a85975bf0e"
   },
   "metadata": {
     "camera_make": "Sony",
@@ -117,10 +120,47 @@ Real output of `flagme-host stream Examples/sample.jpg --config config.yaml` (20
     "continent": "Europe",
     "region": "Western Europe"
   },
+  "thumbnails": [
+    {
+      "size_label": "small",
+      "width": 64,
+      "height": 48,
+      "path": "cache/thumbnails/aad58983bf531312_128.jpg",
+      "cache_key": "aad58983bf531312"
+    },
+    {
+      "size_label": "medium",
+      "width": 64,
+      "height": 48,
+      "path": "cache/thumbnails/6e982c5779c61d3b_512.jpg",
+      "cache_key": "6e982c5779c61d3b"
+    },
+    {
+      "size_label": "large",
+      "width": 64,
+      "height": 48,
+      "path": "cache/thumbnails/6c2140244b0b7f61_1024.jpg",
+      "cache_key": "6c2140244b0b7f61"
+    }
+  ],
+  "duplicate": {
+    "sha256": "3cc6a7aa46e739568eccdc98b09c8760aee2b3053dce47776278a8a85975bf0e",
+    "phash": "0000000000000000"
+  },
   "timeline": {
     "taken_at": "2026-11-25T10:00:00Z",
-    "imported_at": "2026-11-26T10:06:34.011224Z",
+    "imported_at": "2026-11-26T15:47:04.899255Z",
+    "modified_at": "2026-11-26T09:59:37Z",
     "resolution_source": "exif_datetime_original"
+  },
+  "weather": {
+    "temperature": 1.0,
+    "condition": "Overcast",
+    "wmo_code": 3,
+    "icon_emoji": "☁️",
+    "humidity_percent": 68,
+    "precipitation_mm": 0.0,
+    "is_day": true
   },
   "privacy": {
     "is_redacted": true,
@@ -139,28 +179,18 @@ What the values show:
 
 | Field | Source |
 | :--- | :--- |
-| `metadata`, `timeline` | Real EXIF/IPTC/XMP of `sample.jpg` (`exif_datetime_original`). |
+| `id` | First 16 hex digits of the SHA-256 of the given path. |
+| `metadata`, `timeline.taken_at` | Real EXIF/IPTC/XMP of `sample.jpg` (`exif_datetime_original`). |
 | `location` | GPS from EXIF, resolved offline (Natural Earth); rounded to 2 decimals by `privacy-redact` (`fuzzed_gps_precision_2_decimals`). |
 | `country` | Offline ISO-3166 table. |
-| `ai`, `ocr`, `faces` | Absent: these plugins have no engine ([ADR 0002](adr/0002-plugins-without-engine-no-output.md)). |
-| `duplicate`, `file.sha256`, `thumbnails` | Absent: only Stage 0 gets `--dir`, so these stages cannot read the image and produce no value (no placeholder) ([ADR 0002](adr/0002-plugins-without-engine-no-output.md), #40). |
-| `weather` | Absent: the plugin CLIs have no `http` access, and there is no offline estimate (#40). |
-
-### Known limitations of the streaming mode
-
-- Only Stage 0 receives filesystem access; later stages cannot read the image ([#25](https://github.com/Zheng-Bote/wasm_geo-host/issues/25), [#30](https://github.com/Zheng-Bote/wasm_geo-host/issues/30)).
-- The pipeline ignores `enabled` and `settings` from `config.yaml`; every stage runs with its default settings.
-- The document id is always `cli-doc`; `file.path` is the sandbox path (`/media/…`).
-- Log messages of the plugins are not shown (the plugin CLIs have no log output).
+| `file.sha256`, `duplicate`, `thumbnails` | Read and written through the `filesystem` capability. `phash` is the dHash of the decoded pixels; the sample image is a flat colour field, hence all zeros. |
+| `timeline.modified_at` | `fs-modified` of the file (differs per checkout). |
+| `weather` | Live request to the Open-Meteo archive API through the `http` capability; absent without network. |
+| `ai`, `ocr`, `faces` | Absent: these plugins have no engine and are disabled ([ADR 0002](adr/0002-plugins-without-engine-no-output.md)). `privacy-redact` therefore warns that faces were not redacted. |
 
 ---
 
-## 4. Advantages & Trade-Offs
+## 4. Trade-Offs
 
-- **Advantages**:
-  - Full OS process isolation between plugins.
-  - Automated SQLite database persistence built-in.
-  - Plugins run as real `wasm32-wasip2` binaries under `wasmtime`.
-- **Trade-Offs**:
-  - Subprocess pipe I/O has higher latency than in-process execution (`flagme-host process`, currently native plugins — see [#30](https://github.com/Zheng-Bote/wasm_geo-host/issues/30)).
-  - `enabled`, `settings` and capabilities from `config.yaml` are not applied (see §3).
+- **Advantages**: one sandboxed execution path for `process`, `watch`, `serve` and `stream`; capabilities, settings and resource limits apply everywhere; no external `wasmtime` binary.
+- **Trade-offs**: components are compiled at every host start (≈ 1 s for all 11 in a release build); a compilation cache is a later extension. Limits apply globally (`resource_limits`), not per plugin.

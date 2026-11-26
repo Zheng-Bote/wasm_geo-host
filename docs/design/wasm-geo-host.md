@@ -48,7 +48,7 @@ Die Architektur folgt dem WebAssembly Component Model unter Verwendung von Wasmt
 1. **Host (`crates/host`)**: Lädt und instantiiert Wasm-Komponenten über Wasmtime. Implementiert Host-Capabilities als importierbare Wasmtime-Funktionen bzw. WASI-Host-Bindings.
 2. **SDK (`crates/sdk`)**: Definiert den `Plugin`-Trait, Wrapper um generierte WIT-Bindings, Error-Typen und Helfer für Serialisierung/Logging.
 3. **Models (`crates/models`)**: Enthält das serialisierbare `UnifiedDocument` mit Unterstrukturen für alle Verarbeitungsstufen.
-4. **Plugins (`plugins/*`)**: Einzelne WASM-Komponenten, kompiliert auf `wasm32-wasip1` / `wasm32-wasip2`, die ausschließlich mit dem SDK interagieren.
+4. **Plugins (`plugins/*`)**: Einzelne WASM-Komponenten, kompiliert auf `wasm32-wasip2` (Feature `component`, Welt `media-plugin`), die ausschließlich mit dem SDK interagieren ([ADR 0003](../adr/0003-wasm-component-execution.md)).
 5. **Storage**: Relationale Speicherung via SQLite (`sqlx`) mit automatischen Schema-Migrationen.
 
 ## Schnittstellen
@@ -91,7 +91,7 @@ Das Datenmodell `UnifiedDocument` umfasst:
 | AC-9 | Tracing in Host/SDK, vollständige Testsuite & Markdown-Doku | `crates/host/tests/integration_test.rs` |
 | AC-10 | `init_logging()` in `crates/host/src/main.rs`: `tracing_subscriber::fmt` mit `EnvFilter` aus `RUST_LOG` (Standard `warn`), Writer `stderr`; Plugin-Meldungen tragen das Feld `plugin` (`CapabilityManager::log`) | `crates/host/tests/logging_test.rs` |
 | AC-11 | `Examples/generate_samples.py`: TIFF mit IFD0, Exif-IFD und GPS-IFD (gültige Offsets); minimaler Baseline-JPEG-Encoder (64×48 Graustufen-Verlauf, DC-only) ohne Zusatzpakete | `crates/host/tests/examples_test.rs` |
-| AC-12 | `docs/pipeline_host_supervisor.md` §3 aus echtem `flagme-host stream`-Lauf; Test vergleicht den JSON-Block typisiert mit nativer Ausführung von metadata → reversegeo → countryflag → timeline → privacy-redact | `crates/host/tests/examples_test.rs` |
+| AC-12 | `docs/pipeline_host_supervisor.md` §3 aus echtem `flagme-host stream`-Lauf; Test führt `flagme-host stream Examples/sample.jpg` auf den Plugin-Komponenten aus und vergleicht den JSON-Block typisiert (ohne `weather`, `imported_at`, `modified_at`) | `crates/host/tests/examples_test.rs` |
 
 ## Sicherheit
 

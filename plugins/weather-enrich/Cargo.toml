@@ -11,6 +11,10 @@ crate-type = ["cdylib", "rlib"]
 name = "flagme-plugin-weather-enrich"
 path = "src/main.rs"
 
+[features]
+# Export the `media-plugin` component (ADR 0003); build with `--lib --features component`.
+component = []
+
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
 serde_json = "1.0"
