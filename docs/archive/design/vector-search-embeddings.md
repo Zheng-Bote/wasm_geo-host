@@ -1,12 +1,13 @@
 ---
 feature: vector-search-embeddings
-status: draft
+status: archived
 archive-after:
 touches:
   - "crates/models/**"
   - "plugins/ai-tagging/**"
   - "crates/host/**"
   - "crates/host/migrations/**"
+release: 0.2.0
 ---
 
 # Tech Spec — vector-search-embeddings (`vector-search-embeddings`)

@@ -1,6 +1,6 @@
 ---
 feature: ocr-text
-status: accepted
+status: archived
 archive-after:
 touches:
   - 'crates/models/**'
@@ -8,6 +8,7 @@ touches:
   - 'crates/host/**'
   - 'crates/host/migrations/**'
   - 'Cargo.toml'
+release: 0.2.0
 ---
 
 # PRD — ocr-text (`ocr-text`)
@@ -44,6 +45,6 @@ Die Umsetzung umfasst:
 
 - **AC-1** Model Extension: `wasm-geo-models` stellt `OcrInfo`, `TextRegion` und `BoundingBox` mit vollständiger Serde-Serialisierung bereit.
 - **AC-2** Plugin Compilation: `flagme-plugin-ocr-text` kompiliert als Plugin-Crate mit `cdylib` und `[[bin]]` unter `wasm32-wasip2`.
-- **AC-3** Text Detection & Recognition Pipeline: Das Plugin übernimmt Textzeilen mit Bounding-Box-Koordinaten und Konfidenzwerten von einer austauschbaren `OcrEngine` ([ADR 0002](../adr/0002-plugins-without-engine-no-output.md)).
+- **AC-3** Text Detection & Recognition Pipeline: Das Plugin übernimmt Textzeilen mit Bounding-Box-Koordinaten und Konfidenzwerten von einer austauschbaren `OcrEngine` ([ADR 0002](../../adr/0002-plugins-without-engine-no-output.md)).
 - **AC-4** Storage & FTS5 Synchronization: `Storage::save_document` persistiert `ocr_texts` und `ocr_regions` und indiziert den OCR-Volltext in `photos_fts`.
 - **AC-5** Integration Verification: Integrationstests weisen nach, dass Bildtexte einer `OcrEngine` persistiert und über die Volltextsuche auffindbar sind.

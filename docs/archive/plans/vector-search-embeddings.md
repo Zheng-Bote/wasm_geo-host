@@ -1,7 +1,8 @@
 ---
 feature: vector-search-embeddings
-status: draft
+status: archived
 archive-after:
+release: 0.2.0
 ---
 
 # Plan — vector-search-embeddings (`vector-search-embeddings`)

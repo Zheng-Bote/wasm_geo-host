@@ -1,9 +1,10 @@
 ---
 feature: directory-watcher
-status: draft
+status: archived
 archive-after:
 touches:
   - "crates/host/**"
+release: 0.2.0
 ---
 
 # Tech Spec — directory-watcher (`directory-watcher`)

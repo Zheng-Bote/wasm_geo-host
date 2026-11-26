@@ -1,9 +1,10 @@
 ---
 feature: embedded-web-ui
-status: draft
+status: archived
 archive-after:
 touches:
   - "crates/host/**"
+release: 0.2.0
 ---
 
 # Tech Spec — embedded-web-ui (`embedded-web-ui`)

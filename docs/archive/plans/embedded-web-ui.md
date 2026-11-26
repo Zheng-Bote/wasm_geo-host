@@ -1,7 +1,8 @@
 ---
 feature: embedded-web-ui
-status: draft
+status: archived
 archive-after:
+release: 0.2.0
 ---
 
 # Plan — embedded-web-ui (`embedded-web-ui`)

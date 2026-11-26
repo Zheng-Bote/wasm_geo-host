@@ -1,7 +1,8 @@
 ---
 feature: sqlite-fts5-search
-status: draft
+status: archived
 archive-after:
+release: 0.2.0
 ---
 
 # Plan — sqlite-fts5-search (`sqlite-fts5-search`)

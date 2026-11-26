@@ -1,6 +1,6 @@
 ---
 feature: wasm-geo-host
-status: draft
+status: archived
 archive-after:
 touches:
   - "crates/**"
@@ -9,6 +9,7 @@ touches:
   - "Cargo.toml"
   - "config.yaml"
   - "docs/**"
+release: 0.2.0
 ---
 
 # Tech Spec — wasm-geo-host (`wasm-geo-host`)
@@ -48,7 +49,7 @@ Die Architektur folgt dem WebAssembly Component Model unter Verwendung von Wasmt
 1. **Host (`crates/host`)**: Lädt und instantiiert Wasm-Komponenten über Wasmtime. Implementiert Host-Capabilities als importierbare Wasmtime-Funktionen bzw. WASI-Host-Bindings.
 2. **SDK (`crates/sdk`)**: Definiert den `Plugin`-Trait, Wrapper um generierte WIT-Bindings, Error-Typen und Helfer für Serialisierung/Logging.
 3. **Models (`crates/models`)**: Enthält das serialisierbare `UnifiedDocument` mit Unterstrukturen für alle Verarbeitungsstufen.
-4. **Plugins (`plugins/*`)**: Einzelne WASM-Komponenten, kompiliert auf `wasm32-wasip2` (Feature `component`, Welt `media-plugin`), die ausschließlich mit dem SDK interagieren ([ADR 0003](../adr/0003-wasm-component-execution.md)).
+4. **Plugins (`plugins/*`)**: Einzelne WASM-Komponenten, kompiliert auf `wasm32-wasip2` (Feature `component`, Welt `media-plugin`), die ausschließlich mit dem SDK interagieren ([ADR 0003](../../adr/0003-wasm-component-execution.md)).
 5. **Storage**: Relationale Speicherung via SQLite (`sqlx`) mit automatischen Schema-Migrationen.
 
 ## Schnittstellen

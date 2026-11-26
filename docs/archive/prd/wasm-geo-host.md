@@ -1,6 +1,6 @@
 ---
 feature: wasm-geo-host
-status: accepted
+status: archived
 archive-after:
 touches:
   - 'crates/**'
@@ -12,6 +12,7 @@ touches:
   - 'docs/**'
   - 'data/**'
   - 'Examples/**'
+release: 0.2.0
 ---
 
 # PRD — wasm-geo-host (`wasm-geo-host`)

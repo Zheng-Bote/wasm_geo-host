@@ -1,7 +1,8 @@
 ---
 feature: face-detection
-status: draft
+status: archived
 archive-after:
+release: 0.2.0
 ---
 
 # Plan — face-detection (`face-detection`)

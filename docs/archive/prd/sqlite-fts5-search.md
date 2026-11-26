@@ -1,10 +1,11 @@
 ---
 feature: sqlite-fts5-search
-status: accepted
+status: archived
 archive-after:
 touches:
   - 'crates/host/**'
   - 'crates/host/migrations/**'
+release: 0.2.0
 ---
 
 # PRD — sqlite-fts5-search (`sqlite-fts5-search`)
