@@ -345,6 +345,8 @@ cargo run -p flagme-host -- watch /media/import/ \
   --config config.yaml
 ```
 
+`{year}`/`{month}` come from the capture time (`timeline.taken_at`). Photos without a capture time go to `Unknown_Year/00/…` (missing location: `Unknown_Country`/`Unknown_City`); the import time is never used as capture time.
+
 ---
 
 ### 7. Embedded Web Dashboard & REST/GeoJSON API (`flagme-host serve`)
