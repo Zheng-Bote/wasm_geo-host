@@ -217,3 +217,5 @@ impl Plugin for DuplicatePlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(DuplicatePlugin, DuplicatePlugin::new);

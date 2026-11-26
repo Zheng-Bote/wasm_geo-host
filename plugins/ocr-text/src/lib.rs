@@ -113,3 +113,5 @@ impl Plugin for OcrTextPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(OcrTextPlugin, OcrTextPlugin::new);

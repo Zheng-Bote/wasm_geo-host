@@ -3,12 +3,8 @@ mod common;
 use flagme_host::config::PluginConfig;
 use flagme_host::{AppConfig, CapabilityManager, PluginRuntime};
 use flagme_plugin_ai_tagging::AiTaggingPlugin;
-use flagme_plugin_duplicate::DuplicatePlugin;
 use flagme_plugin_face_detection::FaceDetectionPlugin;
-use flagme_plugin_metadata::MetadataPlugin;
 use flagme_plugin_ocr_text::OcrTextPlugin;
-use flagme_plugin_privacy_redact::PrivacyRedactPlugin;
-use flagme_plugin_thumbnail::ThumbnailPlugin;
 use flagme_plugin_timeline::TimelinePlugin;
 use flagme_sdk::{
     BoundingBox, DetectedFace, FacesInfo, FileInfo, HostCapabilities, PluginContext, PluginError,
@@ -18,9 +14,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
-}
+use common::repo_root;
 
 fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap() {
@@ -58,14 +52,19 @@ fn test_ac1_no_direct_io_in_plugins() {
     assert!(hits.is_empty(), "direct I/O in plugins:\n{}", hits.join("\n"));
 }
 
-/// Runtime with every plugin enabled; `filesystem` granted only if `grant` is true.
+/// Plugins whose components the runtime loads in this test.
+const COMPONENT_PLUGINS: [&str; 5] = ["metadata", "thumbnail", "duplicate", "timeline", "privacy-redact"];
+
+/// Grants of the test: `filesystem` only if `grant` is true.
+fn grants(grant: bool) -> Vec<String> {
+    if grant { vec!["filesystem".to_string()] } else { vec![] }
+}
+
+/// Component runtime with the plugins of [`COMPONENT_PLUGINS`] enabled.
 fn runtime(grant: bool, out_dir: &Path) -> PluginRuntime {
     let mut config = AppConfig::default();
     let out = |sub: &str| out_dir.join(sub).to_string_lossy().to_string();
-    let caps = if grant { vec!["filesystem".to_string()] } else { vec![] };
-    for name in [
-        "metadata", "thumbnail", "duplicate", "timeline", "privacy-redact", "ocr-text", "ai-tagging", "face-detection",
-    ] {
+    for name in COMPONENT_PLUGINS {
         let mut settings = HashMap::new();
         match name {
             "thumbnail" => drop(settings.insert("output_dir".to_string(), out("thumbs"))),
@@ -75,22 +74,21 @@ fn runtime(grant: bool, out_dir: &Path) -> PluginRuntime {
         }
         config.plugins.insert(
             name.to_string(),
-            PluginConfig { enabled: true, path: None, capabilities: caps.clone(), settings },
+            PluginConfig { enabled: true, path: None, capabilities: grants(grant), settings },
         );
     }
-    let mut rt = PluginRuntime::new(config);
-    rt.register_plugin(Arc::new(MetadataPlugin::new()));
-    rt.register_plugin(Arc::new(ThumbnailPlugin::new()));
-    rt.register_plugin(Arc::new(DuplicatePlugin::new()));
-    rt.register_plugin(Arc::new(TimelinePlugin::new()));
-    rt.register_plugin(Arc::new(PrivacyRedactPlugin::new()));
-    rt.register_plugin(Arc::new(OcrTextPlugin::with_engine(Box::new(common::ByteLenOcrEngine))));
-    rt.register_plugin(Arc::new(AiTaggingPlugin::with_model(Box::new(common::ByteLenVisionModel))));
-    rt.register_plugin(Arc::new(FaceDetectionPlugin::with_detector(Box::new(common::OneFaceDetector))));
-    rt
+    config.pipeline = COMPONENT_PLUGINS.iter().map(|s| s.to_string()).collect();
+    PluginRuntime::new(common::with_components(config)).unwrap()
 }
 
-fn run_all(rt: &PluginRuntime, path: &str) -> UnifiedDocument {
+/// Runs a plugin with a test engine directly against a capability manager. Test engines
+/// cannot be compiled into the shipped components (ADR 0002), so these plugins run natively.
+fn run_with_engine(plugin: &dyn Plugin, grant: bool, doc: UnifiedDocument) -> UnifiedDocument {
+    let caps = CapabilityManager::new(plugin.name(), grants(grant), Arc::new(RwLock::new(HashMap::new())));
+    plugin.process(doc, &PluginContext::new(Arc::new(caps))).unwrap()
+}
+
+fn run_all(rt: &PluginRuntime, grant: bool, path: &str) -> UnifiedDocument {
     let mut doc = UnifiedDocument::new(
         "cap-io",
         FileInfo {
@@ -113,13 +111,15 @@ fn run_all(rt: &PluginRuntime, path: &str) -> UnifiedDocument {
         }],
         detection_model: "upstream".into(),
     });
-    for name in ["metadata", "thumbnail", "duplicate", "timeline", "ocr-text", "ai-tagging"] {
+    for name in ["metadata", "thumbnail", "duplicate", "timeline"] {
         doc = rt.execute_plugin(name, doc).unwrap();
     }
+    doc = run_with_engine(&OcrTextPlugin::with_engine(Box::new(common::ByteLenOcrEngine)), grant, doc);
+    doc = run_with_engine(&AiTaggingPlugin::with_model(Box::new(common::ByteLenVisionModel)), grant, doc);
     doc = rt.execute_plugin("privacy-redact", doc).unwrap();
     let mut probe = doc.clone();
     probe.faces = None;
-    let probe = rt.execute_plugin("face-detection", probe).unwrap();
+    let probe = run_with_engine(&FaceDetectionPlugin::with_detector(Box::new(common::OneFaceDetector)), grant, probe);
     doc.faces = probe.faces;
     doc
 }
@@ -131,14 +131,14 @@ fn test_ac2_no_file_access_without_grant() {
     let path = common::write_file(&dir, "photo.jpg", &common::jpeg_with_exif("Make", "Model", Some((48.1, 11.5))));
 
     // Positive control: with the grant every plugin uses the file.
-    let granted = run_all(&runtime(true, &dir.join("granted")), &path);
+    let granted = run_all(&runtime(true, &dir.join("granted")), true, &path);
     assert!(granted.metadata.is_some() && granted.duplicate.is_some());
     assert_eq!(granted.thumbnails.len(), 3);
     assert!(granted.timeline.as_ref().unwrap().modified_at.is_some());
     assert_eq!(granted.privacy.as_ref().unwrap().faces_redacted_count, 1);
     assert!(granted.ocr.is_some() && granted.ai.is_some() && granted.faces.is_some());
 
-    let denied = run_all(&runtime(false, &dir.join("denied")), &path);
+    let denied = run_all(&runtime(false, &dir.join("denied")), false, &path);
     assert!(denied.metadata.is_none(), "metadata read the file");
     assert!(denied.location.is_none());
     assert!(denied.thumbnails.is_empty(), "thumbnail wrote files");
@@ -185,7 +185,7 @@ fn test_ac3_fs_modified_capability() {
     assert_eq!(flagme_sdk::NoopCapabilities.fs_modified(&path).unwrap(), expected);
 
     let wit = std::fs::read_to_string(repo_root().join("wit/media-plugin.wit")).unwrap();
-    assert!(wit.contains("fs-modified: func(path: string) -> result<u64, string>;"));
+    assert!(wit.contains("fs-modified: func(path: string) -> result<u64, plugin-error>;"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 

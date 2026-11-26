@@ -1,6 +1,6 @@
 # WASM Geo Host
 
-[![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.97%2B-orange.svg)](https://www.rust-lang.org/)
 [![WebAssembly Component Model](https://img.shields.io/badge/wasm-component--model-purple.svg)](https://component-model.bytecodealliance.org/)
 [![Wasmtime](https://img.shields.io/badge/runtime-wasmtime-blue.svg)](https://wasmtime.dev/)
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-green.svg)](NOTICE)
@@ -27,7 +27,7 @@
     - [A. Docker / Container Profile (`config.docker.yaml`)](#a-docker-container-profile-configdockeryaml)
     - [B. Mac Studio M-Series / High-End Workstation Profile (`config.mac-studio.yaml`)](#b-mac-studio-m-series-high-end-workstation-profile-configmac-studioyaml)
   - [3. Single Media Processing (`flagme-host process`)](#3-single-media-processing-flagme-host-process)
-  - [3. Subprocess Streaming Supervisor (`flagme-host stream`)](#3-subprocess-streaming-supervisor-flagme-host-stream)
+  - [3b. Streaming Mode (`flagme-host stream`)](#3b-streaming-mode-flagme-host-stream)
   - [4. Full-Text Search FTS5 (`flagme-host search`)](#4-full-text-search-fts5-flagme-host-search)
   - [5. Vector Similarity Search (`flagme-host similar`)](#5-vector-similarity-search-flagme-host-similar)
   - [6. Directory Watcher & Batch Ingest (`flagme-host watch`)](#6-directory-watcher-batch-ingest-flagme-host-watch)
@@ -175,26 +175,22 @@ Build the entire workspace:
 cargo build --all
 ```
 
-Run the complete test suite (48+ unit and integration tests covering all SDD acceptance criteria):
+Compile all plugins to WebAssembly Components (`wasm32-wasip2`, `media-plugin` world). `flagme-host` loads plugins **only** from these components ([ADR 0003](docs/adr/0003-wasm-component-execution.md)); `plugin_dir` in `config.yaml` points at the output directory `target/wasm32-wasip2/release`:
 
 ```bash
-cargo test --all
+cargo build --release --target wasm32-wasip2 --lib --features component \
+  -p flagme-plugin-metadata -p flagme-plugin-reversegeo -p flagme-plugin-countryflag \
+  -p flagme-plugin-thumbnail -p flagme-plugin-ai-tagging -p flagme-plugin-duplicate \
+  -p flagme-plugin-timeline -p flagme-plugin-weather-enrich -p flagme-plugin-ocr-text \
+  -p flagme-plugin-face-detection -p flagme-plugin-privacy-redact
 ```
 
-Compile all WASI plugins to native WebAssembly Components (`wasm32-wasip2`):
+The result is `target/wasm32-wasip2/release/flagme_plugin_<name>.wasm` per plugin. Without `--features component` the same command builds plain libraries, which the host rejects.
+
+Run the complete test suite; the host tests build the components themselves (same command as above) and run against them:
 
 ```bash
-cargo build -p flagme-plugin-metadata --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-reversegeo --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-countryflag --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-thumbnail --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-ai-tagging --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-duplicate --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-timeline --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-weather-enrich --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-ocr-text --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-face-detection --target wasm32-wasip2 --release
-cargo build -p flagme-plugin-privacy-redact --target wasm32-wasip2 --release
+cargo test --workspace
 ```
 
 ---
@@ -203,10 +199,11 @@ cargo build -p flagme-plugin-privacy-redact --target wasm32-wasip2 --release
 
 ### 1. Configure Capabilities and Pipeline (`config.yaml`)
 
-Edit `config.yaml` to specify which plugins are enabled, execution order, and granted sandbox permissions:
+Edit `config.yaml` to specify which plugins are enabled, execution order, and granted sandbox permissions. Each enabled plugin is loaded from `plugins.<name>.path` if set, else from `<plugin_dir>/flagme_plugin_<name>.wasm` (`-` → `_`); a missing component stops the host. `resource_limits` cap the linear memory (`max_memory_bytes`) and run time (`timeout_ms`) of every plugin call:
 
 ```yaml
 database_path: 'media.db'
+plugin_dir: 'target/wasm32-wasip2/release' # components: flagme_plugin_<name>.wasm
 
 resource_limits:
   max_memory_bytes: 268435456 # 256 MB
@@ -289,7 +286,7 @@ cargo run -p flagme-host -- process /media/photo.jpg --config config.mac-studio.
 
 ### 3. Single Media Processing (`flagme-host process`)
 
-Processes a single media file in-process through the configured pipeline and stores the result in `media.db`:
+Processes a single media file through the configured pipeline of Wasm components and stores the result in `media.db`. Every plugin call runs in a fresh Wasmtime store without ambient authority (no preopened directories, environment, stdin or sockets); file, HTTP, KV and secret access goes only through the capabilities granted in `config.yaml`:
 
 ```bash
 cargo run -p flagme-host -- process Examples/sample.jpg --config config.yaml
@@ -303,9 +300,9 @@ RUST_LOG=info cargo run -p flagme-host -- process photo.jpg --config config.yaml
 
 ---
 
-### 3. Subprocess Streaming Supervisor (`flagme-host stream`)
+### 3b. Streaming Mode (`flagme-host stream`)
 
-Executes the pipeline in subprocess streaming mode via standard pipes:
+Runs the same embedded component pipeline as `process` (one store per stage) and prints the final document; no external `wasmtime` CLI is needed. See [docs/pipeline_host_supervisor.md](docs/pipeline_host_supervisor.md) for a real example output:
 
 ```bash
 cargo run -p flagme-host -- stream Examples/sample.jpg --config config.yaml
@@ -372,8 +369,8 @@ Open your browser at `http://localhost:8080` to view the media dashboard.
 
 Every plugin in `plugins/*` supports **Dual-Mode** compilation:
 
-1. **Library Component (`cdylib`/`rlib`)**: Used for high-throughput, in-process embedding inside `flagme-host`.
-2. **Standalone WASI CLI Binary (`bin`)**: Executable directly via `wasmtime run -S cli-exit-with-code <plugin>.wasm`.
+1. **Wasm Component (`cdylib`, feature `component`)**: Exports the `media-plugin` world of [`wit/media-plugin.wit`](wit/media-plugin.wit) via `flagme_sdk::export_plugin!`; `flagme-host` loads it into its embedded Wasmtime runtime with capabilities and resource limits. Plugin crates are not linked into the host.
+2. **Standalone WASI CLI Binary (`bin`)**: Executable directly via `wasmtime run -S cli-exit-with-code <plugin>.wasm` (built without the `component` feature; uses its own standalone capabilities, not the host sandbox).
 
 ### Advanced Pipeline Models
 
@@ -386,7 +383,7 @@ Every plugin in `plugins/*` supports **Dual-Mode** compilation:
     | jq .
   ```
 - **[Model 2b: Component Composition](docs/pipeline_component_composition.md)** — Statically compose plugins into a single component (`wac compose` or `wasm-tools compose`) for zero-copy memory execution.
-- **[Model 2c: Host Streaming Supervisor](docs/pipeline_host_supervisor.md)** — Let `flagme-host stream` supervise and monitor sandboxed child processes.
+- **[Model 2c: `flagme-host stream`](docs/pipeline_host_supervisor.md)** — The embedded component runtime of the host, with capabilities, settings and resource limits from `config.yaml`.
 
 ---
 
@@ -401,7 +398,7 @@ This repository strictly adheres to **Spec-Driven Development (SDD)** with zero-
 - [Plugin Development Guide](docs/plugin-development-guide.md)
 - [Pipeline Model 2a: Unix CLI Streaming](docs/pipeline_unix_pipes.md)
 - [Pipeline Model 2b: Component Composition](docs/pipeline_component_composition.md)
-- [Pipeline Model 2c: Host Streaming Supervisor](docs/pipeline_host_supervisor.md)
+- [Pipeline Model 2c: `flagme-host stream`](docs/pipeline_host_supervisor.md)
 - **PRD Specifications**: `docs/prd/*.md`
 - **Technical Design Specs**: `docs/design/*.md`
 - **Implementation Plans**: `docs/plans/*.md`

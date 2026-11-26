@@ -10,6 +10,7 @@ The `ai-tagging` plugin writes semantic tags with confidence values, a short sce
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `ai-tagging` |
 | Crate | `flagme-plugin-ai-tagging` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_ai_tagging.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ai-tagging`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | image bytes of `doc.file.path` |
 | Writes | `doc.ai` (`AiInfo`: `tags`, `description`, `embedding`) — only if a model is set |
@@ -23,7 +24,7 @@ The `ai-tagging` plugin writes semantic tags with confidence values, a short sce
 1. **Exchangeable model** — `VisionModel` trait (`model_name`, `analyze(image, embedding_dim)`). `AiTaggingPlugin::new()` has **no** model; `with_model(..)` sets one.
 2. **Embedding check** — the plugin L2-normalizes the model's embedding. An embedding whose length differs from `embedding_dim`, or a zero / non-finite vector, is dropped with a warning; tags and description are kept.
 3. **Honest failure** — no model, an unreadable file or a model error leaves `doc.ai` unchanged (`None`) and logs a warning.
-4. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+4. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 

@@ -142,3 +142,5 @@ impl Plugin for AiTaggingPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(AiTaggingPlugin, AiTaggingPlugin::new);

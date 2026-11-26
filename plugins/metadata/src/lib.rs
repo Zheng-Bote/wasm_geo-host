@@ -675,3 +675,5 @@ impl Plugin for MetadataPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(MetadataPlugin, MetadataPlugin::new);

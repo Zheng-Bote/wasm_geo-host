@@ -4,7 +4,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-/// Repo `config.yaml` with the database redirected into `dir`.
+/// Repo `config.yaml` with the database redirected into `dir` and `plugin_dir` pointing at the
+/// built components (the process runs in `dir`).
 fn write_config(dir: &Path) -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let original = std::fs::read_to_string(root.join("config.yaml")).unwrap();
@@ -14,6 +15,8 @@ fn write_config(dir: &Path) -> PathBuf {
         .map(|l| {
             if l.starts_with("database_path:") {
                 format!("database_path: \"{}\"", db.display())
+            } else if l.starts_with("plugin_dir:") {
+                format!("plugin_dir: \"{}\"", common::components_dir().display())
             } else {
                 l.to_string()
             }

@@ -1,16 +1,7 @@
+mod common;
+
 use chrono::{TimeZone, Utc};
 use flagme_host::{AppConfig, DirectoryWatcher, MediaOrganizer, Pipeline, PluginRuntime, Storage, WatcherConfig, process_single_file};
-use flagme_plugin_ai_tagging::AiTaggingPlugin;
-use flagme_plugin_countryflag::CountryFlagPlugin;
-use flagme_plugin_duplicate::DuplicatePlugin;
-use flagme_plugin_face_detection::FaceDetectionPlugin;
-use flagme_plugin_metadata::MetadataPlugin;
-use flagme_plugin_ocr_text::OcrTextPlugin;
-use flagme_plugin_privacy_redact::PrivacyRedactPlugin;
-use flagme_plugin_reversegeo::ReverseGeoPlugin;
-use flagme_plugin_thumbnail::ThumbnailPlugin;
-use flagme_plugin_timeline::TimelinePlugin;
-use flagme_plugin_weather_enrich::WeatherEnrichPlugin;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,18 +9,8 @@ use std::time::Duration;
 use wasm_geo_models::{FileInfo, LocationInfo, TimelineInfo, UnifiedDocument};
 
 fn create_test_pipeline(config: AppConfig, storage: Arc<Storage>) -> Pipeline {
-    let mut runtime = PluginRuntime::new(config.clone());
-    runtime.register_plugin(Arc::new(MetadataPlugin::new()));
-    runtime.register_plugin(Arc::new(ReverseGeoPlugin::new()));
-    runtime.register_plugin(Arc::new(CountryFlagPlugin::new()));
-    runtime.register_plugin(Arc::new(ThumbnailPlugin::new()));
-    runtime.register_plugin(Arc::new(AiTaggingPlugin::new()));
-    runtime.register_plugin(Arc::new(DuplicatePlugin::new()));
-    runtime.register_plugin(Arc::new(TimelinePlugin::new()));
-    runtime.register_plugin(Arc::new(WeatherEnrichPlugin::new()));
-    runtime.register_plugin(Arc::new(OcrTextPlugin::new()));
-    runtime.register_plugin(Arc::new(FaceDetectionPlugin::new()));
-    runtime.register_plugin(Arc::new(PrivacyRedactPlugin::new()));
+    let config = common::with_components(config);
+    let runtime = PluginRuntime::new(config.clone()).unwrap();
     Pipeline::new(config, runtime, storage)
 }
 

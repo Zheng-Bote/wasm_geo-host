@@ -8,6 +8,7 @@ The `metadata` plugin extracts EXIF, IPTC and XMP metadata from media files in p
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `metadata` |
 | Crate | `flagme-plugin-metadata` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_metadata.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-metadata`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | `doc.file.path` (file bytes) |
 | Writes | `doc.metadata`; `doc.location.latitude/longitude/altitude` (only if GPS was found) |
@@ -22,7 +23,7 @@ The `metadata` plugin extracts EXIF, IPTC and XMP metadata from media files in p
 2. **Lossless `raw_tags`** — each EXIF field as `Exif.<Tag>`, each IPTC dataset as `IPTC.Application2.<Name>`, each XMP property as `XMP.<ns>.<Property>`, plus aggregated JSON objects under the keys `Exif`, `IPTC`, `XMP`.
 3. **GPS Extraction** — converts `GPSLatitude`/`GPSLongitude` (degrees/minutes/seconds) to decimal degrees, applies `S`/`W` references and reads `GPSAltitude`.
 4. **Format Detection** — JPEG (incl. dimensions), PNG (incl. dimensions, `eXIf` chunk), HEIC/AVIF (`ftyp`), WebP (`RIFF…WEBP`); TIFF via the EXIF container reader.
-5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (file path or `stdin` JSON → `stdout` JSON).
+5. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (file path or `stdin` JSON → `stdout` JSON).
 
 ---
 

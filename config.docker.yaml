@@ -1,5 +1,7 @@
 # config.docker.yaml - Optimized for Docker Containers & Resource-Constrained Environments (e.g. 512MB - 2GB RAM limits)
 database_path: "media.db"
+# Wasm components of the plugins inside the image (ADR 0003)
+plugin_dir: "/app/plugins"
 
 resource_limits:
   max_memory_bytes: 536870912 # 512 MB per plugin sandbox

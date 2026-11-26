@@ -10,6 +10,7 @@ The `ocr-text` plugin writes visible text (signs, documents, posters) as text re
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `ocr-text` |
 | Crate | `flagme-plugin-ocr-text` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_ocr_text.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ocr-text`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | image bytes of `doc.file.path` |
 | Writes | `doc.ocr` (`OcrInfo`) — only if an engine is set |
@@ -23,7 +24,7 @@ The `ocr-text` plugin writes visible text (signs, documents, posters) as text re
 1. **Exchangeable engine** — `OcrEngine` trait (`name`, `recognize(image)`). `OcrTextPlugin::new()` has **no** engine; `with_engine(..)` sets one.
 2. **Confidence filter** — regions below `min_confidence` are dropped; `combined_text` and `primary_language` are rebuilt.
 3. **Honest failure** — no engine, an unreadable file or an engine error leaves `doc.ocr` unchanged (`None`) and logs a warning.
-4. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+4. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 

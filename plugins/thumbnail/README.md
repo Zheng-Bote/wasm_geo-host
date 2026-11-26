@@ -8,6 +8,7 @@ The `thumbnail` plugin creates three cached preview variants (`small`, `medium`,
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `thumbnail` |
 | Crate | `flagme-plugin-thumbnail` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_thumbnail.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-thumbnail`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | `doc.file.path` |
 | Writes | `doc.thumbnails` (`Vec<ThumbnailEntry>`, replaces existing entries); files under `output_dir` (default `cache/thumbnails/`) |
@@ -23,7 +24,7 @@ The `thumbnail` plugin creates three cached preview variants (`small`, `medium`,
 3. **Honest Entries** — `width`/`height` are the measured pixel size of the written file; an entry exists only if its file was written.
 4. **Capabilities only** — reads via `fs_read`, writes via `fs_write`; no external process, no direct `std::fs`.
 5. **Deterministic File Names** — `cache_key` = 64-bit hash over *source path + size*.
-6. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+6. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 

@@ -105,3 +105,5 @@ impl Plugin for FaceDetectionPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(FaceDetectionPlugin, FaceDetectionPlugin::new);

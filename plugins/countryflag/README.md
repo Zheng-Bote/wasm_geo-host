@@ -8,6 +8,7 @@ The `countryflag` plugin turns an ISO-3166-1 alpha-2 country code into an Englis
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `countryflag` |
 | Crate | `flagme-plugin-countryflag` (`cdylib` + `rlib` + `[[bin]]`) |
+| Component | `flagme_plugin_countryflag.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-countryflag`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.1.0` |
 | Reads | `doc.location.country_code` |
 | Writes | `doc.country` (`CountryInfo`) |
@@ -21,7 +22,7 @@ The `countryflag` plugin turns an ISO-3166-1 alpha-2 country code into an Englis
 1. **Embedded Country Table** — 62 countries (Europe, Asia, Americas, Oceania, Africa) plus `XX` for "unknown".
 2. **Computed Flag Emojis** — any two-letter code A–Z is converted to the matching pair of Unicode *Regional Indicator Symbols* (`DE` → 🇩🇪), even if the code is not in the table.
 3. **Zero Capabilities** — no disk, network or KV access.
-4. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+4. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 

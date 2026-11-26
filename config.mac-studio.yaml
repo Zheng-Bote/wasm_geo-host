@@ -1,5 +1,7 @@
 # config.mac-studio.yaml - High-Performance Profile for Apple Silicon (Mac Studio M-Series, 32GB+ Unified RAM)
 database_path: 'media.db'
+# Wasm components of the plugins (ADR 0003): cargo build --release --target wasm32-wasip2 --lib --features component
+plugin_dir: 'target/wasm32-wasip2/release'
 
 resource_limits:
   max_memory_bytes: 4294967296 # 4 GB per plugin sandbox

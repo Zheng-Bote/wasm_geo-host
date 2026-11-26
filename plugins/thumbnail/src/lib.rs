@@ -205,3 +205,5 @@ impl Plugin for ThumbnailPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(ThumbnailPlugin, ThumbnailPlugin::new);

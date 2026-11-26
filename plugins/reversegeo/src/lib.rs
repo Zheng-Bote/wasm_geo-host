@@ -900,3 +900,5 @@ impl Plugin for ReverseGeoPlugin {
         Ok(doc)
     }
 }
+
+flagme_sdk::export_plugin!(ReverseGeoPlugin, ReverseGeoPlugin::new);
