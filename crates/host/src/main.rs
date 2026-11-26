@@ -17,8 +17,22 @@ use wasm_geo_models::{FileInfo, UnifiedDocument};
 use std::path::Path;
 use std::sync::Arc;
 
+/// Emits host and plugin log messages on stderr; the level comes from `RUST_LOG` (default `warn`).
+/// stdout stays reserved for the command output (e.g. the document JSON of `process`).
+fn init_logging() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .with_target(false)
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
+        .try_init();
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    init_logging();
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!("Usage: flagme-host [process|stream|search|similar] <FILE|QUERY|PHOTO_ID> [--config <CONFIG>] [--limit <N>]");

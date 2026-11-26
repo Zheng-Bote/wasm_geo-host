@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Profiles `config.docker.yaml` / `config.mac-studio.yaml`: removed keys without implementation (`device`, `ocr-text.engine`, `max_image_dimension`).
 
 ### Fixed
+- **Host log output (#34)**: `flagme-host` now initialises a `tracing` subscriber. Host and plugin messages (e.g. `privacy-redact: no face detection result …`) appear on stderr with the plugin name; the level comes from `RUST_LOG` (default `warn`). stdout stays reserved for the command output.
 - **No synthetic plugin output (#23, [ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md))**: plugins no longer invent data.
   - `metadata`: removed the demo-value fallback (Sony ILCE-7RM4, GPS Berlin) for files under 128 bytes and for unreadable files; an unreadable file now leaves `doc.metadata` empty and logs a warning.
   - `ocr-text`, `ai-tagging`, `face-detection`: removed all built-in pseudo engines (file-name keyword rules, signature table of sample images, byte statistics, fixed tags, skin-tone heuristic via `djpeg`, byte-derived embeddings). Recognition now runs only through exchangeable engines (`OcrEngine`, `VisionModel`, `FaceDetector`) that receive the image bytes only; without an engine the field stays `None` with a warning. `ai-tagging` checks and L2-normalizes the model's embedding.

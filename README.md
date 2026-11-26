@@ -295,6 +295,12 @@ Processes a single media file in-process through the configured pipeline and sto
 cargo run -p flagme-host -- process Examples/sample.jpg --config config.yaml
 ```
 
+**Logging:** host and plugin messages go to **stderr** (with the plugin name), the document JSON to **stdout**. The level comes from `RUST_LOG` (default `warn`):
+
+```bash
+RUST_LOG=info cargo run -p flagme-host -- process photo.jpg --config config.yaml 2>run.log >doc.json
+```
+
 ---
 
 ### 3. Subprocess Streaming Supervisor (`flagme-host stream`)

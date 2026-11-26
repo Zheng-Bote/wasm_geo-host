@@ -19,3 +19,4 @@ Reihenfolge der Umsetzung. Jede Task nennt das Akzeptanzkriterium, auf das sie e
 - [x] AC-7 Plugins `duplicate.wasm` (SHA256, phash) und `timeline.wasm` (Zeitstempel-Normalisierung mit Konfliktauflösung) implementieren.
 - [x] AC-8 SQLite-Speicher mit sqlx-Migrationen und konfigurierbarer Pipeline-Orchestrierungslogik in `flagme-host` umsetzen.
 - [x] AC-9 Observability (Tracing), Integrationstests je Kriterium (`// wasm-geo-host AC-<n>: ...`) und englische Plugin-Dokumentation erstellen.
+- [x] AC-10 tracing-Subscriber im Host initialisieren (stderr, `RUST_LOG`, Standard `warn`) und per CLI-Test absichern (#34).
