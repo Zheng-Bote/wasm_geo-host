@@ -1,6 +1,6 @@
 ---
 feature: honest-http-get
-status: draft
+status: archived
 archive-after:
 touches:
   - crates/host/src/**
@@ -17,10 +17,11 @@ touches:
 `CapabilityManager::http_get` meldete eine gescheiterte Anfrage nie als Fehler (Issue #52). Betroffen waren diese Fälle: `curl` fehlt, Zeitüberschreitung, HTTP-Fehlerstatus, leere Antwort. In jedem lieferte die Funktion `Ok` mit einem erfundenen Text (`{"status": "offline", "url": …}`).
 
 Dazu kommen zwei weitere Lücken:
+
 - `curl` lief ohne `--fail`, also galten Antworten mit 4xx/5xx als Erfolg.
 - Konnte `reversegeo` Koordinaten weder offline noch online auflösen, erfand es einen Ort (`"Unknown Country"`, `"XX"`, `"Global"`, Sprache `en`) und legte ihn im KV-Cache ab.
 
-Beides widerspricht [ADR 0002](../adr/0002-plugins-without-engine-no-output.md) und _Strikte Regeln_ 2 der Verfassung.
+Beides widerspricht [ADR 0002](../../adr/0002-plugins-without-engine-no-output.md) und _Strikte Regeln_ 2 der Verfassung.
 
 ## Ziel
 

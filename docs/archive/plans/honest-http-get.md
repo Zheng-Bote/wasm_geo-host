@@ -1,6 +1,6 @@
 ---
 feature: honest-http-get
-status: draft
+status: archived
 archive-after:
 ---
 
