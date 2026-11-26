@@ -520,7 +520,10 @@ impl Storage {
         }
 
         if let Some(faces_info) = &doc.faces {
+            // Detector face IDs are only unique per photo; the row key adds the photo id (#24).
+            sql.push_str(&format!("DELETE FROM faces WHERE photo_id = '{}';\n", escape_sql(&doc.id)));
             for face in &faces_info.faces {
+                let row_id = face_row_id(&doc.id, &face.id);
                 let emb_sql = if let Some(emb) = &face.embedding {
                     let mut hex = String::with_capacity(emb.len() * 8);
                     for v in emb {
@@ -542,7 +545,7 @@ impl Storage {
                             "INSERT OR IGNORE INTO persons (id, name, representative_face_id) VALUES ('{}', '{}', '{}');\n",
                             escape_sql(p),
                             escape_sql(p),
-                            escape_sql(&face.id)
+                            escape_sql(&row_id)
                         ));
                         format!("'{}'", escape_sql(p))
                     })
@@ -550,7 +553,7 @@ impl Storage {
 
                 sql.push_str(&format!(
                     "INSERT OR REPLACE INTO faces (id, photo_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, embedding, person_id) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
-                    escape_sql(&face.id),
+                    escape_sql(&row_id),
                     escape_sql(&doc.id),
                     face.bbox.x,
                     face.bbox.y,
@@ -561,6 +564,12 @@ impl Storage {
                     person_sql
                 ));
             }
+            // Keep every person pointing at an existing face (e.g. after its photo was reprocessed).
+            sql.push_str(
+                "UPDATE persons SET representative_face_id = (SELECT id FROM faces WHERE person_id = persons.id ORDER BY rowid LIMIT 1) \
+                 WHERE representative_face_id IS NULL \
+                 OR representative_face_id NOT IN (SELECT id FROM faces WHERE person_id = persons.id);\n",
+            );
         }
 
         if let Ok(mut child) = Command::new("sqlite3")
@@ -841,6 +850,11 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     } else {
         0.0
     }
+}
+
+/// Row key of a face in the `faces` table. Detector face IDs are only unique per photo (#24).
+pub fn face_row_id(photo_id: &str, face_id: &str) -> String {
+    format!("{}/{}", photo_id, face_id)
 }
 
 fn escape_sql(s: &str) -> String {
