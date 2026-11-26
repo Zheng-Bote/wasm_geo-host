@@ -1,6 +1,6 @@
 ---
 feature: capability-only-io
-status: draft
+status: archived
 archive-after:
 touches:
   - plugins/**
