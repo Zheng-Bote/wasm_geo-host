@@ -1,6 +1,6 @@
 ---
 feature: wasm-component-runtime
-status: draft
+status: archived
 archive-after:
 touches:
   - crates/**
@@ -32,7 +32,7 @@ Die Verfassung verlangt Plugins als WebAssembly-Komponenten mit WIT-Schnittstell
 - `flagme-host stream` startet die externe `wasmtime`-CLI. Capabilities, `enabled` und `settings` greifen dort nicht.
 - `wit/media-plugin.wit` ist veraltet: Es fehlen Felder des Dokuments, `fs-write` und die `settings`.
 
-Die Sandbox und die Capability-Isolation, die README, CHANGELOG 0.1.0 und die Tech Spec `wasm-geo-host` versprechen, gibt es zur Laufzeit nicht. [ADR 0003](../adr/0003-wasm-component-execution.md) legt fest, wie das behoben wird.
+Die Sandbox und die Capability-Isolation, die README, CHANGELOG 0.1.0 und die Tech Spec `wasm-geo-host` versprechen, gibt es zur Laufzeit nicht. [ADR 0003](../../adr/0003-wasm-component-execution.md) legt fest, wie das behoben wird.
 
 ## Ziel
 

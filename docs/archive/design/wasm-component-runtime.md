@@ -1,6 +1,6 @@
 ---
 feature: wasm-component-runtime
-status: draft
+status: archived
 archive-after:
 touches:
   - crates/**
@@ -23,7 +23,7 @@ touches:
 
 # Tech Spec — Plugins laufen als eingebettete Wasm-Komponenten (`wasm-component-runtime`)
 
-Setzt das PRD `docs/prd/wasm-component-runtime.md` und [ADR 0003](../adr/0003-wasm-component-execution.md) um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern.
+Setzt das PRD `docs/prd/wasm-component-runtime.md` und [ADR 0003](../../adr/0003-wasm-component-execution.md) um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern.
 
 ## Architektur
 

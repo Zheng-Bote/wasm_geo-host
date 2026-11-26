@@ -1,6 +1,6 @@
 ---
 feature: wasm-component-runtime
-status: draft
+status: archived
 archive-after:
 ---
 
