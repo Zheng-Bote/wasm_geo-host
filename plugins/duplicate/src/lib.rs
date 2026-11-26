@@ -2,7 +2,11 @@ use flagme_sdk::{
     DuplicateInfo, Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache,
     SettingsReader, UnifiedDocument,
 };
+use image::imageops::FilterType;
+use image::metadata::Orientation;
+use image::{DynamicImage, ImageDecoder, ImageReader};
 use sha2::{Digest, Sha256};
+use std::io::Cursor;
 
 /// KV key of the perceptual-hash index used when `phash_threshold > 0`.
 pub const PHASH_INDEX_KEY: &str = "phash:index";
@@ -48,43 +52,6 @@ impl DuplicatePlugin {
         }
     }
 
-    /// Computes a 64-bit gradient difference hash (dHash) over 9x8 luminance samples derived from the image payload.
-    pub fn compute_phash(&self, bytes: &[u8]) -> String {
-        if bytes.is_empty() {
-            return "0000000000000000".to_string();
-        }
-
-        // Skip fixed file headers (EXIF/APP markers) to sample actual image scanline entropy
-        let payload = find_image_entropy_payload(bytes);
-        let mut grid = [0u8; 72]; // 9 columns x 8 rows
-
-        let chunk_len = (payload.len() / 72).max(1);
-        for (idx, cell) in grid.iter_mut().enumerate() {
-            let start = (idx * chunk_len).min(payload.len().saturating_sub(1));
-            let end = ((idx + 1) * chunk_len).min(payload.len());
-            let slice = &payload[start..end.max(start + 1)];
-
-            let sum: u64 = slice.iter().map(|&b| b as u64).sum();
-            *cell = (sum / (slice.len() as u64)) as u8;
-        }
-
-        // 8 rows of 8 horizontal gradient comparisons -> 64-bit perceptual hash
-        let mut hash_bits: u64 = 0;
-        let mut bit_index = 0;
-        for row in 0..8 {
-            for col in 0..8 {
-                let left = grid[row * 9 + col];
-                let right = grid[row * 9 + col + 1];
-                if left > right {
-                    hash_bits |= 1u64 << bit_index;
-                }
-                bit_index += 1;
-            }
-        }
-
-        format!("{:016x}", hash_bits)
-    }
-
     /// True cryptographic SHA-256 hash computation (FIPS 180-4).
     pub fn compute_sha256(&self, bytes: &[u8]) -> String {
         let mut hasher = Sha256::new();
@@ -93,32 +60,34 @@ impl DuplicatePlugin {
     }
 }
 
-fn find_image_entropy_payload(bytes: &[u8]) -> &[u8] {
-    // For JPEGs, scan past APP metadata segments to the SOS (Start of Scan, 0xFF 0xDA) marker
-    if bytes.len() > 4 && bytes[0] == 0xFF && bytes[1] == 0xD8 {
-        let mut i = 2;
-        while i + 4 < bytes.len() {
-            if bytes[i] != 0xFF {
-                i += 1;
-                continue;
+/// 64-bit difference hash (dHash) over the decoded pixels, as 16 hex digits.
+///
+/// The image is decoded, rotated according to its EXIF orientation, converted to grayscale and
+/// scaled to 9x8 pixels; bit `i` is set if a pixel is brighter than its right neighbour.
+/// Returns `None` if the bytes cannot be decoded as an image.
+pub fn compute_dhash(bytes: &[u8]) -> Option<String> {
+    let mut decoder = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?
+        .into_decoder()
+        .ok()?;
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut img = DynamicImage::from_decoder(decoder).ok()?;
+    img.apply_orientation(orientation);
+    let small = img
+        .grayscale()
+        .resize_exact(9, 8, FilterType::Triangle)
+        .to_luma8();
+
+    let mut bits: u64 = 0;
+    for row in 0..8 {
+        for col in 0..8 {
+            if small.get_pixel(col, row)[0] > small.get_pixel(col + 1, row)[0] {
+                bits |= 1u64 << (row * 8 + col);
             }
-            let marker = bytes[i + 1];
-            if marker == 0xDA {
-                let header_len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
-                let scan_start = (i + 2 + header_len).min(bytes.len());
-                if scan_start < bytes.len() {
-                    return &bytes[scan_start..];
-                }
-                break;
-            }
-            let seg_len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
-            if seg_len < 2 {
-                break;
-            }
-            i += 2 + seg_len;
         }
     }
-    bytes
+    Some(format!("{:016x}", bits))
 }
 
 impl Plugin for DuplicatePlugin {
@@ -130,24 +99,48 @@ impl Plugin for DuplicatePlugin {
         "0.1.0"
     }
 
-    fn process(&self, mut doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument> {
-        let bytes = ctx
-            .capabilities
-            .fs_read(&doc.file.path)
-            .unwrap_or_else(|_| doc.file.path.as_bytes().to_vec());
+    fn process(
+        &self,
+        mut doc: UnifiedDocument,
+        ctx: &PluginContext,
+    ) -> PluginResult<UnifiedDocument> {
+        let bytes = match ctx.capabilities.fs_read(&doc.file.path) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                ctx.capabilities.log(
+                    "warn",
+                    &format!(
+                        "duplicate: cannot read '{}': {}; no hashes",
+                        doc.file.path, e
+                    ),
+                );
+                return Ok(doc);
+            }
+        };
 
         let sha256 = self.compute_sha256(&bytes);
-        let phash = self.compute_phash(&bytes);
+        let phash = compute_dhash(&bytes);
+        if phash.is_none() {
+            ctx.capabilities.log(
+                "info",
+                &format!(
+                    "duplicate: '{}' cannot be decoded; no perceptual hash",
+                    doc.file.path
+                ),
+            );
+        }
 
         ctx.capabilities.log(
             "info",
-            &format!("Computed hashes: sha256={}, phash={}", &sha256[0..8], phash),
+            &format!(
+                "Computed hashes: sha256={}, phash={}",
+                &sha256[0..8],
+                phash.as_deref().unwrap_or("-")
+            ),
         );
 
         let mut duplicates = Vec::new();
         let sha_key = format!("sha256:{}", sha256);
-        let phash_key = format!("phash:{}", phash);
-
         if let Ok(Some(existing_id)) = ctx.capabilities.kv_get(&sha_key) {
             if existing_id != doc.id && !duplicates.contains(&existing_id) {
                 duplicates.push(existing_id);
@@ -157,55 +150,60 @@ impl Plugin for DuplicatePlugin {
         }
 
         let settings = self.settings.get_or_parse(ctx);
-        if settings.phash_threshold == 0 {
-            if let Ok(Some(existing_id)) = ctx.capabilities.kv_get(&phash_key) {
-                if existing_id != doc.id && !duplicates.contains(&existing_id) {
-                    ctx.capabilities.log(
-                        "warn",
-                        &format!("Duplicate detected matching photo id: {}", existing_id),
-                    );
-                    duplicates.push(existing_id);
-                }
-            } else {
-                let _ = ctx.capabilities.kv_set(&phash_key, &doc.id);
-            }
-        } else {
-            // Linear scan over the index; each line is "<phash> <doc.id>".
-            let index = ctx
-                .capabilities
-                .kv_get(PHASH_INDEX_KEY)
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-            let mut already_indexed = false;
-            for line in index.lines() {
-                let Some((other_hash, other_id)) = line.split_once(' ') else {
-                    continue;
-                };
-                if other_id == doc.id {
-                    already_indexed = true;
-                    continue;
-                }
-                if let Some(dist) = hamming_distance(&phash, other_hash) {
-                    if dist <= settings.phash_threshold && !duplicates.iter().any(|d| d == other_id) {
+        if let Some(phash) = phash.as_deref() {
+            let phash_key = format!("phash:{}", phash);
+            if settings.phash_threshold == 0 {
+                if let Ok(Some(existing_id)) = ctx.capabilities.kv_get(&phash_key) {
+                    if existing_id != doc.id && !duplicates.contains(&existing_id) {
                         ctx.capabilities.log(
                             "warn",
-                            &format!(
+                            &format!("Duplicate detected matching photo id: {}", existing_id),
+                        );
+                        duplicates.push(existing_id);
+                    }
+                } else {
+                    let _ = ctx.capabilities.kv_set(&phash_key, &doc.id);
+                }
+            } else {
+                // Linear scan over the index; each line is "<phash> <doc.id>".
+                let index = ctx
+                    .capabilities
+                    .kv_get(PHASH_INDEX_KEY)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                let mut already_indexed = false;
+                for line in index.lines() {
+                    let Some((other_hash, other_id)) = line.split_once(' ') else {
+                        continue;
+                    };
+                    if other_id == doc.id {
+                        already_indexed = true;
+                        continue;
+                    }
+                    if let Some(dist) = hamming_distance(phash, other_hash) {
+                        if dist <= settings.phash_threshold
+                            && !duplicates.iter().any(|d| d == other_id)
+                        {
+                            ctx.capabilities.log(
+                                "warn",
+                                &format!(
                                 "Duplicate detected matching photo id: {} (Hamming distance {})",
                                 other_id, dist
                             ),
-                        );
-                        duplicates.push(other_id.to_string());
+                            );
+                            duplicates.push(other_id.to_string());
+                        }
                     }
                 }
-            }
-            if !already_indexed {
-                let mut updated = index;
-                if !updated.is_empty() && !updated.ends_with('\n') {
-                    updated.push('\n');
+                if !already_indexed {
+                    let mut updated = index;
+                    if !updated.is_empty() && !updated.ends_with('\n') {
+                        updated.push('\n');
+                    }
+                    updated.push_str(&format!("{} {}\n", phash, doc.id));
+                    let _ = ctx.capabilities.kv_set(PHASH_INDEX_KEY, &updated);
                 }
-                updated.push_str(&format!("{} {}\n", phash, doc.id));
-                let _ = ctx.capabilities.kv_set(PHASH_INDEX_KEY, &updated);
             }
         }
 

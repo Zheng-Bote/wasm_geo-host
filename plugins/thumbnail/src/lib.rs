@@ -2,20 +2,14 @@ use flagme_sdk::{
     Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache, SettingsReader,
     ThumbnailEntry, UnifiedDocument,
 };
-use std::path::Path;
+use image::codecs::jpeg::JpegEncoder;
+use image::imageops::FilterType;
+use image::metadata::Orientation;
+use image::{DynamicImage, ImageDecoder, ImageReader};
+use std::io::Cursor;
 
-/// Minimal valid 1x1 JPEG image bytes used as fallback when source is a synthetic test path.
-const FALLBACK_JPEG_1X1: &[u8] = &[
-    0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01,
-    0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x1F, 0x00, 0x00, 0x01, 0x05, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
-    0x07, 0x08, 0x09, 0x0A, 0x0B, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0xD2,
-    0xCF, 0x20, 0xFF, 0xD9,
-];
+/// JPEG quality used when `settings.quality` is not set (the encoder's default).
+pub const DEFAULT_JPEG_QUALITY: u8 = 75;
 
 /// Configurable parameters of the thumbnail plugin (`config.yaml` `settings`).
 #[derive(Debug, Clone, PartialEq)]
@@ -24,7 +18,7 @@ pub struct ThumbnailSettings {
     pub variants: Vec<u32>,
     /// Upper bound for the variants; larger variants are dropped.
     pub max_dimension: Option<u32>,
-    /// JPEG quality 1..=100; `None` keeps the encoder default.
+    /// JPEG quality 1..=100; `None` uses [`DEFAULT_JPEG_QUALITY`].
     pub quality: Option<u32>,
     /// Output directory of the thumbnail files.
     pub output_dir: String,
@@ -118,82 +112,35 @@ impl ThumbnailPlugin {
         size.hash(&mut hasher);
         format!("{:016x}", hasher.finish())
     }
+}
 
-    fn is_supported_format(&self, path: &str) -> bool {
-        let ext = Path::new(path)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
+/// Decodes an image (format detected from the content) and applies its EXIF orientation.
+pub fn decode_oriented(bytes: &[u8]) -> Result<DynamicImage, String> {
+    let mut decoder = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| e.to_string())?
+        .into_decoder()
+        .map_err(|e| e.to_string())?;
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut img = DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
 
-        matches!(
-            ext.as_str(),
-            "jpg" | "jpeg" | "png" | "webp" | "tiff" | "tif" | "heic" | "avif"
-        )
-    }
-
-    /// Generates a real resized JPEG file on disk if the source image exists,
-    /// or writes a valid JPEG thumbnail via `fs_write` fallback.
-    fn ensure_thumbnail_file(
-        &self,
-        source_path: &str,
-        thumb_path: &str,
-        _max_size: u32,
-        _quality: Option<u32>,
-        ctx: &PluginContext,
-    ) {
-        let dest = Path::new(thumb_path);
-        if dest.exists() {
-            return;
-        }
-        if let Some(parent) = dest.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        let src = Path::new(source_path);
-        if src.exists() && src.is_file() {
-            // Try macOS native `sips` or ImageMagick `magick` for real high-speed image scaling
-            #[cfg(target_os = "macos")]
-            {
-                let mut args: Vec<String> = vec!["-s".into(), "format".into(), "jpeg".into()];
-                if let Some(q) = _quality {
-                    args.extend(["-s".into(), "formatOptions".into(), q.to_string()]);
-                }
-                args.extend([
-                    "-Z".into(),
-                    _max_size.to_string(),
-                    source_path.to_string(),
-                    "--out".into(),
-                    thumb_path.to_string(),
-                ]);
-                if let Ok(status) = std::process::Command::new("sips")
-                    .args(&args)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status()
-                {
-                    if status.success() && dest.exists() {
-                        return;
-                    }
-                }
-            }
-
-            // Fallback: copy original bytes if already a small image or write valid JPEG
-            if let Ok(bytes) = ctx.capabilities.fs_read(source_path) {
-                let _ = ctx.capabilities.fs_write(thumb_path, &bytes);
-                if dest.exists() {
-                    return;
-                }
-                let _ = std::fs::write(dest, &bytes);
-                return;
-            }
-        }
-
-        // Write valid minimal JPEG so thumbnail endpoint always serves valid JPEG bytes
-        if ctx.capabilities.fs_write(thumb_path, FALLBACK_JPEG_1X1).is_err() {
-            let _ = std::fs::write(dest, FALLBACK_JPEG_1X1);
-        }
-    }
+/// Scales `img` so that its longer side is at most `size` (aspect ratio kept, never upscaled)
+/// and encodes it as JPEG. Returns the bytes and the actual dimensions.
+pub fn render_thumbnail(img: &DynamicImage, size: u32, quality: u8) -> Result<(Vec<u8>, u32, u32), String> {
+    let scaled = if img.width().max(img.height()) > size {
+        img.resize(size, size, FilterType::Lanczos3)
+    } else {
+        img.clone()
+    };
+    let rgb = scaled.to_rgb8();
+    let mut out = Vec::new();
+    JpegEncoder::new_with_quality(&mut out, quality)
+        .encode_image(&rgb)
+        .map_err(|e| e.to_string())?;
+    Ok((out, rgb.width(), rgb.height()))
 }
 
 impl Plugin for ThumbnailPlugin {
@@ -206,35 +153,49 @@ impl Plugin for ThumbnailPlugin {
     }
 
     fn process(&self, mut doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument> {
-        let path = &doc.file.path;
-        if !self.is_supported_format(path) && !path.ends_with(".dat") {
-            ctx.capabilities.log(
-                "warn",
-                &format!("File format of '{}' is not supported by thumbnail generator", path),
-            );
-            return Ok(doc);
-        }
+        let path = doc.file.path.clone();
+        let warn = |msg: String| ctx.capabilities.log("warn", &format!("thumbnail: {}", msg));
 
-        ctx.capabilities.log(
-            "info",
-            &format!("Generating deterministic thumbnails for '{}'", path),
-        );
+        let bytes = match ctx.capabilities.fs_read(&path) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                warn(format!("cannot read '{}': {}; no thumbnails", path, e));
+                return Ok(doc);
+            }
+        };
+        let img = match decode_oriented(&bytes) {
+            Ok(img) => img,
+            Err(e) => {
+                warn(format!("cannot decode '{}': {}; no thumbnails", path, e));
+                return Ok(doc);
+            }
+        };
 
         let settings = self.settings.get_or_parse(ctx);
+        let quality = settings.quality.map(|q| q as u8).unwrap_or(DEFAULT_JPEG_QUALITY);
         let sizes = settings.effective_sizes();
         let labels = size_labels(&sizes);
+        ctx.capabilities.log("info", &format!("Generating thumbnails for '{}'", path));
 
         let mut entries = Vec::new();
         for (label, size) in labels.into_iter().zip(sizes) {
-            let cache_key = self.calculate_cache_key(path, size);
+            let cache_key = self.calculate_cache_key(&path, size);
             let thumb_path = format!("{}/{}_{}.jpg", settings.output_dir, cache_key, size);
-
-            self.ensure_thumbnail_file(path, &thumb_path, size, settings.quality, ctx);
-
+            let (jpeg, width, height) = match render_thumbnail(&img, size, quality) {
+                Ok(r) => r,
+                Err(e) => {
+                    warn(format!("cannot encode {}px thumbnail of '{}': {}", size, path, e));
+                    continue;
+                }
+            };
+            if let Err(e) = ctx.capabilities.fs_write(&thumb_path, &jpeg) {
+                warn(format!("cannot write '{}': {}", thumb_path, e));
+                continue;
+            }
             entries.push(ThumbnailEntry {
                 size_label: label,
-                width: size,
-                height: size,
+                width,
+                height,
                 path: thumb_path,
                 cache_key,
             });

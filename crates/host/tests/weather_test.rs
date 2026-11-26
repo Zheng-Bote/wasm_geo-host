@@ -37,6 +37,20 @@ fn test_ac2_plugin_contract_metadata() {
 }
 
 // Mock capabilities for KV caching and HTTP observation
+/// Open-Meteo archive response for one day (24 hourly values; 12:00 = 18.5 °C, code 2).
+fn open_meteo_fixture() -> String {
+    let temps: Vec<String> = (0..24).map(|h| if h == 12 { "18.5".to_string() } else { "10.0".to_string() }).collect();
+    let codes: Vec<String> = (0..24).map(|h| if h == 12 { "2".to_string() } else { "0".to_string() }).collect();
+    format!(
+        r#"{{"hourly":{{"time":[],"temperature_2m":[{}],"weather_code":[{}],"relative_humidity_2m":[{}],"precipitation":[{}],"is_day":[{}]}}}}"#,
+        temps.join(","),
+        codes.join(","),
+        vec!["60"; 24].join(","),
+        vec!["0.0"; 24].join(","),
+        vec!["1"; 24].join(",")
+    )
+}
+
 struct MockKvCapabilities {
     kv_store: Mutex<HashMap<String, String>>,
     http_calls: Mutex<Vec<String>>,
@@ -61,7 +75,7 @@ impl HostCapabilities for MockKvCapabilities {
     fn log(&self, _level: &str, _message: &str) {}
     fn http_get(&self, url: &str) -> PluginResult<String> {
         self.http_calls.lock().unwrap().push(url.to_string());
-        Ok("{}".to_string())
+        Ok(open_meteo_fixture())
     }
     fn kv_get(&self, key: &str) -> PluginResult<Option<String>> {
         Ok(self.kv_store.lock().unwrap().get(key).cloned())
@@ -103,7 +117,7 @@ fn test_ac3_kv_caching_and_http_avoidance() {
 
     // 1. First run: cache is empty, HTTP should be called and KV set
     let res1 = plugin.process(doc.clone(), &ctx).expect("Process 1 failed");
-    assert!(res1.weather.is_some());
+    assert_eq!(res1.weather.as_ref().and_then(|w| w.temperature), Some(18.5));
     assert_eq!(caps.http_calls.lock().unwrap().len(), 1);
 
     // 2. Second run: cache is present, HTTP count should remain 1
@@ -173,9 +187,9 @@ fn test_ac5_sqlite_weather_persistence() {
 #[test]
 fn test_ac6_end_to_end_weather_enrichment() {
     let plugin = WeatherEnrichPlugin::new();
-    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
+    let caps = Arc::new(MockKvCapabilities::new());
+    let ctx = PluginContext::new(caps.clone());
 
-    // Document with coordinates
     let mut doc = UnifiedDocument::new(
         "photo-e2e-w",
         FileInfo {
@@ -191,10 +205,46 @@ fn test_ac6_end_to_end_weather_enrichment() {
         longitude: Some(139.76),
         ..Default::default()
     });
+    doc.timeline = Some(TimelineInfo {
+        taken_at: Some(Utc.with_ymd_and_hms(2025, 4, 1, 12, 0, 0).unwrap()),
+        imported_at: Utc::now(),
+        modified_at: None,
+        resolution_source: "exif".to_string(),
+    });
 
     let enriched = plugin.process(doc, &ctx).expect("Enrichment failed");
-    assert!(enriched.weather.is_some());
-    let w = enriched.weather.unwrap();
-    assert!(!w.condition.is_empty());
-    assert!(!w.icon_emoji.is_empty());
+    let w = enriched.weather.expect("measured weather from the response");
+    assert_eq!(w.temperature, Some(18.5));
+    assert_eq!((w.wmo_code, w.condition.as_str(), w.icon_emoji.as_str()), (2, "Partly Cloudy", "⛅"));
+    assert_eq!(w.humidity_percent, Some(60));
+    let calls = caps.http_calls.lock().unwrap();
+    assert!(calls[0].contains("latitude=35.68&longitude=139.76&start_date=2025-04-01"), "{}", calls[0]);
+    assert!(caps.kv_store.lock().unwrap().contains_key("weather:35.68:139.76:2025-04-01-12"));
+
+    // Without coordinates or HTTP there is no weather (ADR 0002, no estimate).
+    let offline = WeatherEnrichPlugin::new()
+        .process(enriched_without_weather(), &PluginContext::new(Arc::new(NoopCapabilities)))
+        .unwrap();
+    assert!(offline.weather.is_none());
+}
+
+fn enriched_without_weather() -> UnifiedDocument {
+    let mut doc = UnifiedDocument::new(
+        "photo-offline",
+        FileInfo {
+            path: "/media/offline.jpg".to_string(),
+            filename: "offline.jpg".to_string(),
+            size_bytes: 1,
+            mime_type: "image/jpeg".to_string(),
+            sha256: None,
+        },
+    );
+    doc.location = Some(LocationInfo { latitude: Some(35.68), longitude: Some(139.76), ..Default::default() });
+    doc.timeline = Some(TimelineInfo {
+        taken_at: Some(Utc.with_ymd_and_hms(2025, 4, 1, 12, 0, 0).unwrap()),
+        imported_at: Utc::now(),
+        modified_at: None,
+        resolution_source: "exif".to_string(),
+    });
+    doc
 }

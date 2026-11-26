@@ -13,4 +13,5 @@ path = "src/main.rs"
 
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "tiff", "gif"] }
 sha2 = "0.10"

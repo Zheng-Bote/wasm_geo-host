@@ -19,7 +19,7 @@ The `duplicate` plugin finds exact copies (SHA-256) and visually similar images 
 ## 1. Key Features
 
 1. **SHA-256** — byte-exact duplicate detection (FIPS 180-4, crate `sha2`), also stored in `doc.file.sha256`.
-2. **dHash (64 bit)** — 9 × 8 grid of mean values over the JPEG scan data (after the SOS marker), 64 horizontal gradient comparisons → 16 hex digits.
+2. **dHash (64 bit)** — the image is decoded (`image` crate: JPEG, PNG, WebP, TIFF, GIF), rotated per EXIF orientation, converted to grayscale and scaled to 9 × 8 pixels; 64 horizontal gradient comparisons → 16 hex digits. Robust against re-compression and resizing.
 3. **KV Hash Index** — first-seen photo per hash: `sha256:<hex>` → `doc.id`, `phash:<hex>` → `doc.id`.
 4. **Indexed SQLite Table** — `idx_duplicates_phash` on `duplicates(phash)`.
 5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
@@ -62,9 +62,9 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
-| dHash grid | 9 columns × 8 rows | 64 bits |
-| Sampled region | JPEG: data after SOS (`0xFFDA`); other formats: whole file | skips EXIF/APP segments |
-| Empty input | `phash = "0000000000000000"` | |
+| dHash grid | 9 columns × 8 rows of the decoded grayscale image (Triangle filter) | 64 bits; bit `row·8+col` set if a pixel is brighter than its right neighbour |
+| Undecodable image (e.g. HEIC/AVIF) | `phash = None` | SHA-256 matching still works; no perceptual matching, `info` log entry |
+| Unreadable file | no hashes at all | `doc.duplicate` and `doc.file.sha256` stay unchanged, `warn` log entry |
 | KV keys | `sha256:<64 hex>`, `phash:<16 hex>` | value = `doc.id` of the first photo |
 | KV index (`phash_threshold > 0`) | `phash:index`, one line `<16 hex> <doc.id>` per photo | ≈ 34 bytes per photo |
 | Match rule | identical SHA-256 **or** dHash Hamming distance ≤ `phash_threshold`, different `doc.id` | IDs are added at most once |
@@ -81,7 +81,7 @@ No dependencies on other plugins. Should run before the host persists the docume
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(doc.file.path)` | The hashes are computed over the **file path string** instead of the content — no meaningful duplicates. |
+| `filesystem` | `fs_read(doc.file.path)` | Warning `duplicate: cannot read '<path>': …; no hashes`; `doc.duplicate` stays `None`. |
 | `kv` | `kv_get` / `kv_set` of the hash index | Hashes are still computed, but `duplicates` is always empty. |
 
 ---
@@ -91,7 +91,7 @@ No dependencies on other plugins. Should run before the host persists the docume
 ```rust
 pub struct DuplicateInfo {
     pub sha256: String,            // 64 hex digits
-    pub phash: String,             // 16 hex digits, e.g. "ba2ed74a1cf33d36"
+    pub phash: Option<String>,     // 16 hex digits, e.g. "ba2ed74a1cf33d36"; None if not decodable (omitted in JSON)
     pub duplicates: Vec<String>,   // doc.id of earlier matches (omitted in JSON if empty)
 }
 ```
@@ -118,10 +118,10 @@ The CLI uses `NoopCapabilities` (KV without memory) → `duplicates` is always e
 ### 6.3 SQLite
 
 ```sql
-SELECT photo_id, sha256, phash, duplicate_ids FROM duplicates;
+SELECT photo_id, sha256, phash, duplicate_ids FROM duplicates;   -- phash '' = no perceptual hash
 
 -- Photos with identical dHash
-SELECT phash, group_concat(photo_id) FROM duplicates GROUP BY phash HAVING count(*) > 1;
+SELECT phash, group_concat(photo_id) FROM duplicates WHERE phash <> '' GROUP BY phash HAVING count(*) > 1;
 ```
 
 ---
@@ -129,6 +129,6 @@ SELECT phash, group_concat(photo_id) FROM duplicates GROUP BY phash HAVING count
 ## 7. Limitations & Implementation Notes
 
 - **Linear index:** with `phash_threshold > 0` every new photo is compared with all entries of `phash:index`; the effort grows linearly with the library.
-- **dHash over compressed bytes:** the grid is computed over the encoded JPEG stream, not decoded pixels. It is therefore not robust against re-compression or resizing.
+- **No perceptual hash for HEIC/AVIF:** these formats need decoders outside pure Rust ([#40](https://github.com/Zheng-Bote/wasm_geo-host/issues/40)).
 - **The KV index lives in memory** of the host process; after a restart, earlier photos are no longer known as duplicates (the SQL query in §6.3 still works).
 - Only the **first** photo per hash is remembered; later copies point to it, not to each other.

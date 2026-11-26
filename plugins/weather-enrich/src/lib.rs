@@ -10,8 +10,6 @@ pub struct WeatherSettings {
     pub endpoint: String,
     /// Decimal places of the coordinates in the request and the cache key.
     pub coordinate_precision: u32,
-    /// Use the climatological estimate if the request fails.
-    pub offline_fallback: bool,
 }
 
 impl Default for WeatherSettings {
@@ -19,7 +17,6 @@ impl Default for WeatherSettings {
         Self {
             endpoint: "https://archive-api.open-meteo.com/v1/archive".to_string(),
             coordinate_precision: 2,
-            offline_fallback: true,
         }
     }
 }
@@ -28,10 +25,14 @@ impl PluginSettings for WeatherSettings {
     const PLUGIN: &'static str = "weather-enrich";
 
     fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
+        r.not_supported(
+            "offline_fallback",
+            &[],
+            "the climatological estimate was removed, see ADR 0002",
+        );
         Self {
             endpoint: r.url("endpoint", &[], &base.endpoint),
             coordinate_precision: r.u32("coordinate_precision", &[], 0..=4, base.coordinate_precision),
-            offline_fallback: r.bool("offline_fallback", &[], base.offline_fallback),
         }
     }
 }
@@ -118,60 +119,6 @@ impl WeatherEnrichPlugin {
             is_day,
         })
     }
-
-    /// Climatological fallback model calculating realistic temperature, condition, and day/night
-    /// from latitude, longitude, month, and hour when offline.
-    fn compute_climatological_fallback(lat: f64, lon: f64, month: u32, hour: u32) -> WeatherInfo {
-        let is_northern = lat >= 0.0;
-        // Seasonal offset: peak warmth in July (month 7) in northern hemisphere, January in southern
-        let seasonal_phase = if is_northern {
-            ((month as f32 - 7.0) * std::f32::consts::PI / 6.0).cos()
-        } else {
-            ((month as f32 - 1.0) * std::f32::consts::PI / 6.0).cos()
-        };
-
-        // Base temperature by latitude (equator ~27C, poles ~-15C)
-        let base_temp = 27.0 - (lat.abs() as f32) * 0.45;
-        let seasonal_swing = 11.0 * seasonal_phase;
-        let diurnal_swing = -4.0 * (((hour as f32 - 4.0) * std::f32::consts::PI / 12.0).cos());
-        let temperature = ((base_temp + seasonal_swing + diurnal_swing) * 10.0).round() / 10.0;
-
-        let is_day = (6..=19).contains(&hour);
-        let coord_hash = ((lat * 100.0).round() as i64).wrapping_mul(31).wrapping_add((lon * 100.0).round() as i64).unsigned_abs();
-
-        let wmo_code = if temperature < -1.0 {
-            71 // Snow Fall
-        } else if lat.abs() > 60.0 {
-            71
-        } else {
-            match (coord_hash + month as u64 + hour as u64) % 7 {
-                0 | 1 => 0, // Clear Sky
-                2 | 3 => 1, // Mainly Clear
-                4 => 2,     // Partly Cloudy
-                5 => 3,     // Overcast
-                _ => 61,    // Rain
-            }
-        };
-
-        let (condition, icon_emoji) = Self::map_wmo_code(wmo_code);
-        let (humidity, precip) = match wmo_code {
-            61 | 80 => (82, 2.4),
-            71 => (85, 1.8),
-            3 => (72, 0.0),
-            2 => (64, 0.0),
-            _ => (55, 0.0),
-        };
-
-        WeatherInfo {
-            temperature: Some(temperature),
-            condition: condition.to_string(),
-            wmo_code,
-            icon_emoji: icon_emoji.to_string(),
-            humidity_percent: Some(humidity),
-            precipitation_mm: Some(precip),
-            is_day: Some(is_day),
-        }
-    }
 }
 
 impl Plugin for WeatherEnrichPlugin {
@@ -194,15 +141,19 @@ impl Plugin for WeatherEnrichPlugin {
             }
         };
 
-        let (date_str, date_hour, month, hour) = if let Some(dt) = doc.timeline.as_ref().and_then(|t| t.taken_at.as_ref()) {
-            let d_str = dt.format("%Y-%m-%d").to_string();
-            let dh_str = dt.format("%Y-%m-%d-%H").to_string();
-            let m: u32 = dt.format("%m").to_string().parse().unwrap_or(6);
-            let h: u32 = dt.format("%H").to_string().parse().unwrap_or(12);
-            (d_str, dh_str, m, h)
-        } else {
-            ("2025-07-15".to_string(), "default-date".to_string(), 7, 12)
+        let Some(taken_at) = doc.timeline.as_ref().and_then(|t| t.taken_at) else {
+            ctx.capabilities.log(
+                "warn",
+                &format!(
+                    "weather-enrich: no capture time for '{}'; weather not queried",
+                    doc.file.path
+                ),
+            );
+            return Ok(doc);
         };
+        let date_str = taken_at.format("%Y-%m-%d").to_string();
+        let date_hour = taken_at.format("%Y-%m-%d-%H").to_string();
+        let hour: usize = taken_at.format("%H").to_string().parse().unwrap_or(0);
 
         let settings = self.settings.get_or_parse(ctx);
         let p = settings.coordinate_precision as usize;
@@ -228,19 +179,25 @@ impl Plugin for WeatherEnrichPlugin {
             settings.endpoint, lat, lon, date_str, date_str, p = p
         );
 
-        let measured = ctx
-            .capabilities
-            .http_get(&url)
-            .ok()
-            .and_then(|body| Self::parse_open_meteo_response(&body, hour as usize));
-
-        let weather = match measured {
-            Some(w) => w,
-            None if settings.offline_fallback => Self::compute_climatological_fallback(lat, lon, month, hour),
-            None => {
+        let response = ctx.capabilities.http_get(&url);
+        let weather = match response {
+            Ok(body) => match Self::parse_open_meteo_response(&body, hour) {
+                Some(w) => w,
+                None => {
+                    ctx.capabilities.log(
+                        "warn",
+                        &format!(
+                            "weather-enrich: no measured weather for '{}': unreadable response",
+                            doc.file.path
+                        ),
+                    );
+                    return Ok(doc);
+                }
+            },
+            Err(e) => {
                 ctx.capabilities.log(
                     "warn",
-                    "Historical weather unavailable and offline_fallback disabled; leaving weather empty",
+                    &format!("weather-enrich: no measured weather for '{}': {}", doc.file.path, e),
                 );
                 return Ok(doc);
             }
