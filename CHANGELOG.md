@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Profiles `config.docker.yaml` / `config.mac-studio.yaml`: removed keys without implementation (`device`, `ocr-text.engine`, `max_image_dimension`).
 
 ### Fixed
+- **Sample files (#35)**: `Examples/generate_samples.py` now writes valid EXIF (IFD0, Exif IFD, GPS IFD) and a decodable 64×48 JPEG; `sample.jpg`, `sample.png` and `sample.heic` carry camera, lens, exposure and GPS (Berlin) values that `metadata` extracts. Previously the ExifIFD pointer was 0 and the documented values only appeared through the synthetic fallback removed in #23.
+- **Streaming docs (#36)**: `docs/pipeline_host_supervisor.md` shows the output of a real `flagme-host stream` run, marks values that are not measured (path hash, thumbnail entries, offline weather estimate) and lists the limits of the streaming mode.
 - **Host log output (#34)**: `flagme-host` now initialises a `tracing` subscriber. Host and plugin messages (e.g. `privacy-redact: no face detection result …`) appear on stderr with the plugin name; the level comes from `RUST_LOG` (default `warn`). stdout stays reserved for the command output.
 - **No synthetic plugin output (#23, [ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md))**: plugins no longer invent data.
   - `metadata`: removed the demo-value fallback (Sony ILCE-7RM4, GPS Berlin) for files under 128 bytes and for unreadable files; an unreadable file now leaves `doc.metadata` empty and logs a warning.
