@@ -90,6 +90,8 @@ Das Datenmodell `UnifiedDocument` umfasst:
 | AC-8 | `crates/host/src/pipeline/` & `crates/host/src/storage/` (sqlx) | `crates/host/tests/pipeline_storage_test.rs` |
 | AC-9 | Tracing in Host/SDK, vollständige Testsuite & Markdown-Doku | `crates/host/tests/integration_test.rs` |
 | AC-10 | `init_logging()` in `crates/host/src/main.rs`: `tracing_subscriber::fmt` mit `EnvFilter` aus `RUST_LOG` (Standard `warn`), Writer `stderr`; Plugin-Meldungen tragen das Feld `plugin` (`CapabilityManager::log`) | `crates/host/tests/logging_test.rs` |
+| AC-11 | `Examples/generate_samples.py`: TIFF mit IFD0, Exif-IFD und GPS-IFD (gültige Offsets); minimaler Baseline-JPEG-Encoder (64×48 Graustufen-Verlauf, DC-only) ohne Zusatzpakete | `crates/host/tests/examples_test.rs` |
+| AC-12 | `docs/pipeline_host_supervisor.md` §3 aus echtem `flagme-host stream`-Lauf; Test vergleicht den JSON-Block typisiert mit nativer Ausführung von metadata → reversegeo → countryflag → timeline → privacy-redact | `crates/host/tests/examples_test.rs` |
 
 ## Sicherheit
 
