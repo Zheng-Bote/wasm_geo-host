@@ -145,5 +145,5 @@ SELECT id, name, representative_face_id FROM persons;
 ## 7. Limitations & Implementation Notes
 
 - **No built-in detector.** The former detectors were removed ([#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)): the signature table of sample images, the file-name rules, the skin-tone heuristic (via the external program `djpeg`) and the byte-derived embeddings. The model tiers `lightweight` / `heavy` no longer exist. A real detector follows as a separate feature with its own ADR.
-- **Face IDs are only unique per photo** if a detector numbers them per photo, but `faces.id` is the primary key in SQLite → a later photo can overwrite face rows of an earlier one. Tracked in [#24](https://github.com/Zheng-Bote/wasm_geo-host/issues/24).
+- **Face IDs only need to be unique per photo.** The host stores each face under the row key `<photo_id>/<face.id>` in the `faces` table, deletes a photo's old face rows before inserting the new ones and keeps `persons.representative_face_id` pointing at an existing face of that person ([#24](https://github.com/Zheng-Bote/wasm_geo-host/issues/24)). The document JSON keeps the detector's IDs.
 - Databases filled by earlier versions may still contain synthetic faces until the photos are processed again.
