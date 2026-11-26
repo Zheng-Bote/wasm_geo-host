@@ -1,3 +1,5 @@
+mod common;
+
 use flagme_host::Storage;
 use flagme_plugin_ai_tagging::AiTaggingPlugin;
 use flagme_sdk::{NoopCapabilities, Plugin, PluginContext};
@@ -20,16 +22,18 @@ fn test_ac1_model_supports_embeddings() {
     assert_eq!(deserialized.embedding.unwrap()[0], 0.1f32);
 }
 
-// vector-search-embeddings AC-2: ai-tagging plugin optionally exports normalized 512-D float vectors
+// vector-search-embeddings AC-2: ai-tagging plugin exports the embeddings of its VisionModel as normalized 512-D float vectors
 #[test]
 fn test_ac2_plugin_exports_normalized_embeddings() {
-    let plugin = AiTaggingPlugin::new();
+    let dir = common::temp_dir("vector_ac2");
+    let path = common::write_file(&dir, "scenery.jpg", &common::plain_jpeg(64, 48));
+    let plugin = AiTaggingPlugin::with_model(Box::new(common::ByteLenVisionModel));
     let doc = UnifiedDocument::new(
         "doc-emb-1",
         FileInfo {
-            path: "test/scenery.jpg".to_string(),
+            path,
             filename: "scenery.jpg".to_string(),
-            size_bytes: 4096,
+            size_bytes: 0,
             mime_type: "image/jpeg".to_string(),
             sha256: None,
         },
@@ -48,6 +52,7 @@ fn test_ac2_plugin_exports_normalized_embeddings() {
     // Check normalization (L2-norm should be close to 1.0)
     let norm_sq: f32 = emb.iter().map(|v| v * v).sum();
     assert!((norm_sq.sqrt() - 1.0).abs() < 1e-4, "Embedding must be normalized");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // vector-search-embeddings AC-3: Storage persists and reads binary embedding BLOBs from photo_embeddings

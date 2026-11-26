@@ -79,9 +79,9 @@ Erfüllt **AC-1**: Typisierte Modelle für Gesichter und Merkmale.
 In `plugins/face-detection/src/lib.rs`:
 - Trait `FaceDetector: Send + Sync` mit Methode `detect_faces(&self, path: &str) -> Vec<DetectedFace>`.
 - Unterstützte Tiers:
-  - `ModelTier::Lightweight`: Kompakt, CPU-freundlich, 128-D Vektoren.
-  - `ModelTier::Heavy`: Maximale Präzision, 512-D Vektoren.
-Erfüllt **AC-2** (WASI Kompilierung) und **AC-3** (Modell-Tiers).
+  - *Entfallen durch [ADR 0002](../adr/0002-plugins-without-engine-no-output.md):* ~~`ModelTier::Lightweight`: Kompakt, CPU-freundlich, 128-D Vektoren.~~
+  - ~~`ModelTier::Heavy`: Maximale Präzision, 512-D Vektoren.~~
+Erfüllt **AC-2** (WASI Kompilierung). AC-3 (Modell-Tiers) ist entfallen; der Detektor wird über `FaceDetector::detect(image: &[u8])` übergeben.
 
 ### 3. SQLite Relationale Persistenz (AC-4)
 In `crates/host/migrations/20261125000000_init.sql`:

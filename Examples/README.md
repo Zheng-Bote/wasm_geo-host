@@ -6,7 +6,7 @@ This directory contains test images containing complete **EXIF**, **IPTC**, and 
 
 ## 1. Sample Media Files
 
-All sample files represent an identical media item captured in Berlin, Germany:
+All sample files carry the same metadata (no GPS coordinates; location only as IPTC/XMP text):
 
 | File | Format | Embedded Metadata |
 |---|---|---|
@@ -18,9 +18,7 @@ All sample files represent an identical media item captured in Berlin, Germany:
 - **EXIF**:
   - `Camera Make`: `Sony`
   - `Camera Model`: `ILCE-7RM4`
-  - `Lens`: `FE 24-70mm F2.8 GM`
   - `DateTimeOriginal`: `2026:11:25 10:00:00`
-  - `GPS Coordinates`: `52.520008 N, 13.404954 E, Alt: 34.0m` (Berlin, Germany)
 - **IPTC**:
   - `Headline / Object Name`: `WASM Geo Sample`
   - `Byline / Creator`: `WASM Geo Platform`

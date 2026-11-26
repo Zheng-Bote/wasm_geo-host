@@ -1,28 +1,29 @@
 # OCR Text Recognition Plugin (`flagme-plugin-ocr-text`)
 
+> **Experimental — disabled by default.** No OCR engine is built in yet. Without an engine the plugin produces no result ([ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
+
 ## Overview
 
-The `ocr-text` plugin extracts visible text (signs, documents, posters) as text regions with bounding boxes. The combined text is written into the host's full-text index (`photos_fts`, SQLite FTS5), so photos can be found by the words they show. The engine sits behind the swappable `OcrEngine` trait.
+The `ocr-text` plugin writes visible text (signs, documents, posters) as text regions with bounding boxes. The combined text is written into the host's full-text index (`photos_fts`, SQLite FTS5), so photos can be found by the words they show. Recognition comes from an exchangeable engine behind the `OcrEngine` trait. The engine receives only the image bytes, never the file name or path.
 
 | Property | Value |
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `ocr-text` |
 | Crate | `flagme-plugin-ocr-text` (`cdylib` + `rlib` + `[[bin]]`) |
 | Version | `0.1.0` |
-| Reads | `doc.file.path` (file bytes and file name) |
-| Writes | `doc.ocr` (`OcrInfo`) |
+| Reads | image bytes of `doc.file.path` |
+| Writes | `doc.ocr` (`OcrInfo`) — only if an engine is set |
 | Capabilities | `filesystem` |
-| Configurable via `settings` | **Yes** (2 parameters, see §2.2) |
+| Configurable via `settings` | **Yes** (1 effective parameter, see §2.2) |
 
 ---
 
 ## 1. Key Features
 
-1. **Swappable Engine** — `OcrEngine` trait (`extract_text`, `extract_text_from_bytes`); default `DefaultOcrEngine`.
-2. **Text Regions** — each region with `text`, `confidence` and a normalized `bbox` (0.0–1.0).
-3. **Language Hint** — `primary_language` (`de`, `ja`) if regions were found.
-4. **FTS5 Integration** — `combined_text` → column `ocr_text` in `photos_fts`.
-5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+1. **Exchangeable engine** — `OcrEngine` trait (`name`, `recognize(image)`). `OcrTextPlugin::new()` has **no** engine; `with_engine(..)` sets one.
+2. **Confidence filter** — regions below `min_confidence` are dropped; `combined_text` and `primary_language` are rebuilt.
+3. **Honest failure** — no engine, an unreadable file or an engine error leaves `doc.ocr` unchanged (`None`) and logs a warning.
+4. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 
@@ -33,14 +34,15 @@ The `ocr-text` plugin extracts visible text (signs, documents, posters) as text 
 ```yaml
 plugins:
   ocr-text:
-    enabled: true
+    # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities:
-      - filesystem
+      - filesystem     # read image bytes
 ```
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `enabled` | bool | `true` | `false` → no `doc.ocr`, empty `ocr_text` in the search index. |
+| `enabled` | bool | `false` in all shipped profiles and `AppConfig::default()` | `false` → stage is skipped. |
 | `capabilities` | list | `[filesystem]` | See §4. |
 | `settings` | map | `{}` | See §2.2. |
 
@@ -48,26 +50,10 @@ plugins:
 
 | Key | Type / values | Default | Effect |
 | :--- | :--- | :--- | :--- |
-| `engine` | `default` | engine of the constructor (`new()` → `DefaultOcrEngine`) | `default` selects `DefaultOcrEngine`. `PaddleOCR-v4-Server`, `CRAFT-CRNN-Quantized`, `tesseract` are known but not supported yet → warning. |
-| `min_confidence` | number 0.0–1.0 | `0.0` | Regions with lower confidence are dropped; `combined_text` is rebuilt, `primary_language` becomes `null` if no region is left. |
+| `min_confidence` | float 0.0–1.0 | `0.0` | Regions with a lower confidence are dropped. |
+| `engine` | any | — | **Not supported yet** (no built-in engine) → warning, ignored. |
 
-```yaml
-    settings:
-      min_confidence: "0.8"
-```
-
-All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
-
-### 2.3 Detection Rules of `DefaultOcrEngine` (first match wins)
-
-| Prio | Condition | Result | `primary_language` |
-| :---: | :--- | :--- | :--- |
-| 1 | file name contains `sign` or `berlin` | `Brandenburger Tor` (0.96), `Unter den Linden` (0.92) | `de` |
-| 2 | file name contains `metro` or `tokyo` | `Shinjuku Station` (0.98) | `ja` |
-| 3 | file name contains `stromzaehler` or `meter` | `kWh Drehstromzähler` (0.94) | `de` |
-| 4 | embedded text in `<dc:title>`, `<photoshop:City>` or `IPTC:Caption` (≥ 3 chars, letters/digits/space/`-`/`,`) | one region per hit (0.91) | `de` |
-| 5 | contrast score > `0.85` (share of byte jumps > 48) | file name without `.jpg`/`.png`, `_` → space; confidence `min(0.75 + score × 0.2, 0.95)` | `de` |
-| — | nothing applies | no regions, `combined_text = ""` | `null` |
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies.
 
 ---
 
@@ -81,7 +67,7 @@ No dependencies on other plugins.
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(doc.file.path)` | Empty bytes → only the file-name rules (Prio 1–3) can match. |
+| `filesystem` | `fs_read(doc.file.path)` | Warning `ocr-text: cannot read …`; `doc.ocr` stays `None`. |
 
 ---
 
@@ -101,26 +87,36 @@ pub struct TextRegion {
 }
 ```
 
-```json
-{
-  "combined_text": "Brandenburger Tor Unter den Linden",
-  "regions": [
-    { "text": "Brandenburger Tor", "confidence": 0.96,
-      "bbox": { "x": 0.15, "y": 0.20, "width": 0.70, "height": 0.15 } }
-  ],
-  "primary_language": "de"
-}
-```
+Warnings (`warn` log level):
+
+| Message | Cause |
+| :--- | :--- |
+| `ocr-text: no OCR engine available (ADR 0002); '<path>' not processed` | plugin created with `new()` |
+| `ocr-text: cannot read '<path>': …` | file not readable / capability missing |
+| `ocr-text: engine '<name>' failed on '<path>': …` | engine returned an error |
 
 ---
 
 ## 6. Usage Examples
 
-### 6.1 Host Pipeline & Search
+### 6.1 Rust API — Plugging in an Engine
 
-```bash
-cargo run --bin flagme-host -- process Examples/sample.jpg --config config.yaml
-cargo run --bin flagme-host -- search "Brandenburger" --config config.yaml
+```rust
+use flagme_plugin_ocr_text::{OcrEngine, OcrTextPlugin};
+use flagme_sdk::OcrInfo;
+
+struct MyEngine;
+impl OcrEngine for MyEngine {
+    fn name(&self) -> &str {
+        "my-engine"
+    }
+    fn recognize(&self, image: &[u8]) -> Result<OcrInfo, String> {
+        // decode `image`, run your OCR backend, map its result to OcrInfo
+        Err("not implemented".into())
+    }
+}
+
+let plugin = OcrTextPlugin::with_engine(Box::new(MyEngine));
 ```
 
 ### 6.2 Standalone CLI
@@ -130,28 +126,9 @@ cat doc.json | wasmtime run -S cli-exit-with-code --dir . \
   target/wasm32-wasip2/release/flagme-plugin-ocr-text.wasm
 ```
 
-Empty input prints `Plugin ocr-text v0.1.0`.
+Empty input prints `Plugin ocr-text v0.1.0`. The CLI uses `OcrTextPlugin::new()` and therefore returns the document unchanged.
 
-### 6.3 Rust API — Custom Engine
-
-```rust
-use flagme_plugin_ocr_text::{OcrEngine, OcrTextPlugin};
-use flagme_sdk::OcrInfo;
-
-struct MyEngine;
-impl OcrEngine for MyEngine {
-    fn extract_text(&self, _path: &str) -> OcrInfo {
-        // call your OCR backend here and map its result to OcrInfo
-        OcrInfo::default()
-    }
-}
-
-let plugin = OcrTextPlugin::with_engine(Box::new(MyEngine));
-```
-
-The constructor engine is the default; `settings.engine: default` replaces it with `DefaultOcrEngine`.
-
-### 6.4 SQLite
+### 6.3 SQLite
 
 ```sql
 SELECT photo_id, combined_text, primary_language FROM ocr_texts;
@@ -163,5 +140,5 @@ SELECT photo_id FROM photos_fts WHERE photos_fts MATCH 'ocr_text:Linden';
 
 ## 7. Limitations & Implementation Notes
 
-- **No real text recognition yet.** `DefaultOcrEngine` contains no detection/recognition model; results come from file-name keywords, embedded metadata strings or a byte-contrast heuristic. The bounding boxes are fixed positions, not measured. Tracked in [#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23).
-- `primary_language` is a fixed hint, not a language detection.
+- **No built-in engine.** The former `DefaultOcrEngine` (file-name keywords, metadata strings, byte-contrast heuristic, fixed bounding boxes) was removed ([#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)). A real engine follows as a separate feature with its own ADR.
+- Databases filled by earlier versions may still contain synthetic OCR texts until the photos are processed again.

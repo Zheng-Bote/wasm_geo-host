@@ -13,4 +13,3 @@ path = "src/main.rs"
 
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
-serde_json = "1.0"

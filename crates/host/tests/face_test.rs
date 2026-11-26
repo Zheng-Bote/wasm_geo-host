@@ -1,5 +1,7 @@
+mod common;
+
 use flagme_host::Storage;
-use flagme_plugin_face_detection::{FaceDetectionPlugin, ModelTier};
+use flagme_plugin_face_detection::{FaceDetectionPlugin, FaceDetector};
 use flagme_sdk::{NoopCapabilities, Plugin, PluginContext};
 use std::sync::Arc;
 use wasm_geo_models::{BoundingBox, DetectedFace, FaceLandmarks, FacesInfo, FileInfo, UnifiedDocument};
@@ -46,37 +48,6 @@ fn test_ac2_plugin_contract_metadata() {
     let plugin = FaceDetectionPlugin::new();
     assert_eq!(plugin.name(), "face-detection");
     assert_eq!(plugin.version(), "0.1.0");
-}
-
-// face-detection AC-3: Configurable model_tier setting selects between lightweight embedded weights and heavy external weights
-#[test]
-fn test_ac3_model_tiers_selection() {
-    let plugin_light = FaceDetectionPlugin::with_tier(ModelTier::Lightweight);
-    let plugin_heavy = FaceDetectionPlugin::with_tier(ModelTier::Heavy);
-    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
-
-    let doc = UnifiedDocument::new(
-        "photo-portrait",
-        FileInfo {
-            path: "/media/portrait.jpg".to_string(),
-            filename: "portrait.jpg".to_string(),
-            size_bytes: 2048,
-            mime_type: "image/jpeg".to_string(),
-            sha256: None,
-        },
-    );
-
-    let res_light = plugin_light.process(doc.clone(), &ctx).expect("Lightweight failed");
-    let res_heavy = plugin_heavy.process(doc, &ctx).expect("Heavy failed");
-
-    assert_eq!(res_light.faces.as_ref().unwrap().detection_model, "UltraFace-Slim-INT8");
-    assert_eq!(res_heavy.faces.as_ref().unwrap().detection_model, "SCRFD-ArcFace-ResNet100");
-
-    // Check embedding dimensions: 128-D for lightweight vs 512-D for heavy
-    let emb_light = res_light.faces.unwrap().faces[0].embedding.clone().unwrap();
-    let emb_heavy = res_heavy.faces.unwrap().faces[0].embedding.clone().unwrap();
-    assert_eq!(emb_light.len(), 128);
-    assert_eq!(emb_heavy.len(), 512);
 }
 
 // face-detection AC-4: Relational tables faces and persons are created in media.db and populated via Storage::save_document
@@ -130,29 +101,60 @@ fn test_ac4_sqlite_face_persistence() {
     let _ = std::fs::remove_file(&db_path);
 }
 
-// face-detection AC-5: Integration tests verify face bounding box detection on sample test images
+/// Test detector standing in for a real face detector (ADR 0002): two faces with landmarks.
+struct TwoFaceDetector;
+impl FaceDetector for TwoFaceDetector {
+    fn model_name(&self) -> &str {
+        "test-two-faces"
+    }
+    fn detect(&self, image: &[u8]) -> Result<Vec<DetectedFace>, String> {
+        if image.is_empty() {
+            return Err("empty image".to_string());
+        }
+        let face = |id: &str, x: f32| DetectedFace {
+            id: id.to_string(),
+            bbox: BoundingBox { x, y: 0.25, width: 0.25, height: 0.35 },
+            confidence: 0.93,
+            landmarks: Some(FaceLandmarks {
+                left_eye: (x + 0.07, 0.35),
+                right_eye: (x + 0.17, 0.35),
+                nose: (x + 0.12, 0.42),
+                mouth_left: (x + 0.08, 0.50),
+                mouth_right: (x + 0.16, 0.50),
+            }),
+            embedding: None,
+            person_id: None,
+        };
+        Ok(vec![face("face-1", 0.15), face("face-2", 0.60)])
+    }
+}
+
+// face-detection AC-5: Integration tests verify that faces, bounding boxes and landmarks of a FaceDetector are taken over
 #[test]
 fn test_ac5_integration_face_detection() {
-    let plugin = FaceDetectionPlugin::new();
+    let dir = common::temp_dir("face_ac5");
+    let path = common::write_file(&dir, "image.jpg", &common::plain_jpeg(64, 48));
+    let plugin = FaceDetectionPlugin::with_detector(Box::new(TwoFaceDetector));
     let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
     let doc = UnifiedDocument::new(
         "photo-group-shot",
         FileInfo {
-            path: "/media/group_photo.jpg".to_string(),
-            filename: "group_photo.jpg".to_string(),
-            size_bytes: 4096,
+            path,
+            filename: "image.jpg".to_string(),
+            size_bytes: 0,
             mime_type: "image/jpeg".to_string(),
             sha256: None,
         },
     );
 
     let processed = plugin.process(doc, &ctx).expect("Processing failed");
-    assert!(processed.faces.is_some());
-    let faces_info = processed.faces.unwrap();
-
-    // Group photo should detect multiple faces with valid landmarks
+    let faces_info = processed.faces.expect("faces result");
+    assert_eq!(faces_info.detection_model, "test-two-faces");
     assert_eq!(faces_info.faces.len(), 2);
-    assert!(faces_info.faces[0].landmarks.is_some());
-    assert!(faces_info.faces[1].landmarks.is_some());
+    for face in &faces_info.faces {
+        assert!(face.bbox.width > 0.0 && face.bbox.height > 0.0);
+        assert!(face.landmarks.is_some());
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

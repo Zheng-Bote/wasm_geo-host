@@ -1,34 +1,29 @@
-# Face Detection & Clustering Plugin (`flagme-plugin-face-detection`)
+# Face Detection Plugin (`flagme-plugin-face-detection`)
+
+> **Experimental — disabled by default.** No face detector is built in yet. Without a detector the plugin produces no result, and `privacy-redact` cannot redact faces ([ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
 
 ## Overview
 
-The `face-detection` plugin finds faces in images and returns for each face a bounding box, a confidence value, 5 facial landmarks and an embedding vector for clustering into persons. Its result is the input for `privacy-redact`.
+The `face-detection` plugin writes detected faces with bounding boxes, landmarks and optional identity embeddings to `doc.faces`. `privacy-redact` uses these boxes to obfuscate faces. Detection comes from an exchangeable detector behind the `FaceDetector` trait. The detector receives only the image bytes, never the file name or path.
 
 | Property | Value |
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `face-detection` |
 | Crate | `flagme-plugin-face-detection` (`cdylib` + `rlib` + `[[bin]]`) |
 | Version | `0.1.0` |
-| Reads | `doc.file.path` (file bytes and file name) |
-| Writes | `doc.faces` (`FacesInfo`) |
+| Reads | image bytes of `doc.file.path` |
+| Writes | `doc.faces` (`FacesInfo`) — only if a detector is set |
 | Capabilities | `filesystem` |
-| Configurable via `settings` | **Yes** (3 parameters, see §2.2) |
+| Configurable via `settings` | **Yes** (1 effective parameter, see §2.2) |
 
 ---
 
 ## 1. Key Features
 
-1. **Two Model Tiers** (`ModelTier`):
-
-   | Tier | Rust type | `detection_model` | Embedding | Used by the host |
-   | :--- | :--- | :--- | :---: | :--- |
-   | `Lightweight` | `LightweightFaceDetector` | `UltraFace-Slim-INT8` | 128-D | **yes (default)** |
-   | `Heavy` | `HeavyFaceDetector` | `SCRFD-ArcFace-ResNet100` | 512-D | no |
-
-   `Heavy` uses the same detection as `Lightweight` and only computes larger embeddings.
-2. **5 Landmarks** — left eye, right eye, nose, left/right mouth corner, as normalized `(x, y)` coordinates.
-3. **L2-normalized Embeddings** — per face, stored as BLOB in `faces.embedding`.
-4. **Person Assignment** — `person_id` → table `persons`.
+1. **Exchangeable detector** — `FaceDetector` trait (`model_name`, `detect(image)`). `FaceDetectionPlugin::new()` has **no** detector; `with_detector(..)` sets one.
+2. **Confidence filter** — faces below `min_confidence` are dropped.
+3. **Clear semantics** — `doc.faces = None` means "not determined"; `Some` with an empty list means "determined, no faces".
+4. **Honest failure** — no detector, an unreadable file or a detector error leaves `doc.faces` unchanged (`None`) and logs a warning.
 5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
@@ -40,14 +35,15 @@ The `face-detection` plugin finds faces in images and returns for each face a bo
 ```yaml
 plugins:
   face-detection:
-    enabled: true
+    # experimental: no engine built in, produces no results (ADR 0002)
+    enabled: false
     capabilities:
-      - filesystem
+      - filesystem     # read image bytes
 ```
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `enabled` | bool | `true` | `false` → no `doc.faces`; `privacy-redact` then redacts no faces. |
+| `enabled` | bool | `false` in all shipped profiles and `AppConfig::default()` | `false` → stage is skipped; `privacy-redact` warns that no face result exists. |
 | `capabilities` | list | `[filesystem]` | See §4. |
 | `settings` | map | `{}` | See §2.2. |
 
@@ -55,60 +51,18 @@ plugins:
 
 | Key | Type / values | Default | Effect |
 | :--- | :--- | :--- | :--- |
-| `tier` | `lightweight`, `heavy` | detector of the constructor (`new()` → lightweight) | Built-in tier, selected per call. |
-| `min_confidence` | number 0.0–1.0 | `0.0` | Faces with lower confidence are dropped (and therefore not redacted by `privacy-redact`). |
-| `device` | `cpu` | `cpu` | `mps`, `cuda`, `metal`, `gpu` are known but not supported yet → warning, `cpu` is used. |
+| `min_confidence` | float 0.0–1.0 | `0.0` | Faces with a lower confidence are dropped. |
+| `tier` | any | — | **Not supported yet** (no built-in detector) → warning, ignored. |
+| `device` | any | — | **Not supported yet** → warning, ignored. |
 
-```yaml
-    settings:
-      tier: "heavy"
-      min_confidence: "0.80"
-```
-
-All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): booleans accept `true`/`yes`/`on`/`1` and `false`/`no`/`off`/`0`; numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies. Settings are parsed once per configuration.
-
-### 2.3 Detection Strategy (first stage with a result wins)
-
-| Stage | Method | Prerequisite |
-| :---: | :--- | :--- |
-| 1 | **Calibration table**: FNV-1a signature over the first 4096 bytes + file length → stored boxes (and `person_id`) for known sample images | image bytes readable |
-| 2 | **Skin-color heuristic**: decode with `djpeg -scale 1/8`, 16 × 16 grid, YCbCr skin mask, region growing | `djpeg` (libjpeg-turbo) in `PATH`, JPEG input |
-| 3 | **File-name keywords**: `portrait`, `face`, `selfie`, `person` → 1 face; `group`, `family`, `crowd` → 2 faces | — |
-| — | nothing applies | `faces = []` |
-
-### 2.4 Built-in Parameters of the Skin-Color Heuristic (stage 2)
-
-| Parameter | Value |
-| :--- | :--- |
-| Minimum image size after scaling | 32 × 32 px |
-| Grid | 16 × 16 cells |
-| Skin pixel (RGB) | `R > 65`, `G > 40`, `B > 25`, `R > G`, `R > B`, `R − G > 12` |
-| Skin pixel (YCbCr) | `Cb` 80–125, `Cr` 135–172 |
-| Skin cell | share of skin pixels > 0.45 |
-| Abort (no faces) | no skin cell, or > 35 % of all cells are skin |
-| Seed / growth threshold | ≥ 0.52 / ≥ 0.45; seed rows 2–10, columns 2–13 |
-| Face candidate | 1–9 cells wide and high, ≤ 42 cells, region above darker than the center (`top < center × 0.92`, hair line) |
-| Bounding box | `x`, `y` clamped to 0.05–0.85; min. width 0.08, min. height 0.11 |
-| Confidence | `0.86 + mean_skin × 0.12`, clamped to 0.88–0.98 |
-
-### 2.5 Landmarks from the Bounding Box
-
-| Landmark | x | y |
-| :--- | :---: | :---: |
-| `left_eye` | `x + 0.31·w` | `y + 0.36·h` |
-| `right_eye` | `x + 0.69·w` | `y + 0.36·h` |
-| `nose` | `x + 0.50·w` | `y + 0.56·h` |
-| `mouth_left` | `x + 0.35·w` | `y + 0.76·h` |
-| `mouth_right` | `x + 0.65·w` | `y + 0.76·h` |
-
-(Stage 3 uses fixed landmark positions.)
+All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies.
 
 ---
 
 ## 3. Pipeline Dependencies & Ordering
 
 1. **`face-detection`** — no input dependencies.
-2. **`privacy-redact`** (after) → uses `doc.faces`.
+2. **`privacy-redact`** (after) → uses `doc.faces`; logs `privacy-redact: no face detection result for '<path>'; faces NOT redacted` if `doc.faces` is `None`.
 
 ---
 
@@ -116,9 +70,7 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(doc.file.path)` | Empty bytes → only stage 3 (file name) is possible; embeddings are constant vectors. |
-
-Stage 2 additionally starts the external process `djpeg` with the file path. This happens **outside** the capability model and only works in native host mode. Tracked in [#25](https://github.com/Zheng-Bote/wasm_geo-host/issues/25).
+| `filesystem` | `fs_read(doc.file.path)` | Warning `face-detection: cannot read …`; `doc.faces` stays `None`. |
 
 ---
 
@@ -127,49 +79,49 @@ Stage 2 additionally starts the external process `djpeg` with the file path. Thi
 ```rust
 pub struct FacesInfo {
     pub faces: Vec<DetectedFace>,
-    pub detection_model: String,             // "UltraFace-Slim-INT8"
+    pub detection_model: String,             // model_name() of the FaceDetector
 }
 
 pub struct DetectedFace {
-    pub id: String,                          // "face-1", "face-2", … ("face-g1" in stage 3)
+    pub id: String,
     pub bbox: BoundingBox,                   // normalized 0.0..1.0
     pub confidence: f32,
     pub landmarks: Option<FaceLandmarks>,
-    pub embedding: Option<Vec<f32>>,         // 128 or 512 values
-    pub person_id: Option<String>,           // only set by stage 1
+    pub embedding: Option<Vec<f32>>,
+    pub person_id: Option<String>,
 }
 ```
 
-```json
-{
-  "faces": [
-    {
-      "id": "face-1",
-      "bbox": { "x": 0.30, "y": 0.20, "width": 0.40, "height": 0.45 },
-      "confidence": 0.97,
-      "landmarks": {
-        "left_eye": [0.42, 0.35],
-        "right_eye": [0.58, 0.35],
-        "nose": [0.50, 0.45],
-        "mouth_left": [0.44, 0.55],
-        "mouth_right": [0.56, 0.55]
-      },
-      "embedding": [0.1, 0.1, "…"],
-      "person_id": null
-    }
-  ],
-  "detection_model": "UltraFace-Slim-INT8"
-}
-```
+Warnings (`warn` log level):
+
+| Message | Cause |
+| :--- | :--- |
+| `face-detection: no face detector available (ADR 0002); '<path>' not processed` | plugin created with `new()` |
+| `face-detection: cannot read '<path>': …` | file not readable / capability missing |
+| `face-detection: detector '<name>' failed on '<path>': …` | detector returned an error |
 
 ---
 
 ## 6. Usage Examples
 
-### 6.1 Host Pipeline
+### 6.1 Rust API — Plugging in a Detector
 
-```bash
-cargo run --bin flagme-host -- process Examples/sample.jpg --config config.yaml
+```rust
+use flagme_plugin_face_detection::{FaceDetectionPlugin, FaceDetector};
+use flagme_sdk::DetectedFace;
+
+struct MyDetector;
+impl FaceDetector for MyDetector {
+    fn model_name(&self) -> &str {
+        "my-detector"
+    }
+    fn detect(&self, image: &[u8]) -> Result<Vec<DetectedFace>, String> {
+        // decode `image`, run your detector, map its boxes to DetectedFace
+        Err("not implemented".into())
+    }
+}
+
+let plugin = FaceDetectionPlugin::with_detector(Box::new(MyDetector));
 ```
 
 ### 6.2 Standalone CLI
@@ -179,20 +131,9 @@ cat doc.json | wasmtime run -S cli-exit-with-code --dir . \
   target/wasm32-wasip2/release/flagme-plugin-face-detection.wasm
 ```
 
-Empty input prints `Plugin face-detection v0.1.0`. Stage 2 (`djpeg`) is not available inside Wasm.
+Empty input prints `Plugin face-detection v0.1.0`. The CLI uses `FaceDetectionPlugin::new()` and therefore returns the document unchanged.
 
-### 6.3 Rust API — Choosing the Tier
-
-```rust
-use flagme_plugin_face_detection::{FaceDetectionPlugin, ModelTier};
-
-let plugin = FaceDetectionPlugin::with_tier(ModelTier::Heavy);
-// or a custom detector: FaceDetectionPlugin::with_detector(Box::new(MyDetector))
-```
-
-The constructor detector is the default; `settings.tier` replaces it per call.
-
-### 6.4 SQLite
+### 6.3 SQLite
 
 ```sql
 SELECT id, photo_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, person_id FROM faces;
@@ -203,6 +144,6 @@ SELECT id, name, representative_face_id FROM persons;
 
 ## 7. Limitations & Implementation Notes
 
-- **No neural network inference.** The model names describe the target architecture; detection currently uses the three stages in §2.3. Stage 1 only works for the stored sample images. Tracked in [#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23).
-- **Embeddings are not identity features.** They are derived from file bytes and the box position; clustering by similarity does not recognize the same person across photos.
-- **Face IDs are only unique per photo** (`face-1`, …), but `faces.id` is the primary key in SQLite → a later photo overwrites the face rows of an earlier photo with the same ID. Tracked in [#24](https://github.com/Zheng-Bote/wasm_geo-host/issues/24).
+- **No built-in detector.** The former detectors were removed ([#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)): the signature table of sample images, the file-name rules, the skin-tone heuristic (via the external program `djpeg`) and the byte-derived embeddings. The model tiers `lightweight` / `heavy` no longer exist. A real detector follows as a separate feature with its own ADR.
+- **Face IDs are only unique per photo** if a detector numbers them per photo, but `faces.id` is the primary key in SQLite → a later photo can overwrite face rows of an earlier one. Tracked in [#24](https://github.com/Zheng-Bote/wasm_geo-host/issues/24).
+- Databases filled by earlier versions may still contain synthetic faces until the photos are processed again.

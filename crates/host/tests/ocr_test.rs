@@ -1,8 +1,47 @@
+mod common;
+
 use flagme_host::Storage;
-use flagme_plugin_ocr_text::{DefaultOcrEngine, OcrEngine, OcrTextPlugin};
+use flagme_plugin_ocr_text::{OcrEngine, OcrTextPlugin};
 use flagme_sdk::{NoopCapabilities, Plugin, PluginContext};
 use std::sync::Arc;
 use wasm_geo_models::{BoundingBox, FileInfo, OcrInfo, TextRegion, UnifiedDocument};
+
+/// Test engine standing in for a real OCR engine (ADR 0002): two signage lines.
+struct SignageEngine;
+impl OcrEngine for SignageEngine {
+    fn name(&self) -> &str {
+        "test-signage"
+    }
+    fn recognize(&self, image: &[u8]) -> Result<OcrInfo, String> {
+        if image.is_empty() {
+            return Err("empty image".to_string());
+        }
+        let region = |text: &str, y: f32, confidence: f32| TextRegion {
+            text: text.to_string(),
+            confidence,
+            bbox: BoundingBox { x: 0.15, y, width: 0.7, height: 0.12 },
+        };
+        Ok(OcrInfo {
+            combined_text: "Brandenburger Tor Unter den Linden".to_string(),
+            regions: vec![region("Brandenburger Tor", 0.2, 0.96), region("Unter den Linden", 0.38, 0.92)],
+            primary_language: Some("de".to_string()),
+        })
+    }
+}
+
+fn image_doc(id: &str, dir: &std::path::Path) -> UnifiedDocument {
+    let path = common::write_file(dir, "image.jpg", &common::plain_jpeg(64, 48));
+    UnifiedDocument::new(
+        id,
+        FileInfo {
+            path,
+            filename: "image.jpg".to_string(),
+            size_bytes: 0,
+            mime_type: "image/jpeg".to_string(),
+            sha256: None,
+        },
+    )
+}
 
 // ocr-text AC-1: wasm-geo-models introduces OcrInfo and TextRegion with complete serde serialization
 #[test]
@@ -39,20 +78,23 @@ fn test_ac2_plugin_contract_metadata() {
     assert_eq!(plugin.version(), "0.1.0");
 }
 
-// ocr-text AC-3: Text detector and recognizer stages extract text lines with bounding coordinates and confidence scores
+// ocr-text AC-3: the plugin takes text lines with bounding boxes and confidence scores from an exchangeable OcrEngine
 #[test]
 fn test_ac3_text_detection_and_recognition_pipeline() {
-    let engine = DefaultOcrEngine;
-    let ocr_info = engine.extract_text("/media/berlin_sign.jpg");
+    let dir = common::temp_dir("ocr_ac3");
+    let plugin = OcrTextPlugin::with_engine(Box::new(SignageEngine));
+    let ctx = PluginContext::new(Arc::new(NoopCapabilities));
+    let ocr_info = plugin.process(image_doc("photo-ocr-3", &dir), &ctx).unwrap().ocr.expect("ocr result");
 
     assert!(!ocr_info.combined_text.is_empty());
-    assert!(!ocr_info.regions.is_empty());
+    assert_eq!(ocr_info.regions.len(), 2);
     for region in &ocr_info.regions {
         assert!(!region.text.is_empty());
         assert!(region.confidence > 0.8);
         assert!(region.bbox.width > 0.0);
         assert!(region.bbox.height > 0.0);
     }
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // ocr-text AC-4: SQLite storage creates and updates ocr_texts, ocr_regions, and updates the photos_fts index
@@ -106,28 +148,24 @@ fn test_ac4_storage_and_fts5_indexing() {
     let _ = std::fs::remove_file(&db_path);
 }
 
-// ocr-text AC-5: Integration tests verify text transcription from test image samples containing signage
+// ocr-text AC-5: Integration tests verify that recognised text is persisted and found via full-text search
 #[test]
 fn test_ac5_integration_signage_transcription() {
-    let plugin = OcrTextPlugin::new();
+    let dir = common::temp_dir("ocr_ac5");
+    let plugin = OcrTextPlugin::with_engine(Box::new(SignageEngine));
     let ctx = PluginContext::new(Arc::new(NoopCapabilities));
 
-    let doc = UnifiedDocument::new(
-        "photo-ocr-berlin",
-        FileInfo {
-            path: "/media/berlin_subway_sign.jpg".to_string(),
-            filename: "berlin_subway_sign.jpg".to_string(),
-            size_bytes: 2048,
-            mime_type: "image/jpeg".to_string(),
-            sha256: None,
-        },
-    );
-
-    let processed = plugin.process(doc, &ctx).expect("Plugin process failed");
-    assert!(processed.ocr.is_some());
-    let ocr = processed.ocr.unwrap();
-
+    let processed = plugin.process(image_doc("photo-ocr-berlin", &dir), &ctx).expect("Plugin process failed");
+    let ocr = processed.ocr.clone().expect("ocr result");
     assert!(ocr.combined_text.contains("Brandenburger Tor"));
-    assert_eq!(ocr.regions.len(), 2);
     assert_eq!(ocr.regions[0].text, "Brandenburger Tor");
+
+    let db_path = dir.join("ocr.db");
+    let storage = Storage::new(db_path.to_str().unwrap());
+    storage.init_schema().expect("Schema init failed");
+    storage.save_document(&processed).expect("Save failed");
+    let hits = storage.search("Brandenburger").expect("Search failed");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].photo_id, "photo-ocr-berlin");
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -289,6 +289,15 @@ impl Plugin for PrivacyRedactPlugin {
         let mut redacted_path = None;
 
         // 1. Visual Obfuscation (Faces)
+        if active_settings.redact_faces && doc.faces.is_none() {
+            ctx.capabilities.log(
+                "warn",
+                &format!(
+                    "privacy-redact: no face detection result for '{}'; faces NOT redacted",
+                    doc.file.path
+                ),
+            );
+        }
         if active_settings.redact_faces {
             if let Some(faces_info) = doc.faces.as_ref().filter(|f| !f.faces.is_empty()) {
                 let safe_id = doc.id.replace('/', "_");

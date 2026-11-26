@@ -101,7 +101,8 @@ impl Default for AppConfig {
         plugins.insert(
             "ai-tagging".to_string(),
             PluginConfig {
-                enabled: true,
+                // experimental: no engine built in, produces no results (ADR 0002)
+                enabled: false,
                 path: Some("plugins/ai-tagging.wasm".to_string()),
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
@@ -137,7 +138,8 @@ impl Default for AppConfig {
         plugins.insert(
             "ocr-text".to_string(),
             PluginConfig {
-                enabled: true,
+                // experimental: no engine built in, produces no results (ADR 0002)
+                enabled: false,
                 path: Some("plugins/ocr-text.wasm".to_string()),
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
@@ -146,7 +148,8 @@ impl Default for AppConfig {
         plugins.insert(
             "face-detection".to_string(),
             PluginConfig {
-                enabled: true,
+                // experimental: no engine built in, produces no results (ADR 0002)
+                enabled: false,
                 path: Some("plugins/face-detection.wasm".to_string()),
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
