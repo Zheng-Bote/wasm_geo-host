@@ -212,7 +212,7 @@
               <div><span class="text-gray-400">Size / MIME:</span> ${doc.file.size_bytes} bytes (${doc.file.mime_type})</div>
               <div><span class="text-gray-400">Location:</span> ${loc}</div>
               <div><span class="text-gray-400">Weather:</span> ${weather}</div>
-              <div><span class="text-gray-400">Timeline:</span> ${doc.timeline ? doc.timeline.taken_at + ' (' + doc.timeline.resolution_source + ')' : 'N/A'}</div>
+              <div><span class="text-gray-400">Timeline:</span> ${doc.timeline ? (doc.timeline.taken_at || 'unknown') + ' (' + doc.timeline.resolution_source + ')' : 'N/A'}</div>
               <div><span class="text-gray-400">OCR Text:</span> ${ocr}</div>
               <div><span class="text-gray-400">Faces:</span> ${faces}</div>
               <div><span class="text-gray-400">Privacy:</span> ${privacy}</div>

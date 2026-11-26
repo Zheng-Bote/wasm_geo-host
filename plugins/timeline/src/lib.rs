@@ -108,12 +108,15 @@ const SOURCE_OPTIONS: &[(&[&str], TimeSource)] = &[
     (&["filesystem_modified_time"], TimeSource::FilesystemModifiedTime),
 ];
 
+/// `resolution_source` when no source yields a capture time (ADR 0002: no invented time).
+pub const RESOLUTION_NONE: &str = "none";
+
 /// Configurable parameters of the timeline plugin (`config.yaml` `settings`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimelineSettings {
     /// Zone for timestamps without offset.
     pub timezone: TimeZoneSetting,
-    /// Sources tried in this order; `imported_timestamp_fallback` always comes last.
+    /// Sources tried in this order; if none matches, `taken_at` stays `None` ([`RESOLUTION_NONE`]).
     pub source_priority: Vec<TimeSource>,
 }
 
@@ -258,7 +261,7 @@ impl Plugin for TimelinePlugin {
             .and_then(|secs| Utc.timestamp_opt(secs, 0).single());
 
         let mut taken_at = None;
-        let mut resolution_source = "imported_timestamp_fallback".to_string();
+        let mut resolution_source = RESOLUTION_NONE.to_string();
 
         for source in &settings.source_priority {
             let found = match source {
@@ -282,9 +285,16 @@ impl Plugin for TimelinePlugin {
             }
         }
 
-        // Fallback: current time
         if taken_at.is_none() {
-            taken_at = Some(now);
+            let sources: Vec<&str> = settings.source_priority.iter().map(|s| s.label()).collect();
+            ctx.capabilities.log(
+                "warn",
+                &format!(
+                    "timeline: no capture time found for '{}' (sources: {}); taken_at left empty",
+                    doc.file.path,
+                    sources.join(", ")
+                ),
+            );
         }
 
         ctx.capabilities.log(

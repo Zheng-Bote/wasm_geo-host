@@ -58,11 +58,10 @@ pub struct MediaOrganizer;
 impl MediaOrganizer {
     /// Formats a relative destination path based on template pattern and document metadata.
     pub fn format_destination_path(doc: &UnifiedDocument, pattern: &str) -> PathBuf {
-        let (year_str, month_str) = if let Some(tl) = &doc.timeline {
-            let dt = tl.taken_at.as_ref().unwrap_or(&tl.imported_at);
-            (dt.year().to_string(), format!("{:02}", dt.month()))
-        } else {
-            ("Unknown_Year".to_string(), "00".to_string())
+        // Only the capture time counts; the import time is not a capture time (ADR 0002).
+        let (year_str, month_str) = match doc.timeline.as_ref().and_then(|tl| tl.taken_at) {
+            Some(dt) => (dt.year().to_string(), format!("{:02}", dt.month())),
+            None => ("Unknown_Year".to_string(), "00".to_string()),
         };
 
         let country_str = if let Some(loc) = &doc.location {

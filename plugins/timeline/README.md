@@ -28,7 +28,9 @@ The `timeline` plugin determines the effective capture time `taken_at` of a phot
    | 4 | XMP CreateDate | `XMP.xmp.CreateDate` | `xmp_create_date` |
    | 5 | File name | `doc.file.filename` (patterns in §2.4) | `filename_timestamp` |
    | 6 | File system | mtime of `doc.file.path` | `filesystem_modified_time` |
-   | 7 | Fallback | current time | `imported_timestamp_fallback` |
+   | — | none of the above | `taken_at` stays `None` (warning) | `none` |
+
+   There is no fallback to the current/import time: an invented capture time would mislead weather lookup, the watcher and the timeline ([ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md), [#44](https://github.com/Zheng-Bote/wasm_geo-host/issues/44)). The import time is always available in `imported_at`.
 
 2. **Provenance** — `resolution_source` makes the decision traceable.
 3. **UTC Normalization** — all values as `chrono::DateTime<Utc>` (ISO 8601).
@@ -59,7 +61,7 @@ plugins:
 | Key | Type / values | Default | Effect |
 | :--- | :--- | :--- | :--- |
 | `timezone` | `UTC`, IANA name (`Europe/Berlin`) or offset (`+02:00`, `-0530`) | `UTC` | Zone for EXIF and file-name times **without** offset; daylight saving time is applied for IANA names. RFC 3339 values and epoch file names keep their own offset. |
-| `source_priority` | comma-separated list of `exif_datetime_original`, `exif_datetime_digitized`, `exif_datetime`, `xmp_create_date`, `filename_timestamp`, `filesystem_modified_time` | all six in this order | Order of the sources; sources not listed are skipped. `imported_timestamp_fallback` always comes last. |
+| `source_priority` | comma-separated list of `exif_datetime_original`, `exif_datetime_digitized`, `exif_datetime`, `xmp_create_date`, `filename_timestamp`, `filesystem_modified_time` | all six in this order | Order of the sources; sources not listed are skipped. If none matches, `taken_at` stays `None` and `resolution_source` is `none`. |
 
 ```yaml
     settings:
@@ -110,7 +112,7 @@ Surrounding quotes and whitespace are removed.
 
 ```rust
 pub struct TimelineInfo {
-    pub taken_at: Option<DateTime<Utc>>,     // effective capture time (always set)
+    pub taken_at: Option<DateTime<Utc>>,     // effective capture time; None if no source matched
     pub imported_at: DateTime<Utc>,          // time this plugin ran
     pub modified_at: Option<DateTime<Utc>>,  // file system mtime, if readable
     pub resolution_source: String,           // see table in §1
