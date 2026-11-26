@@ -1,6 +1,7 @@
 {
   "version": 1,
   "entries": {
-    "docs/adr/0001-raw-tags-original-serial-stripping.md": "a9320addf88bea4192199248cb05fcd1888396c664f5b56d03b39fe87022a546"
+    "docs/adr/0001-raw-tags-original-serial-stripping.md": "a9320addf88bea4192199248cb05fcd1888396c664f5b56d03b39fe87022a546",
+    "docs/adr/0002-plugins-without-engine-no-output.md": "3102a47ff93999f479b257ec2d5478d7bcf36c546657fe29f228e9177ce85b0a"
   }
 }

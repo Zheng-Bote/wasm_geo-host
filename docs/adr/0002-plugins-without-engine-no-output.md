@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-26
 supersedes: []
 references: []
@@ -9,7 +9,7 @@ references: []
 
 ## Kontext
 
-Die Verfassung verbietet vereinfachte Mocks, Stubs und Pseudocode im Produktionspfad (*Strikte Regeln* 2). Issue #23 zeigt, dass mehrere Plugins trotzdem Ergebnisse erfinden:
+Die Verfassung verbietet vereinfachte Mocks, Stubs und Pseudocode im Produktionspfad (_Strikte Regeln_ 2). Issue #23 zeigt, dass mehrere Plugins trotzdem Ergebnisse erfinden:
 
 - `metadata` schreibt Demo-Werte (Sony ILCE-7RM4, GPS Berlin), wenn eine Datei kleiner als 128 Byte oder nicht lesbar ist.
 - `ocr-text` leitet „erkannten Text“ aus Stichwörtern im Dateinamen oder aus dem Dateinamen selbst ab.
@@ -36,4 +36,4 @@ Für OCR, Bild-Tagging und Gesichtserkennung gibt es im Projekt keine echte Infe
 - Negativ: Bis echte Engines vorhanden sind, gibt es keine OCR, keine KI-Tags, keine Embeddings für `similar` und keine automatische Gesichtsschwärzung. Wer `privacy-redact` für Gesichter braucht, bekommt eine Warnung statt eines Ergebnisses.
 - Negativ: Bestehende Datenbanken können erfundene Einträge aus früheren Läufen enthalten; sie werden erst durch erneute Verarbeitung ersetzt.
 - Löst für diese drei Plugins die Modell-/Tier-Auswahl aus dem archivierten Feature `plugin-settings` ab (dort AC-6 für `device`/`engine` und AC-9). Kriterien bestehender PRDs, die eine eingebaute Erkennung voraussetzen (`face-detection` AC-3/AC-5, `ocr-text` AC-3/AC-5, `vector-search-embeddings` AC-2), werden auf die Engine-Schnittstelle präzisiert bzw. als entfallen markiert.
-- Keine Verfassungsregel ändert sich; die Entscheidung präzisiert *Strikte Regeln* 2.
+- Keine Verfassungsregel ändert sich; die Entscheidung präzisiert _Strikte Regeln_ 2.

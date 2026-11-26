@@ -1,6 +1,6 @@
 ---
 feature: no-synthetic-output
-status: draft
+status: archived
 archive-after:
 touches:
   - plugins/metadata/**
@@ -20,11 +20,11 @@ touches:
 
 ## Problem
 
-Die Plugins `metadata`, `ocr-text`, `ai-tagging` und `face-detection` liefern im Produktionspfad erfundene Ergebnisse: Demo-Metadaten bei nicht lesbaren Dateien, Texte und Gesichter aus Stichwörtern im Dateinamen, Tags aus Byte-Statistiken, Gesichter aus einer Signatur-Tabelle der Beispielfotos (Issue #23). Diese Daten werden gespeichert, durchsucht und von `privacy-redact` als Grundlage der Schwärzung genutzt. Das verstößt gegen die Verfassung (*Strikte Regeln* 2).
+Die Plugins `metadata`, `ocr-text`, `ai-tagging` und `face-detection` liefern im Produktionspfad erfundene Ergebnisse: Demo-Metadaten bei nicht lesbaren Dateien, Texte und Gesichter aus Stichwörtern im Dateinamen, Tags aus Byte-Statistiken, Gesichter aus einer Signatur-Tabelle der Beispielfotos (Issue #23). Diese Daten werden gespeichert, durchsucht und von `privacy-redact` als Grundlage der Schwärzung genutzt. Das verstößt gegen die Verfassung (_Strikte Regeln_ 2).
 
 ## Ziel
 
-Nach der Umsetzung erfindet kein Plugin mehr Daten. Nicht bestimmbare Werte bleiben leer und werden mit einer Warnung gemeldet. OCR, Tagging und Gesichtserkennung laufen nur über austauschbare Engines; ohne Engine liefern sie kein Ergebnis und sind standardmäßig deaktiviert ([ADR 0002](../adr/0002-plugins-without-engine-no-output.md)).
+Nach der Umsetzung erfindet kein Plugin mehr Daten. Nicht bestimmbare Werte bleiben leer und werden mit einer Warnung gemeldet. OCR, Tagging und Gesichtserkennung laufen nur über austauschbare Engines; ohne Engine liefern sie kein Ergebnis und sind standardmäßig deaktiviert ([ADR 0002](../../adr/0002-plugins-without-engine-no-output.md)).
 
 ## Nutzer
 

@@ -1,6 +1,6 @@
 ---
 feature: no-synthetic-output
-status: draft
+status: archived
 archive-after:
 ---
 
