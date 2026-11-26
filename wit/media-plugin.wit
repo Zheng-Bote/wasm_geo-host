@@ -84,6 +84,8 @@ interface host-capabilities {
     use types.{document};
 
     fs-read: func(path: string) -> result<list<u8>, string>;
+    /// Last modification time of a file as Unix seconds (capability `filesystem`).
+    fs-modified: func(path: string) -> result<u64, string>;
     http-get: func(url: string) -> result<string, string>;
     kv-get: func(key: string) -> result<option<string>, string>;
     kv-set: func(key: string, value: string) -> result<_, string>;

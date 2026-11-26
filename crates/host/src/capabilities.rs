@@ -82,6 +82,16 @@ impl HostCapabilities for CapabilityManager {
             .map_err(|e| PluginError::Io(format!("fs_write failed for {}: {}", path, e)))
     }
 
+    fn fs_modified(&self, path: &str) -> PluginResult<u64> {
+        self.check_capability("filesystem")?;
+
+        if path.contains("..") {
+            return Err(PluginError::Io("Path traversal forbidden".to_string()));
+        }
+
+        flagme_sdk::modified_unix_seconds(Path::new(path))
+    }
+
     fn http_get(&self, url: &str) -> PluginResult<String> {
         self.check_capability("http")?;
 

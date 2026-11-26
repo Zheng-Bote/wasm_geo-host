@@ -3,7 +3,6 @@ use flagme_sdk::{
     Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache, SettingsReader,
     TimelineInfo, UnifiedDocument,
 };
-use std::fs;
 use std::path::Path;
 
 /// Time zone used for timestamps without an offset (EXIF, file names).
@@ -250,10 +249,13 @@ impl Plugin for TimelinePlugin {
         let settings = self.settings.get_or_parse(ctx);
         let now = Utc::now();
 
-        let modified_at: Option<DateTime<Utc>> = fs::metadata(&doc.file.path)
+        // Only via the `filesystem` capability; without a grant there is no modification time.
+        let modified_at: Option<DateTime<Utc>> = ctx
+            .capabilities
+            .fs_modified(&doc.file.path)
             .ok()
-            .and_then(|m| m.modified().ok())
-            .map(Into::into);
+            .and_then(|secs| i64::try_from(secs).ok())
+            .and_then(|secs| Utc.timestamp_opt(secs, 0).single());
 
         let mut taken_at = None;
         let mut resolution_source = "imported_timestamp_fallback".to_string();

@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let doc = if args.len() > 1 && !args[1].starts_with('{') {
         let path_str = &args[1];
         let p = Path::new(path_str);
-        let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+        let size = ctx.capabilities.fs_read(path_str).map(|b| b.len() as u64).unwrap_or(0);
         let filename = p.file_name().unwrap_or_default().to_string_lossy().to_string();
 
         UnifiedDocument::new(

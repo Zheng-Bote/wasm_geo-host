@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Profiles `config.docker.yaml` / `config.mac-studio.yaml`: removed keys without implementation (`device`, `ocr-text.engine`, `max_image_dimension`).
 
 ### Fixed
+- **Capability-only file access (#25)**: new host capability `fs_modified` (SDK `HostCapabilities`, host `CapabilityManager`, `NoopCapabilities`, WIT `fs-modified`). `timeline` reads the file modification time only through it (previously `std::fs::metadata`, even without the `filesystem` grant); the `metadata` CLI gets the file size via `fs_read`. No plugin source uses `std::fs` or `std::process` any more; a test enforces this and checks that no plugin reads or writes files without the grant.
 - **No synthetic hashes, weather or thumbnails (#40, [ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md))**:
   - `duplicate`: an unreadable file no longer hashes the path string; `doc.duplicate` and `doc.file.sha256` stay empty with a warning. `phash` is now a real dHash over the decoded pixels (`image` crate) instead of the compressed bytes, and `DuplicateInfo.phash` is `Option<String>` (`None` for undecodable formats such as HEIC; stored as `''` in the `duplicates` table).
   - `weather-enrich`: removed the climatological offline estimate and the fixed substitute date for photos without capture time; without measured data `doc.weather` stays empty with a warning and nothing is cached. `offline_fallback` now warns "not supported".
