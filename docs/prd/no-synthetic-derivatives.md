@@ -1,6 +1,6 @@
 ---
 feature: no-synthetic-derivatives
-status: draft
+status: accepted
 archive-after:
 touches:
   - plugins/duplicate/**
@@ -21,7 +21,7 @@ touches:
 
 ## Problem
 
-Ein echter Lauf von `flagme-host stream` (PR #39) zeigt, dass drei weitere Plugins erfundene Werte als echte melden (Issue #40). Das verstößt gegen die Verfassung (*Strikte Regeln* 2) und gegen [ADR 0002](../adr/0002-plugins-without-engine-no-output.md), Regel 1:
+Ein echter Lauf von `flagme-host stream` (PR #39) zeigt, dass drei weitere Plugins erfundene Werte als echte melden (Issue #40). Das verstößt gegen die Verfassung (_Strikte Regeln_ 2) und gegen [ADR 0002](../adr/0002-plugins-without-engine-no-output.md), Regel 1:
 
 - `duplicate` hasht bei nicht lesbarer Datei den **Pfad-String** und speichert das Ergebnis als Datei-SHA256. Der „perceptual hash“ wird über die komprimierten Bytes statt über Bildpixel berechnet.
 - `weather-enrich` erfindet ohne HTTP Wetterdaten aus einem „klimatologischen Modell“ (standardmäßig aktiv), legt sie im KV-Cache ab und fragt ohne Aufnahmezeit ein festes Ersatzdatum ab.
