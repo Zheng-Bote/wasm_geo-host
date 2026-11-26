@@ -356,7 +356,7 @@ impl Storage {
                 "INSERT OR REPLACE INTO duplicates (photo_id, sha256, phash, duplicate_ids) VALUES ('{}', '{}', '{}', '{}');\n",
                 escape_sql(&doc.id),
                 escape_sql(&dup.sha256),
-                escape_sql(&dup.phash),
+                escape_sql(dup.phash.as_deref().unwrap_or_default()),
                 escape_sql(&dup_json)
             ));
         }

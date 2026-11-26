@@ -166,15 +166,20 @@ fn test_ac5_reversegeo_and_countryflag() {
 // wasm-geo-host AC-6: Thumbnail deterministic caching and AI Tagging model abstraction
 #[test]
 fn test_ac6_thumbnail_and_ai_tagging() {
-    let thumb_plugin = ThumbnailPlugin::new();
+    let dir = common::temp_dir("ac6_ai");
+    let source = common::write_file(&dir, "landscape.jpg", &common::plain_jpeg(1100, 825));
+    let thumb_plugin = ThumbnailPlugin::with_settings(flagme_plugin_thumbnail::ThumbnailSettings {
+        output_dir: dir.join("thumbs").to_string_lossy().to_string(),
+        ..Default::default()
+    });
     let ai_plugin = AiTaggingPlugin::with_model(Box::new(common::ByteLenVisionModel));
 
     let doc = UnifiedDocument::new(
         "doc-test-6",
         FileInfo {
-            path: "landscape.jpg".to_string(),
+            path: source,
             filename: "landscape.jpg".to_string(),
-            size_bytes: 8192,
+            size_bytes: 0,
             mime_type: "image/jpeg".to_string(),
             sha256: None,
         },
@@ -184,14 +189,11 @@ fn test_ac6_thumbnail_and_ai_tagging() {
     let doc = thumb_plugin.process(doc, &ctx).unwrap();
     assert_eq!(doc.thumbnails.len(), 3);
     assert_eq!(doc.thumbnails[0].size_label, "small");
-    assert_eq!(doc.thumbnails[0].width, 128);
-    assert_eq!(doc.thumbnails[1].width, 512);
-    assert_eq!(doc.thumbnails[2].width, 1024);
+    let dims: Vec<(u32, u32)> = doc.thumbnails.iter().map(|t| (t.width, t.height)).collect();
+    assert_eq!(dims, vec![(128, 96), (512, 384), (1024, 768)], "aspect ratio 4:3 kept");
+    assert!(doc.thumbnails.iter().all(|t| std::path::Path::new(&t.path).is_file()));
 
     // AI tagging runs through an exchangeable VisionModel (ADR 0002); a test model stands in here.
-    let dir = common::temp_dir("ac6_ai");
-    let mut doc = doc;
-    doc.file.path = common::write_file(&dir, "landscape.jpg", &common::plain_jpeg(32, 24));
     let doc = ai_plugin.process(doc, &ctx).unwrap();
     let ai = doc.ai.clone().expect("AI tagging output missing");
     assert!(!ai.tags.is_empty());
@@ -205,11 +207,13 @@ fn test_ac6_thumbnail_and_ai_tagging() {
 fn test_ac7_duplicate_and_timeline() {
     let dup_plugin = DuplicatePlugin::new();
     let timeline_plugin = TimelinePlugin::new();
+    let dir = common::temp_dir("ac7_dup");
+    let path = common::write_file(&dir, "photo.jpg", &common::plain_jpeg(64, 48));
 
     let doc = UnifiedDocument::new(
         "doc-test-7",
         FileInfo {
-            path: "photo.jpg".to_string(),
+            path,
             filename: "photo.jpg".to_string(),
             size_bytes: 1234,
             mime_type: "image/jpeg".to_string(),
@@ -221,12 +225,13 @@ fn test_ac7_duplicate_and_timeline() {
     let doc = dup_plugin.process(doc, &ctx).unwrap();
     let dup = doc.duplicate.as_ref().expect("Duplicate info missing");
     assert!(!dup.sha256.is_empty());
-    assert!(!dup.phash.is_empty());
+    assert_eq!(dup.phash.as_ref().map(|h| h.len()), Some(16), "64-bit dHash");
 
     let doc = timeline_plugin.process(doc, &ctx).unwrap();
     let timeline = doc.timeline.expect("Timeline info missing");
     assert!(timeline.taken_at.is_some());
     assert!(!timeline.resolution_source.is_empty());
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // wasm-geo-host AC-8: SQLite persistence schema and configurable pipeline orchestration

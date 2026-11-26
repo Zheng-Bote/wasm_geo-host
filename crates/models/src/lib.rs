@@ -227,7 +227,9 @@ pub struct PrivacyInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct DuplicateInfo {
     pub sha256: String,
-    pub phash: String,
+    /// 64-bit dHash over the decoded pixels; `None` if the image cannot be decoded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phash: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub duplicates: Vec<String>,
 }

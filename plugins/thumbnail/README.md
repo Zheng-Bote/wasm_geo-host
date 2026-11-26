@@ -18,11 +18,12 @@ The `thumbnail` plugin creates three cached preview variants (`small`, `medium`,
 
 ## 1. Key Features
 
-1. **Three Fixed Variants** — `small` (128 px), `medium` (512 px), `large` (1024 px) longest side.
-2. **Deterministic Cache Keys** — `cache_key` = 64-bit hash over *source path + size*; the file is only generated if it does not exist yet.
-3. **Real Scaling on macOS** — via `sips -s format jpeg -Z <size>`; aspect ratio is preserved.
-4. **Always a Valid JPEG** — if scaling is not possible, the original bytes or a 1×1 JPEG are written so the web UI always gets an image.
-5. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+1. **Configurable Variants** — default `small` (128 px), `medium` (512 px), `large` (1024 px) longest side.
+2. **Real Scaling in pure Rust** — decoded and scaled with the `image` crate (Lanczos3) on every platform and inside the Wasm sandbox; the aspect ratio is kept, the EXIF orientation is applied and images are never upscaled.
+3. **Honest Entries** — `width`/`height` are the measured pixel size of the written file; an entry exists only if its file was written.
+4. **Capabilities only** — reads via `fs_read`, writes via `fs_write`; no external process, no direct `std::fs`.
+5. **Deterministic File Names** — `cache_key` = 64-bit hash over *source path + size*.
+6. **Dual-Mode Execution** — library component for `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
 ---
 
@@ -50,7 +51,7 @@ plugins:
 | :--- | :--- | :--- | :--- |
 | `variants` | comma-separated integers 16–8192 | `128,512,1024` | Target sizes (longest side, px); sorted, duplicates removed. Labels: see §2.4. |
 | `max_dimension` | integer 16–8192 | *(no limit)* | Variants above the limit are dropped; if none is left, exactly `max_dimension` is used. |
-| `quality` | integer 1–100 | *(encoder default)* | JPEG quality passed to `sips -s formatOptions` (macOS only, see §7). |
+| `quality` | integer 1–100 | `75` | JPEG quality of the written thumbnails. |
 | `output_dir` | path without `..` | `cache/thumbnails` | Target directory of `<cache_key>_<size>.jpg`. |
 
 ```yaml
@@ -65,11 +66,11 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
-| Entry size | `width` = `height` = variant size | **nominal** box size, not the real pixel size |
+| Entry size | measured size of the written JPEG | longer side = `min(variant, original longer side)`; aspect ratio kept |
 | File name | `<cache_key>_<size>.jpg` | e.g. `aad58983bf531312_128.jpg` |
 | `cache_key` | `DefaultHasher(path, size)` as 16 hex digits | Changes if the file is moved/renamed, **not** if its content changes. |
 | Output format | JPEG | |
-| Supported extensions | `jpg`, `jpeg`, `png`, `webp`, `tiff`, `tif`, `heic`, `avif` (case-insensitive), plus `.dat` | Other extensions: warning, document unchanged. |
+| Supported input | JPEG, PNG, WebP, TIFF, GIF — detected from the content, not the extension | HEIC/AVIF and other formats: warning, no thumbnails. |
 
 ### 2.4 Size Labels
 
@@ -85,10 +86,17 @@ The web UI requests `/api/photos/:id/thumbnail/small` and falls back to the firs
 
 ### 2.5 Generation Strategy (per variant)
 
-1. Target file already exists → reuse it (no regeneration).
-2. macOS: `sips` scales to the longest side `<size>` (with `quality`, if set).
-3. Otherwise: copy the original bytes unchanged (no scaling).
-4. Source not readable: write a 1×1 fallback JPEG.
+1. Read the source (`fs_read`) and decode it once; apply the EXIF orientation.
+2. Per variant: scale so that the longer side is at most `<size>` (no upscaling), encode as JPEG with `quality`.
+3. Write `<output_dir>/<cache_key>_<size>.jpg` (`fs_write`) and add the entry with the real size.
+
+Failures produce a `warn` log entry and no entry — never a placeholder:
+
+| Message | Cause |
+| :--- | :--- |
+| `thumbnail: cannot read '<path>': …; no thumbnails` | file not readable / capability missing |
+| `thumbnail: cannot decode '<path>': …; no thumbnails` | unsupported or broken image |
+| `thumbnail: cannot write '<thumb>': …` | `fs_write` failed (only this variant is skipped) |
 
 ---
 
@@ -102,7 +110,7 @@ No dependencies on other plugins. Only `doc.file.path` is used.
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read` (source) and `fs_write` (fallback copy) | In native host mode `sips` and `std::fs` are used directly; inside a Wasm sandbox no file is written. |
+| `filesystem` | `fs_read` (source), `fs_write` (thumbnails) | Warning, no thumbnails. |
 
 ---
 
@@ -111,8 +119,8 @@ No dependencies on other plugins. Only `doc.file.path` is used.
 ```rust
 pub struct ThumbnailEntry {
     pub size_label: String,   // "small" | "medium" | "large"
-    pub width: u32,           // 128 | 512 | 1024 (nominal)
-    pub height: u32,          // 128 | 512 | 1024 (nominal)
+    pub width: u32,           // measured, e.g. 128 for a 4:3 landscape photo
+    pub height: u32,          // measured, e.g. 96
     pub path: String,         // "cache/thumbnails/<cache_key>_<size>.jpg"
     pub cache_key: String,    // "aad58983bf531312"
 }
@@ -143,14 +151,14 @@ SELECT photo_id, size_label, width, height, file_path, cache_key FROM thumbnails
 
 | photo_id | size_label | width | height | file_path | cache_key |
 |---|---|---|---|---|---|
-| `3f12502733adb127` | small | 128 | 128 | cache/thumbnails/aad58983bf531312_128.jpg | aad58983bf531312 |
-| `3f12502733adb127` | medium | 512 | 512 | cache/thumbnails/6e982c5779c61d3b_512.jpg | 6e982c5779c61d3b |
-| `3f12502733adb127` | large | 1024 | 1024 | cache/thumbnails/6c2140244b0b7f61_1024.jpg | 6c2140244b0b7f61 |
+| `3f12502733adb127` | small | 128 | 96 | cache/thumbnails/aad58983bf531312_128.jpg | aad58983bf531312 |
+| `3f12502733adb127` | medium | 512 | 384 | cache/thumbnails/6e982c5779c61d3b_512.jpg | 6e982c5779c61d3b |
+| `3f12502733adb127` | large | 1024 | 768 | cache/thumbnails/6c2140244b0b7f61_1024.jpg | 6c2140244b0b7f61 |
 
 ---
 
 ## 7. Limitations & Implementation Notes
 
-- **Real scaling only on macOS** (`sips`). On Linux/Docker and in Wasm the original is copied — the "thumbnail" then has the full resolution and file size. Tracked in [#25](https://github.com/Zheng-Bote/wasm_geo-host/issues/25).
-- The cache is never invalidated: if the source changes at the same path, the old thumbnail stays. Delete `output_dir` to rebuild; changing `quality` does not regenerate existing files.
+- **No HEIC/AVIF.** These formats need decoders outside pure Rust; such photos get no thumbnails (warning). The former `sips` path (macOS only, outside the capability model) was removed ([#40](https://github.com/Zheng-Bote/wasm_geo-host/issues/40), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
+- Thumbnails are regenerated on every run (no reuse of existing files).
 - `DefaultHasher` is not guaranteed to be stable across Rust versions; cache keys can change after a toolchain update.

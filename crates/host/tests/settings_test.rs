@@ -127,6 +127,19 @@ fn write_file(dir: &Path, name: &str, bytes: &[u8]) -> String {
     p.to_string_lossy().to_string()
 }
 
+/// Real, decodable JPEG source of the given size (high-frequency noise, so quality matters).
+fn source_jpeg(dir: &Path, name: &str, w: u32, h: u32) -> String {
+    let mut seed: u32 = 12345;
+    let img = image::RgbImage::from_fn(w, h, |_, _| {
+        seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+        let v = (seed >> 16) as u8;
+        image::Rgb([v, v.wrapping_mul(3), v.wrapping_add(90)])
+    });
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 90).encode_image(&img).unwrap();
+    write_file(dir, name, &jpeg)
+}
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -379,13 +392,14 @@ fn reversegeo_accept_language() {
 #[test]
 fn thumbnail_variants() {
     let dir = temp_dir("thumb-variants");
-    let out_dir = dir.to_string_lossy().to_string();
+    let src = source_jpeg(&dir, "src.jpg", 900, 600);
+    let out_dir = dir.join("out").to_string_lossy().to_string();
     let plugin = ThumbnailPlugin::new();
     let caps = Arc::new(RecordingCaps::default());
     let out = plugin
         .process(
-            doc("missing.jpg"),
-            &ctx(&caps, &[("variants", "64,256,2048,1024"), ("output_dir", &out_dir)]),
+            doc(&src),
+            &ctx(&caps, &[("variants", "64,256,800,400"), ("output_dir", &out_dir)]),
         )
         .unwrap();
     let got: Vec<(String, u32)> = out.thumbnails.iter().map(|t| (t.size_label.clone(), t.width)).collect();
@@ -393,9 +407,9 @@ fn thumbnail_variants() {
         got,
         vec![
             ("small".to_string(), 64),
-            ("medium".to_string(), 256),
-            ("1024px".to_string(), 1024),
-            ("large".to_string(), 2048),
+            ("256px".to_string(), 256),
+            ("medium".to_string(), 400),
+            ("large".to_string(), 800),
         ]
     );
 }
@@ -404,17 +418,18 @@ fn thumbnail_variants() {
 #[test]
 fn thumbnail_max_dimension() {
     let dir = temp_dir("thumb-max");
-    let out_dir = dir.to_string_lossy().to_string();
+    let src = source_jpeg(&dir, "src.jpg", 700, 400);
+    let out_dir = dir.join("out").to_string_lossy().to_string();
     let plugin = ThumbnailPlugin::new();
     let caps = Arc::new(RecordingCaps::default());
     let out = plugin
-        .process(doc("missing.jpg"), &ctx(&caps, &[("max_dimension", "600"), ("output_dir", &out_dir)]))
+        .process(doc(&src), &ctx(&caps, &[("max_dimension", "600"), ("output_dir", &out_dir)]))
         .unwrap();
     let sizes: Vec<u32> = out.thumbnails.iter().map(|t| t.width).collect();
     assert_eq!(sizes, vec![128, 512]);
 
     let out = plugin
-        .process(doc("missing.jpg"), &ctx(&caps, &[("max_dimension", "100"), ("output_dir", &out_dir)]))
+        .process(doc(&src), &ctx(&caps, &[("max_dimension", "100"), ("output_dir", &out_dir)]))
         .unwrap();
     let sizes: Vec<u32> = out.thumbnails.iter().map(|t| t.width).collect();
     assert_eq!(sizes, vec![100]);
@@ -424,53 +439,25 @@ fn thumbnail_max_dimension() {
 #[test]
 fn thumbnail_output_dir() {
     let dir = temp_dir("thumb-dir");
-    let out_dir = dir.to_string_lossy().to_string();
+    let src = source_jpeg(&dir, "src.jpg", 300, 200);
+    let out_dir = dir.join("custom").to_string_lossy().to_string();
     let plugin = ThumbnailPlugin::new();
     let caps = Arc::new(RecordingCaps::default());
     let out = plugin
-        .process(doc("missing.jpg"), &ctx(&caps, &[("output_dir", &out_dir)]))
+        .process(doc(&src), &ctx(&caps, &[("output_dir", &out_dir)]))
         .unwrap();
+    assert_eq!(out.thumbnails.len(), 3);
     for t in &out.thumbnails {
         assert!(t.path.starts_with(&out_dir), "{}", t.path);
         assert!(Path::new(&t.path).exists());
     }
 }
 
-// plugin-settings AC-4: thumbnail quality changes the encoded size (macOS: sips is the only scaler, see #25)
-#[cfg(target_os = "macos")]
+// plugin-settings AC-4: thumbnail quality changes the encoded size
 #[test]
 fn thumbnail_quality() {
-    // Real, decodable source image: 600x600 noise BMP converted to JPEG with sips.
     let dir = temp_dir("thumb-q-src");
-    let (w, h) = (600u32, 600u32);
-    let row = (w * 3 + 3) & !3;
-    let mut bmp = Vec::new();
-    bmp.extend(b"BM");
-    bmp.extend((54 + row * h).to_le_bytes());
-    bmp.extend([0u8; 4]);
-    bmp.extend(54u32.to_le_bytes());
-    bmp.extend(40u32.to_le_bytes());
-    bmp.extend((w as i32).to_le_bytes());
-    bmp.extend((h as i32).to_le_bytes());
-    bmp.extend(1u16.to_le_bytes());
-    bmp.extend(24u16.to_le_bytes());
-    bmp.extend([0u8; 24]);
-    let mut seed: u32 = 12345;
-    for _ in 0..h {
-        for _ in 0..row {
-            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
-            bmp.push((seed >> 16) as u8);
-        }
-    }
-    let bmp_path = write_file(&dir, "src.bmp", &bmp);
-    let src = dir.join("src.jpg").to_string_lossy().to_string();
-    let status = std::process::Command::new("sips")
-        .args(["-s", "format", "jpeg", &bmp_path, "--out", &src])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .unwrap();
-    assert!(status.success());
+    let src = source_jpeg(&dir, "src.jpg", 600, 600);
     let plugin = ThumbnailPlugin::new();
     let caps = Arc::new(RecordingCaps::default());
     let size_for = |q: &str| {
@@ -584,22 +571,6 @@ fn weather_coordinate_precision() {
     plugin.process(weather_doc(), &ctx(&caps, &[("coordinate_precision", "1")])).unwrap();
     assert_eq!(caps.kv_reads(), vec!["weather:52.5:13.4:2025-07-01-12".to_string()]);
     assert!(caps.urls()[0].contains("latitude=52.5&longitude=13.4&"));
-}
-
-// plugin-settings AC-4: weather-enrich offline_fallback=false leaves weather empty when the request fails
-#[test]
-fn weather_offline_fallback() {
-    let plugin = WeatherEnrichPlugin::new();
-    let caps = Arc::new(RecordingCaps::default());
-    let with_fallback = plugin.process(weather_doc(), &ctx(&caps, &[])).unwrap();
-    assert!(with_fallback.weather.is_some());
-
-    let caps = Arc::new(RecordingCaps::default());
-    let without = plugin
-        .process(weather_doc(), &ctx(&caps, &[("offline_fallback", "false")]))
-        .unwrap();
-    assert!(without.weather.is_none());
-    assert!(caps.kv_keys().is_empty(), "nothing is cached");
 }
 
 /// OCR engine returning two fixed regions; used to observe `min_confidence`.
@@ -754,7 +725,7 @@ fn defaults_match_previous_behaviour() {
 
     let caps = Arc::new(RecordingCaps::default());
     let w = WeatherEnrichPlugin::new().process(weather_doc(), &ctx(&caps, &[])).unwrap();
-    assert!(w.weather.is_some());
+    assert!(w.weather.is_none(), "no measured data, no estimate (ADR 0002)");
     assert_eq!(caps.kv_reads(), vec!["weather:52.52:13.40:2025-07-01-12".to_string()]);
     assert!(caps.urls()[0].starts_with("https://archive-api.open-meteo.com/v1/archive?latitude=52.52&longitude=13.40&"));
 
@@ -810,16 +781,25 @@ fn unsupported_value_warns() {
 #[test]
 fn duplicate_phash_threshold() {
     let dir = temp_dir("dup");
-    let b1: Vec<u8> = (0..4096u32).map(|i| ((i * 7919) % 251) as u8).collect();
-    let mut b2 = b1.clone();
-    for b in b2.iter_mut().take(200) {
-        *b = 0;
+    let encode = |img: &image::RgbImage| {
+        let mut out = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90).encode_image(img).unwrap();
+        out
+    };
+    let base = image::RgbImage::from_fn(90, 80, |x, y| image::Rgb([(x * 2 + y) as u8, (y * 3) as u8, 100]));
+    let mut edited = base.clone();
+    for y in 0..40 {
+        for x in 0..30 {
+            edited.put_pixel(x, y, image::Rgb([255, 255, 255]));
+        }
     }
-    let p1 = write_file(&dir, "one.bin", &b1);
-    let p2 = write_file(&dir, "two.bin", &b2);
+    let (b1, b2) = (encode(&base), encode(&edited));
+    let p1 = write_file(&dir, "one.jpg", &b1);
+    let p2 = write_file(&dir, "two.jpg", &b2);
 
     let plugin = DuplicatePlugin::new();
-    let distance = flagme_plugin_duplicate::hamming_distance(&plugin.compute_phash(&b1), &plugin.compute_phash(&b2)).unwrap();
+    let hash = |b: &[u8]| flagme_plugin_duplicate::compute_dhash(b).unwrap();
+    let distance = flagme_plugin_duplicate::hamming_distance(&hash(&b1), &hash(&b2)).unwrap();
     assert!(distance > 0 && distance < 64, "distance {}", distance);
 
     let run = |threshold: u32| {

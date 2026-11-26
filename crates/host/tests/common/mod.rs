@@ -15,10 +15,15 @@ use image::{Rgb, RgbImage};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-/// Capabilities with real filesystem access that record every log message.
+/// Capabilities with real filesystem access that record every log message, keep an in-memory
+/// KV store and answer HTTP requests with a configurable body (default: request fails).
 #[derive(Default)]
 pub struct LogCaps {
     pub logs: Mutex<Vec<(String, String)>>,
+    pub kv: Mutex<std::collections::HashMap<String, String>>,
+    pub http_body: Option<String>,
+    pub http_urls: Mutex<Vec<String>>,
+    pub deny_write: bool,
 }
 
 impl LogCaps {
@@ -38,18 +43,25 @@ impl HostCapabilities for LogCaps {
         std::fs::read(path).map_err(|e| PluginError::Io(e.to_string()))
     }
     fn fs_write(&self, path: &str, data: &[u8]) -> PluginResult<()> {
+        if self.deny_write {
+            return Err(PluginError::CapabilityDenied("filesystem write".to_string()));
+        }
         if let Some(parent) = Path::new(path).parent() {
             std::fs::create_dir_all(parent).map_err(|e| PluginError::Io(e.to_string()))?;
         }
         std::fs::write(path, data).map_err(|e| PluginError::Io(e.to_string()))
     }
-    fn http_get(&self, _url: &str) -> PluginResult<String> {
-        Err(PluginError::CapabilityDenied("http".to_string()))
+    fn http_get(&self, url: &str) -> PluginResult<String> {
+        self.http_urls.lock().unwrap().push(url.to_string());
+        self.http_body
+            .clone()
+            .ok_or_else(|| PluginError::CapabilityDenied("http".to_string()))
     }
-    fn kv_get(&self, _key: &str) -> PluginResult<Option<String>> {
-        Ok(None)
+    fn kv_get(&self, key: &str) -> PluginResult<Option<String>> {
+        Ok(self.kv.lock().unwrap().get(key).cloned())
     }
-    fn kv_set(&self, _key: &str, _value: &str) -> PluginResult<()> {
+    fn kv_set(&self, key: &str, value: &str) -> PluginResult<()> {
+        self.kv.lock().unwrap().insert(key.to_string(), value.to_string());
         Ok(())
     }
     fn secret_get(&self, _name: &str) -> PluginResult<Option<String>> {

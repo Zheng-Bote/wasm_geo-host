@@ -216,7 +216,7 @@
               <div><span class="text-gray-400">OCR Text:</span> ${ocr}</div>
               <div><span class="text-gray-400">Faces:</span> ${faces}</div>
               <div><span class="text-gray-400">Privacy:</span> ${privacy}</div>
-              <div><span class="text-gray-400">Duplicate pHash:</span> <code>${doc.duplicate ? doc.duplicate.phash : 'N/A'}</code></div>
+              <div><span class="text-gray-400">Duplicate pHash:</span> <code>${(doc.duplicate && doc.duplicate.phash) || 'N/A'}</code></div>
             </div>
           </div>
           <div>
