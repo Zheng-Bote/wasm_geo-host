@@ -11,7 +11,7 @@ The `ocr-text` plugin writes visible text (signs, documents, posters) as text re
 | Plugin name (`config.yaml`) | `ocr-text` |
 | Crate | `flagme-plugin-ocr-text` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_ocr_text.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ocr-text`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.1.0` |
+| Version | `0.2.0` |
 | Reads | image bytes of `doc.file.path` |
 | Writes | `doc.ocr` (`OcrInfo`) — only if an engine is set |
 | Capabilities | `filesystem` |
@@ -127,7 +127,7 @@ cat doc.json | wasmtime run -S cli-exit-with-code --dir . \
   target/wasm32-wasip2/release/flagme-plugin-ocr-text.wasm
 ```
 
-Empty input prints `Plugin ocr-text v0.1.0`. The CLI uses `OcrTextPlugin::new()` and therefore returns the document unchanged.
+Empty input prints `Plugin ocr-text v0.2.0`. The CLI uses `OcrTextPlugin::new()` and therefore returns the document unchanged.
 
 ### 6.3 SQLite
 

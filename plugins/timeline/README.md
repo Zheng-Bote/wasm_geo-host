@@ -9,7 +9,7 @@ The `timeline` plugin determines the effective capture time `taken_at` of a phot
 | Plugin name (`config.yaml`) | `timeline` |
 | Crate | `flagme-plugin-timeline` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_timeline.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-timeline`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.1.0` |
+| Version | `0.2.0` |
 | Reads | `doc.metadata.raw_tags`, `doc.file.filename`, `doc.file.path` (file system mtime) |
 | Writes | `doc.timeline` (`TimelineInfo`) |
 | Capabilities | `filesystem` (declared, see §4) |

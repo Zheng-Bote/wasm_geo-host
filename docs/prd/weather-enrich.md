@@ -1,13 +1,13 @@
 ---
 feature: weather-enrich
-status: draft
+status: accepted
 archive-after:
 touches:
-  - "crates/models/**"
-  - "plugins/weather-enrich/**"
-  - "crates/host/**"
-  - "crates/host/migrations/**"
-  - "Cargo.toml"
+  - 'crates/models/**'
+  - 'plugins/weather-enrich/**'
+  - 'crates/host/**'
+  - 'crates/host/migrations/**'
+  - 'Cargo.toml'
 ---
 
 # PRD — weather-enrich (`weather-enrich`)
@@ -27,6 +27,7 @@ Bereitstellung des Plugins `flagme-plugin-weather-enrich`, das anhand von Zeitst
 ## Umfang
 
 Die Umsetzung umfasst:
+
 - Definition von `WeatherInfo` in `wasm-geo-models` mit Serde-Serialisierung.
 - Plugin `flagme-plugin-weather-enrich` mit CDYLib & WASI-Binärunterstützung.
 - KV-Cache-Prüfung (`weather:<lat_2dec>:<lon_2dec>:<date_hour>`) vor ausgehenden HTTP-Abfragen.

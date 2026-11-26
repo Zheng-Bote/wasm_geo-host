@@ -1,10 +1,10 @@
 ---
 feature: sqlite-fts5-search
-status: draft
+status: accepted
 archive-after:
 touches:
-  - "crates/host/**"
-  - "crates/host/migrations/**"
+  - 'crates/host/**'
+  - 'crates/host/migrations/**'
 ---
 
 # PRD — sqlite-fts5-search (`sqlite-fts5-search`)
@@ -25,6 +25,7 @@ Bereitstellung einer integrierten, extrem schnellen Volltextsuche (Full-Text Sea
 ## Umfang
 
 Die Umsetzung umfasst:
+
 - SQLite-Datenbankschema-Erweiterung: Virtuelle Tabelle `photos_fts` unter Nutzung von SQLite FTS5.
 - Speicher-Synchronisation in `Storage::save_document` (`crates/host/src/storage.rs`).
 - Suchfunktion `Storage::search(&self, query: &str) -> anyhow::Result<Vec<SearchResult>>`.

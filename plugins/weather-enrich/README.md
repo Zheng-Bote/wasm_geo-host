@@ -9,7 +9,7 @@ The `weather-enrich` plugin adds the historical weather at the place and hour a 
 | Plugin name (`config.yaml`) | `weather-enrich` |
 | Crate | `flagme-plugin-weather-enrich` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_weather_enrich.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-weather-enrich`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.1.0` |
+| Version | `0.2.0` |
 | Reads | `doc.location.latitude/longitude`, `doc.timeline.taken_at` |
 | Writes | `doc.weather` (`WeatherInfo`) |
 | Capabilities | `http`, `kv` |
@@ -160,7 +160,7 @@ cat doc_with_location_and_timeline.json | wasmtime run -S cli-exit-with-code \
   target/wasm32-wasip2/release/flagme-plugin-weather-enrich.wasm
 ```
 
-The CLI has no HTTP capability → `doc.weather` stays empty. Empty input prints `Plugin weather-enrich v0.1.0`.
+The CLI has no HTTP capability → `doc.weather` stays empty. Empty input prints `Plugin weather-enrich v0.2.0`.
 
 ### 6.3 SQLite
 

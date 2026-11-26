@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-26
+
+### Breaking
+- Plugins run **only** as Wasm components ([ADR 0003](docs/adr/0003-wasm-component-execution.md)): build them with `make components` (or `cargo build --release --target wasm32-wasip2 --lib --features component -p …`) and point `plugin_dir` in `config.yaml` at them. The host refuses to start if an enabled plugin's component is missing; there is no native fallback.
+- `wit/media-plugin.wit` is `wasmgeohost:media@0.2.0` (typed `document`, `plugin-error`, `fs-write`, `process(doc, settings)`); components built for 0.1.x do not load.
+- `flagme-host stream` no longer spawns the `wasmtime` CLI; it runs on the embedded runtime like `process`.
+- Rust 1.97+ is required (Wasmtime 51).
+- Plugins no longer invent data ([ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md)): fields that cannot be determined stay empty (`None`) with a warning. `ai-tagging`, `ocr-text` and `face-detection` have no built-in engine and are disabled by default.
+
 ### Added
+- **Release build**: `Makefile` with `make release` (sdd gates, tests, host, plugin components, WASI and native plugin CLIs, packages with SHA-256 checksums in `dist/packages`).
+- **New plugins**: `weather-enrich` (historical weather from the Open-Meteo archive), `ocr-text`, `face-detection` (engine interfaces, experimental) and `privacy-redact` (face redaction, EXIF serial stripping, GPS fuzzing).
+- **Search**: SQLite FTS5 full-text search (`flagme-host search`) and cosine similarity over stored embeddings (`flagme-host similar`).
+- **Directory watcher** (`flagme-host watch`): event-driven ingestion with worker pool, duplicate skipping and target organization by capture time and location.
+- **Embedded web UI** (`flagme-host serve`): dashboard, map, gallery, REST and GeoJSON API.
 - **Plugin settings (#26)**: all plugins read and honour their `settings` from `config.yaml` via the shared SDK module `flagme_sdk::settings` (typed settings, shared parsing rules, warnings for invalid, unsupported and unknown keys). Parameters per plugin are documented in each plugin README §2.2.
 - `duplicate`: Hamming threshold `phash_threshold`; `timeline`: `timezone` (IANA via `chrono-tz`) and `source_priority`; `ai-tagging` / `face-detection` / `ocr-text`: model, tier and engine selected per call (superseded by ADR 0002, see *Fixed*).
 
@@ -44,6 +58,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Embeddings without tags are stored with model `unknown` instead of `CLIP`.
 - `privacy-redact` (#22): faces are now redacted pixel-accurately inside each `DetectedFace.bbox` on the decoded image (`pixelate` with `block_size` px blocks, Gaussian `blur` with `blur_sigma`, `blackout`) and re-encoded as a valid JPEG (quality 90, no source metadata). Previously a byte range of the encoded file was overwritten. `redacted_<N>_faces_via_<style>` now counts only processed faces; read, decode or write failures log a warning and record no redaction. The `std::fs` write fallback was removed, so writes go through the `filesystem` capability only.
 
+## [0.1.1] - 2026-11-25
+
+### Added
+- **Dual-language reverse geocoding (#1, #2)**: `LocationInfo` carries English names (`country`, `region`, `city`) and native names (`local_country`, `local_region`, `local_city`, `local_language`); the `locations` table stores both.
+
 ## [0.1.0] - 2026-11-25
 
 ### Added
@@ -69,3 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation & Specifications**:
   - Spec-Driven Development (SDD) governance artifacts: Verfassung ([constitution.md](constitution.md)), PRD, Tech Spec, and Execution Plan.
   - Comprehensive user, build, and plugin developer guides.
+
+[Unreleased]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/Zheng-Bote/wasm_geo-host/releases/tag/v0.1.0

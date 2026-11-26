@@ -1,9 +1,9 @@
 ---
 feature: directory-watcher
-status: draft
+status: accepted
 archive-after:
 touches:
-  - "crates/host/**"
+  - 'crates/host/**'
 ---
 
 # PRD — directory-watcher (`directory-watcher`)
@@ -15,6 +15,7 @@ Bislang verarbeitet `flagme-host` Mediendateien ausschließlich über manuelle E
 ## Ziel
 
 Bereitstellung eines robusten, ereignisgesteuerten Hintergrund-Daemons (`flagme-host watch`) zur Überwachung von Verzeichnissen und zur nebenläufigen Batch-Verarbeitung eingehender Mediendateien:
+
 1. Rekursive Dateisystemüberwachung ohne Polling mittels des `notify`-Crates.
 2. Nebenläufiger Worker-Pool (Tokio Worker / Channel) zur parallelen Verarbeitung neuer Dateien durch die konfigurierte Plugin-Pipeline.
 3. Integrierte Duplikaterkennung via SHA-256 Hash vor rechenintensiven Analysestufen.
@@ -28,6 +29,7 @@ Bereitstellung eines robusten, ereignisgesteuerten Hintergrund-Daemons (`flagme-
 ## Umfang
 
 Die Umsetzung umfasst:
+
 - Dateisystem-Event-Listener mit `notify` zur Beobachtung von Verzeichnissen auf Neuerstellungen und Schreibabschlüsse.
 - Nebenläufige Abarbeitungswarteschlange (Tokio Worker Task Pool) mit einstellbarer Parallelität (`workers`).
 - Idempotente Duplikatprüfung anhand des SHA-256 Datei-Hashes gegen `media.db` vor Pipeline-Ausführung.

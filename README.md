@@ -175,6 +175,8 @@ Build the entire workspace:
 cargo build --all
 ```
 
+Build everything for a release (sdd gates, tests, host, plugin components, WASI and native plugin CLIs, packages in `dist/packages`) with `make release`; `make help` lists the single steps (`make host`, `make components`, …).
+
 Compile all plugins to WebAssembly Components (`wasm32-wasip2`, `media-plugin` world). `flagme-host` loads plugins **only** from these components ([ADR 0003](docs/adr/0003-wasm-component-execution.md)); `plugin_dir` in `config.yaml` points at the output directory `target/wasm32-wasip2/release`:
 
 ```bash

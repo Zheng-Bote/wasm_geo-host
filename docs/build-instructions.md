@@ -20,6 +20,21 @@ To run all tests (the host tests build the plugin components first, see below):
 cargo test --workspace
 ```
 
+## Release Build (`make`)
+
+| Target | Result |
+| :--- | :--- |
+| `make release` | `check` + `test` + `binaries` + `verify` + `dist` |
+| `make binaries` | `host`, `components`, `wasm-cli`, `native-cli` |
+| `make host` | `target/release/flagme-host` |
+| `make components` | `target/wasm32-wasip2/release/flagme_plugin_<name>.wasm` (feature `component`) |
+| `make wasm-cli` | `target/wasm-cli/wasm32-wasip2/release/flagme-plugin-<name>.wasm` (own target directory, so the CLI build does not overwrite the components) |
+| `make native-cli` | `target/release/flagme-plugin-<name>` |
+| `make verify` | every component exports `process`, no CLI binary imports `host-capabilities` (needs `wasm-tools`) |
+| `make dist` | `dist/v<version>/…` and `dist/packages/*.tar.gz` with `SHA256SUMS-v<version>` |
+
+The version comes from `crates/host/Cargo.toml`. In the packages, `config.yaml` uses `plugin_dir: "plugins"` (relative to the working directory, so start `bin/flagme-host` from the unpacked directory).
+
 ## Building WASM Components (WASI 0.2 / Component Model)
 
 `flagme-host` runs plugins only as Wasm components ([ADR 0003](adr/0003-wasm-component-execution.md)). Build all of them with the `component` feature:

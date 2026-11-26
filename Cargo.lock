@@ -646,7 +646,7 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
 name = "flagme-host"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -681,21 +681,21 @@ dependencies = [
 
 [[package]]
 name = "flagme-plugin-ai-tagging"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
 ]
 
 [[package]]
 name = "flagme-plugin-countryflag"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
 ]
 
 [[package]]
 name = "flagme-plugin-duplicate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
  "image",
@@ -704,14 +704,14 @@ dependencies = [
 
 [[package]]
 name = "flagme-plugin-face-detection"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
 ]
 
 [[package]]
 name = "flagme-plugin-metadata"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
  "kamadak-exif",
@@ -719,14 +719,14 @@ dependencies = [
 
 [[package]]
 name = "flagme-plugin-ocr-text"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
 ]
 
 [[package]]
 name = "flagme-plugin-privacy-redact"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
  "image",
@@ -735,14 +735,14 @@ dependencies = [
 
 [[package]]
 name = "flagme-plugin-reversegeo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
 ]
 
 [[package]]
 name = "flagme-plugin-thumbnail"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
  "image",
@@ -750,7 +750,7 @@ dependencies = [
 
 [[package]]
 name = "flagme-plugin-timeline"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -759,7 +759,7 @@ dependencies = [
 
 [[package]]
 name = "flagme-plugin-weather-enrich"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
  "serde_json",
@@ -767,7 +767,7 @@ dependencies = [
 
 [[package]]
 name = "flagme-sdk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "flagme-test-probe"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flagme-sdk",
 ]
@@ -2577,7 +2577,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-geo-models"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",

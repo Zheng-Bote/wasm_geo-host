@@ -1,9 +1,9 @@
 ---
 feature: embedded-web-ui
-status: draft
+status: accepted
 archive-after:
 touches:
-  - "crates/host/**"
+  - 'crates/host/**'
 ---
 
 # PRD — embedded-web-ui (`embedded-web-ui`)
@@ -15,6 +15,7 @@ Bislang erfordert die Einsicht und Verifikation von Verarbeitungsergebnissen der
 ## Ziel
 
 Bereitstellung eines leichtgewichtigen, eingebetteten HTTP-Webservers (`flagme-host serve`) und eines in das Binary einkompilierten Web-Dashboards auf Basis von `axum` und `rust-embed`:
+
 1. Embedded Webserver mit konfigurierbarem Port und Bind-Adresse.
 2. Vollständige REST-API für paginierte Fotoabfragen, Dokument-Details (`UnifiedDocument`) und HTTP-Caching für Vorschaubilder.
 3. Standardisierte GeoJSON-Schnittstelle (`/api/map/markers`), die Point-Features mit GPS-Koordinaten und Foto-Metadaten für Karten bereitstellt.
@@ -28,6 +29,7 @@ Bereitstellung eines leichtgewichtigen, eingebetteten HTTP-Webservers (`flagme-h
 ## Umfang
 
 Die Umsetzung umfasst:
+
 - Embedded HTTP-Server mit `axum` und `tower-http` zur Bereitstellung von Web-Endpunkten.
 - REST-Endpunkte:
   - `GET /api/photos`: Paginierte Liste von Fotos mit Filteroptionen (z. B. Land, Tag, Suchbegriff).
