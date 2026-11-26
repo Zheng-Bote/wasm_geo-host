@@ -1,6 +1,6 @@
 ---
 feature: faces-unique-storage
-status: draft
+status: archived
 archive-after:
 touches:
   - crates/host/src/**
@@ -13,7 +13,7 @@ touches:
 
 ## Problem
 
-Gesichts-IDs sind nur pro Foto eindeutig (`face-1`, `face-2`, …), `faces.id` ist aber der Primärschlüssel der Tabelle. Der Host speichert mit `INSERT OR REPLACE`; ein zweites Foto überschreibt deshalb die Gesichtszeilen früherer Fotos, und `persons.representative_face_id` zeigt auf das falsche Foto (Issue #24). Die IDs stammen von austauschbaren Detektoren ([ADR 0002](../adr/0002-plugins-without-engine-no-output.md)); der Speicher darf sich nicht auf global eindeutige IDs verlassen.
+Gesichts-IDs sind nur pro Foto eindeutig (`face-1`, `face-2`, …), `faces.id` ist aber der Primärschlüssel der Tabelle. Der Host speichert mit `INSERT OR REPLACE`; ein zweites Foto überschreibt deshalb die Gesichtszeilen früherer Fotos, und `persons.representative_face_id` zeigt auf das falsche Foto (Issue #24). Die IDs stammen von austauschbaren Detektoren ([ADR 0002](../../adr/0002-plugins-without-engine-no-output.md)); der Speicher darf sich nicht auf global eindeutige IDs verlassen.
 
 ## Ziel
 

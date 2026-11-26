@@ -1,6 +1,6 @@
 ---
 feature: faces-unique-storage
-status: draft
+status: archived
 archive-after:
 ---
 
