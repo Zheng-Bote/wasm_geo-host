@@ -1,6 +1,6 @@
 ---
 feature: capability-only-io
-status: draft
+status: archived
 archive-after:
 touches:
   - plugins/**
@@ -15,7 +15,7 @@ touches:
 
 ## Problem
 
-Die Verfassung verlangt, dass Plugins keine Ambient Authority besitzen und jeder Zugriff auf Systemressourcen eine Capability-Freigabe braucht (*Security* 1–2). Issue #25 listet Plugins, die direkt über `std::fs` oder externe Prozesse zugreifen. Die meisten Stellen sind mit #22, #23 und #40 entfallen. Übrig sind:
+Die Verfassung verlangt, dass Plugins keine Ambient Authority besitzen und jeder Zugriff auf Systemressourcen eine Capability-Freigabe braucht (_Security_ 1–2). Issue #25 listet Plugins, die direkt über `std::fs` oder externe Prozesse zugreifen. Die meisten Stellen sind mit #22, #23 und #40 entfallen. Übrig sind:
 
 - `timeline` liest die Änderungszeit der Datei mit `std::fs::metadata`, auch ohne `filesystem`-Freigabe.
 - Die Standalone-CLI von `metadata` ermittelt die Dateigröße mit `std::fs::metadata`.
