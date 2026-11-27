@@ -162,6 +162,9 @@ Real output of `flagme-host stream Examples/sample.jpg --config config.yaml` (20
     "precipitation_mm": 0.0,
     "is_day": true
   },
+  "faces": {
+    "detection_model": "yunet-2023mar"
+  },
   "privacy": {
     "is_redacted": true,
     "faces_redacted_count": 0,
@@ -186,7 +189,8 @@ What the values show:
 | `file.sha256`, `duplicate`, `thumbnails` | Read and written through the `filesystem` capability. `phash` is the dHash of the decoded pixels; the sample image is a flat colour field, hence all zeros. |
 | `timeline.modified_at` | `fs-modified` of the file (differs per checkout). |
 | `weather` | Live request to the Open-Meteo archive API through the `http` capability; absent without network. |
-| `ai`, `ocr`, `faces` | Absent: these plugins have no engine and are disabled ([ADR 0002](adr/0002-plugins-without-engine-no-output.md)). `privacy-redact` therefore warns that faces were not redacted. |
+| `faces` | `face-detection` runs the embedded YuNet model ([ADR 0009](adr/0009-plugin-inference-rten.md)). The sample has no face, so `faces` is empty (an empty list is not serialised) and only `detection_model` is shown; `privacy-redact` redacts nothing. |
+| `ai`, `ocr` | Absent: these plugins have no engine and are disabled ([ADR 0002](adr/0002-plugins-without-engine-no-output.md)). |
 
 ---
 

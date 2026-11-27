@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Real face detection** ([ADR 0009](docs/adr/0009-plugin-inference-rten.md)): `face-detection` now runs the embedded YuNet model (OpenCV Zoo, `face_detection_yunet_2023mar`, MIT) with the pure-Rust engine `rten` inside its Wasm component. It writes normalised boxes, confidences and five landmarks to `doc.faces` (`detection_model = "yunet-2023mar"`), so `privacy-redact` now redacts real faces. The plugin is enabled by default in `config.yaml`, `config.mac-studio.yaml` and `AppConfig::default()`. Measured on a 9 MP photo: ≈ 0.2 s (decode and detection). JPEG and PNG only; truncated JPEGs are rejected.
+- Plugin components and WASI CLIs are built with Wasm SIMD (`+simd128`, `.cargo/config.toml`).
+
 ## [0.3.0] - 2026-11-27
 
 ### Breaking

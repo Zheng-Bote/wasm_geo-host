@@ -287,8 +287,10 @@ fn test_ac9_end_to_end_pipeline() {
     assert!(processed.location.is_some());
     assert!(processed.country.is_some());
     assert_eq!(processed.thumbnails.len(), 3);
-    // Experimental plugins without an engine are disabled by default and produce nothing (ADR 0002).
-    assert!(processed.ai.is_none() && processed.ocr.is_none() && processed.faces.is_none());
+    // Experimental plugins without an engine are disabled by default and produce nothing (ADR 0002);
+    // face-detection runs the built-in YuNet model and finds no face in this image (ADR 0009).
+    assert!(processed.ai.is_none() && processed.ocr.is_none());
+    assert_eq!(processed.faces.as_ref().map(|f| f.faces.len()), Some(0));
     assert!(processed.duplicate.is_some());
     assert!(processed.timeline.is_some());
 
