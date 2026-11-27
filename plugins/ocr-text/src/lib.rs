@@ -1,3 +1,5 @@
+pub mod paddle;
+
 use flagme_sdk::{
     OcrInfo, Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache, SettingsReader,
     UnifiedDocument,
@@ -9,27 +11,43 @@ use flagme_sdk::{
 pub trait OcrEngine: Send + Sync {
     fn name(&self) -> &str;
     fn recognize(&self, image: &[u8]) -> Result<OcrInfo, String>;
+
+    /// Like `recognize`, but reads at most `max_regions` text lines. Returns the number of lines
+    /// found if it exceeded the limit. Engines without a limit use the default.
+    fn recognize_limited(&self, image: &[u8], max_regions: usize) -> Result<(OcrInfo, Option<usize>), String> {
+        let _ = max_regions;
+        self.recognize(image).map(|info| (info, None))
+    }
 }
 
 /// Configurable parameters of the OCR plugin (`config.yaml` `settings`).
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OcrSettings {
     /// Regions with a lower confidence are dropped.
     pub min_confidence: f32,
+    /// At most this many text lines are read per image.
+    pub max_regions: u32,
+}
+
+impl Default for OcrSettings {
+    fn default() -> Self {
+        Self { min_confidence: 0.5, max_regions: 200 }
+    }
 }
 
 impl PluginSettings for OcrSettings {
     const PLUGIN: &'static str = "ocr-text";
 
     fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
-        r.not_supported("engine", &[], "no OCR engine is built in, see ADR 0002");
+        r.not_supported("engine", &[], "only the built-in PaddleOCR engine is available, see ADR 0009");
         Self {
             min_confidence: r.f32("min_confidence", &[], 0.0..=1.0, base.min_confidence),
+            max_regions: r.u32("max_regions", &[], 1..=1000, base.max_regions),
         }
     }
 }
 
-/// Drops regions below `min_confidence` and rebuilds `combined_text` / `primary_language`.
+/// Drops regions below `min_confidence` and rebuilds `combined_text` (lines joined by `\n`).
 pub fn filter_by_confidence(mut info: OcrInfo, min_confidence: f32) -> OcrInfo {
     if min_confidence <= 0.0 {
         return info;
@@ -40,7 +58,7 @@ pub fn filter_by_confidence(mut info: OcrInfo, min_confidence: f32) -> OcrInfo {
         .iter()
         .map(|r| r.text.as_str())
         .collect::<Vec<_>>()
-        .join(" ");
+        .join("\n");
     if info.regions.is_empty() {
         info.primary_language = None;
     }
@@ -52,6 +70,8 @@ pub fn filter_by_confidence(mut info: OcrInfo, min_confidence: f32) -> OcrInfo {
 /// Without an engine the plugin leaves `doc.ocr` untouched and logs a warning (ADR 0002).
 pub struct OcrTextPlugin {
     engine: Option<Box<dyn OcrEngine>>,
+    /// Why the built-in engine could not be loaded, reported in `process`.
+    unavailable: Option<String>,
     settings: SettingsCache<OcrSettings>,
 }
 
@@ -62,18 +82,24 @@ impl Default for OcrTextPlugin {
 }
 
 impl OcrTextPlugin {
-    /// Plugin without an OCR engine.
+    /// Plugin with the built-in PaddleOCR engine (ADR 0009).
     pub fn new() -> Self {
-        Self {
-            engine: None,
-            settings: SettingsCache::new(OcrSettings::default()),
+        match paddle::PaddleOcrEngine::new() {
+            Ok(engine) => Self::with_engine(Box::new(engine)),
+            Err(e) => Self {
+                engine: None,
+                unavailable: Some(e),
+                settings: SettingsCache::new(OcrSettings::default()),
+            },
         }
     }
 
+    /// Plugin with the given engine (used by tests).
     pub fn with_engine(engine: Box<dyn OcrEngine>) -> Self {
         Self {
             engine: Some(engine),
-            ..Self::new()
+            unavailable: None,
+            settings: SettingsCache::new(OcrSettings::default()),
         }
     }
 }
@@ -92,7 +118,10 @@ impl Plugin for OcrTextPlugin {
         let warn = |msg: String| ctx.capabilities.log("warn", &format!("ocr-text: {}", msg));
 
         let Some(engine) = self.engine.as_deref() else {
-            warn(format!("no OCR engine available (ADR 0002); '{}' not processed", doc.file.path));
+            match &self.unavailable {
+                Some(e) => warn(format!("built-in OCR engine unavailable: {}; '{}' not processed", e, doc.file.path)),
+                None => warn(format!("no OCR engine available (ADR 0002); '{}' not processed", doc.file.path)),
+            }
             return Ok(doc);
         };
         let bytes = match ctx.capabilities.fs_read(&doc.file.path) {
@@ -106,8 +135,16 @@ impl Plugin for OcrTextPlugin {
             "info",
             &format!("Running OCR engine '{}' on '{}'", engine.name(), doc.file.path),
         );
-        match engine.recognize(&bytes) {
-            Ok(info) => doc.ocr = Some(filter_by_confidence(info, settings.min_confidence)),
+        match engine.recognize_limited(&bytes, settings.max_regions as usize) {
+            Ok((info, truncated)) => {
+                if let Some(found) = truncated {
+                    warn(format!(
+                        "'{}': {} text lines found, read the {} most confident (max_regions)",
+                        doc.file.path, found, settings.max_regions
+                    ));
+                }
+                doc.ocr = Some(filter_by_confidence(info, settings.min_confidence));
+            }
             Err(e) => warn(format!("engine '{}' failed on '{}': {}", engine.name(), doc.file.path, e)),
         }
         Ok(doc)

@@ -120,10 +120,10 @@ fn test_ac12_documented_output_matches_real_run() {
     assert_eq!((et.taken_at, et.resolution_source), (at.taken_at, at.resolution_source), "timeline");
     assert!(at.modified_at.is_some(), "fs-modified through the capability");
     // `weather` depends on the network (live Open-Meteo request) and is not compared.
-    for field in ["ai", "ocr"] {
-        assert!(documented.get(field).is_none(), "{} must be absent (ADR 0002)", field);
-    }
-    assert!(actual.ai.is_none() && actual.ocr.is_none());
+    assert!(documented.get("ai").is_none(), "ai must be absent (ADR 0002)");
+    assert!(actual.ai.is_none());
+    // ocr-text runs the built-in PaddleOCR models (ADR 0009): checked, no text in the sample.
+    assert_eq!(expected.ocr, actual.ocr, "ocr");
     // face-detection runs the built-in YuNet model (ADR 0009): checked, no face in the sample.
     assert_eq!(expected.faces, actual.faces, "faces");
 }

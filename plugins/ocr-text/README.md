@@ -1,30 +1,33 @@
 # OCR Text Recognition Plugin (`flagme-plugin-ocr-text`)
 
-> **Experimental — disabled by default.** No OCR engine is built in yet. Without an engine the plugin produces no result ([ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
-
 ## Overview
 
-The `ocr-text` plugin writes visible text (signs, documents, posters) as text regions with bounding boxes. The combined text is written into the host's full-text index (`photos_fts`, SQLite FTS5), so photos can be found by the words they show. Recognition comes from an exchangeable engine behind the `OcrEngine` trait. The engine receives only the image bytes, never the file name or path.
+The `ocr-text` plugin reads visible text (signs, documents, posters, meters) with the embedded **PaddleOCR PP-OCRv5** models (text detection plus Latin-script recognition, Apache-2.0). It runs them with the pure-Rust inference engine [`rten`](https://github.com/robertknight/rten) inside the plugin's Wasm component ([ADR 0009](../../docs/adr/0009-plugin-inference-rten.md)). The plugin writes text lines with bounding boxes and confidences. The combined text goes into the host's full-text index (`photos_fts`, SQLite FTS5), so `flagme-host search` finds photos by the text on them. Umlauts and ß are recognised ("Grüße aus München", "Straße").
+
+The engine receives only the image bytes, never the file name or path ([ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
 
 | Property | Value |
 | :--- | :--- |
 | Plugin name (`config.yaml`) | `ocr-text` |
 | Crate | `flagme-plugin-ocr-text` (`cdylib` + `rlib` + `[[bin]]`) |
-| Component | `flagme_plugin_ocr_text.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ocr-text`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
+| Component | `flagme_plugin_ocr_text.wasm`, built with `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ocr-text` (Wasm SIMD via `.cargo/config.toml`); loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.3.0` |
-| Reads | image bytes of `doc.file.path` |
-| Writes | `doc.ocr` (`OcrInfo`) — only if an engine is set |
+| Models | `PP-OCRv5_mobile_det` (4.8 MB) and `latin_PP-OCRv5_mobile_rec` (8.0 MB, 836 characters), Apache-2.0, embedded (`models/`, see [`models/SOURCE.md`](models/SOURCE.md)) |
+| Reads | image bytes of `doc.file.path` (JPEG, PNG) |
+| Writes | `doc.ocr` (`OcrInfo`) |
 | Capabilities | `filesystem` |
-| Configurable via `settings` | **Yes** (1 effective parameter, see §2.2) |
+| Configurable via `settings` | **Yes** (2 effective parameters, see §2.2) |
 
 ---
 
 ## 1. Key Features
 
-1. **Exchangeable engine** — `OcrEngine` trait (`name`, `recognize(image)`). `OcrTextPlugin::new()` has **no** engine; `with_engine(..)` sets one.
-2. **Confidence filter** — regions below `min_confidence` are dropped; `combined_text` and `primary_language` are rebuilt.
-3. **Honest failure** — no engine, an unreadable file or an engine error leaves `doc.ocr` unchanged (`None`) and logs a warning.
-4. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
+1. **Built-in PaddleOCR engine** (`paddle::PaddleOcrEngine`, name `paddleocr-v5-mobile-latin`). It finds text areas, merges them into lines and reads each line. The 836-character dictionary includes ä ö ü Ä Ö Ü ß, é è à ç and €.
+2. **Lines in reading order** with boxes normalised to 0.0–1.0 and a confidence per line. `combined_text` is the lines joined by newlines.
+3. **Confidence filter and line limit**: `min_confidence` (default 0.5) drops noise; `max_regions` (default 200) bounds the work per photo.
+4. **Clear semantics**: `doc.ocr = None` means "not determined"; `Some` with no regions means "checked, no text found". `primary_language` is never guessed and stays `None`.
+5. **Honest failure**: an unreadable file, an unsupported format (HEIC, AVIF, …), a truncated JPEG or a model error leave `doc.ocr` unchanged (`None`) and log a warning with the path and the cause.
+6. **Exchangeable engine**: the `OcrEngine` trait (`name`, `recognize`, `recognize_limited`); `OcrTextPlugin::with_engine(..)` replaces the built-in one, e.g. in tests.
 
 ---
 
@@ -35,32 +38,56 @@ The `ocr-text` plugin writes visible text (signs, documents, posters) as text re
 ```yaml
 plugins:
   ocr-text:
-    # experimental: no engine built in, produces no results (ADR 0002)
-    enabled: false
+    # built-in PaddleOCR PP-OCRv5 engine for Latin script (ADR 0009)
+    enabled: true
     capabilities:
       - filesystem     # read image bytes
+    resource_limits:
+      timeout_ms: 30000
 ```
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `enabled` | bool | `false` in all shipped profiles and `AppConfig::default()` | `false` → stage is skipped. |
+| `enabled` | bool | `true` in `config.yaml`, `config.mac-studio.yaml` and `AppConfig::default()` | `false` → stage is skipped. |
 | `capabilities` | list | `[filesystem]` | See §4. |
+| `resource_limits` | map | `timeout_ms: 30000` | Own time limit; a text-heavy photo takes a few seconds (§2.4). |
 | `settings` | map | `{}` | See §2.2. |
 
 ### 2.2 `settings`
 
 | Key | Type / values | Default | Effect |
 | :--- | :--- | :--- | :--- |
-| `min_confidence` | float 0.0–1.0 | `0.0` | Regions with a lower confidence are dropped. |
-| `engine` | any | — | **Not supported yet** (no built-in engine) → warning, ignored. |
+| `min_confidence` | float 0.0–1.0 | `0.5` | Lines with a lower confidence are dropped (below 0.5 they are mostly noise such as single characters). |
+| `max_regions` | integer 1–1000 | `200` | At most this many text lines are read per image; if more are found, the most confident ones are read and a warning is logged. |
+| `engine` | any | — | **Not supported**: only the built-in PaddleOCR engine exists. A warning is logged and the key is ignored. |
 
 All values are strings and follow the shared SDK rules (`flagme_sdk::settings`): numbers outside the range are clamped with a warning; invalid values and unknown keys produce a `warn` log entry `settings[<plugin>]: …` and the default applies.
+
+### 2.3 Built-in Parameters (not configurable)
+
+| Step | Value |
+| :--- | :--- |
+| Detection input | longest side 960 px (multiples of 32), BGR, ImageNet mean/std |
+| Text areas | probability > 0.3, connected areas as axis-aligned boxes, mean probability ≥ 0.6, expanded by the DB unclip ratio 1.5 |
+| Lines | boxes overlapping vertically by ≥ 50 % with a horizontal gap ≤ 0.8 line heights are merged |
+| Recognition input | height 48 px, width proportional (at least 320), BGR, −1..1; greedy CTC decoding |
+| Orientation | the EXIF orientation is **not** applied; rotated or curved text is not straightened |
+
+### 2.4 Performance (macOS, Apple Silicon, release build, Wasm SIMD)
+
+| Image | Time per image |
+| :--- | --: |
+| 1400 × 420, 4 lines | ≈ 0.6 s |
+| 1200 × 1600 book cover, 16 areas | ≈ 1.7 s |
+| 2268 × 4032 photo, 55 areas | ≈ 4.3 s |
+
+Time grows with the number of text lines (each line is read separately).
 
 ---
 
 ## 3. Pipeline Position
 
-No dependencies on other plugins.
+No dependencies on other plugins. Its text is indexed by the host (`photos_fts`).
 
 ---
 
@@ -76,14 +103,14 @@ No dependencies on other plugins.
 
 ```rust
 pub struct OcrInfo {
-    pub combined_text: String,              // all region texts joined with " "
-    pub regions: Vec<TextRegion>,
-    pub primary_language: Option<String>,   // None if no regions
+    pub combined_text: String,              // all lines joined with "\n"
+    pub regions: Vec<TextRegion>,           // lines in reading order
+    pub primary_language: Option<String>,   // always None (language is not detected)
 }
 
 pub struct TextRegion {
     pub text: String,
-    pub confidence: f32,
+    pub confidence: f32,                    // mean character probability, 0.0..1.0
     pub bbox: BoundingBox,                  // x, y, width, height in 0.0..1.0
 }
 ```
@@ -92,32 +119,23 @@ Warnings (`warn` log level):
 
 | Message | Cause |
 | :--- | :--- |
-| `ocr-text: no OCR engine available (ADR 0002); '<path>' not processed` | plugin created with `new()` |
+| `ocr-text: built-in OCR engine unavailable: …; '<path>' not processed` | the embedded models could not be loaded |
 | `ocr-text: cannot read '<path>': …` | file not readable / capability missing |
-| `ocr-text: engine '<name>' failed on '<path>': …` | engine returned an error |
+| `ocr-text: engine 'paddleocr-v5-mobile-latin' failed on '<path>': …` | unsupported format, truncated or undecodable image, model error |
+| `ocr-text: '<path>': <n> text lines found, read the <m> most confident (max_regions)` | more lines than `max_regions` |
 
 ---
 
 ## 6. Usage Examples
 
-### 6.1 Rust API — Plugging in an Engine
+### 6.1 Rust API
 
 ```rust
 use flagme_plugin_ocr_text::{OcrEngine, OcrTextPlugin};
-use flagme_sdk::OcrInfo;
+use flagme_plugin_ocr_text::paddle::PaddleOcrEngine;
 
-struct MyEngine;
-impl OcrEngine for MyEngine {
-    fn name(&self) -> &str {
-        "my-engine"
-    }
-    fn recognize(&self, image: &[u8]) -> Result<OcrInfo, String> {
-        // decode `image`, run your OCR backend, map its result to OcrInfo
-        Err("not implemented".into())
-    }
-}
-
-let plugin = OcrTextPlugin::with_engine(Box::new(MyEngine));
+let plugin = OcrTextPlugin::new();                          // built-in PaddleOCR
+let info = PaddleOcrEngine::new()?.recognize(&png_bytes)?;  // engine on its own
 ```
 
 ### 6.2 Standalone CLI
@@ -127,19 +145,27 @@ cat doc.json | wasmtime run -S cli-exit-with-code --dir . \
   target/wasm32-wasip2/release/flagme-plugin-ocr-text.wasm
 ```
 
-Empty input prints `Plugin ocr-text v0.3.0`. The CLI uses `OcrTextPlugin::new()` and therefore returns the document unchanged.
+Empty input prints `Plugin ocr-text v0.3.0`. The CLI runs with `NoopCapabilities` (no file access), so it cannot read the image and leaves `doc.ocr` empty with a warning.
 
 ### 6.3 SQLite
 
 ```sql
 SELECT photo_id, combined_text, primary_language FROM ocr_texts;
 SELECT photo_id, text, confidence, bbox_x, bbox_y, bbox_w, bbox_h FROM ocr_regions;
-SELECT photo_id FROM photos_fts WHERE photos_fts MATCH 'ocr_text:Linden';
+SELECT photo_id FROM photos_fts WHERE photos_fts MATCH 'ocr_text:München';
 ```
 
 ---
 
 ## 7. Limitations & Implementation Notes
 
-- **No built-in engine.** The former `DefaultOcrEngine` (file-name keywords, metadata strings, byte-contrast heuristic, fixed bounding boxes) was removed ([#23](https://github.com/Zheng-Bote/wasm_geo-host/issues/23), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)). A real engine follows as a separate feature with its own ADR.
-- Databases filled by earlier versions may still contain synthetic OCR texts until the photos are processed again.
+- **Latin script only**: other scripts (Cyrillic, Greek, CJK) are not recognised. Characters missing from the dictionary (e.g. the en dash "–") are dropped.
+- **Horizontal text**: boxes are axis-aligned; rotated, vertical or curved text is read poorly or not at all.
+- **Small text** in large photos can be missed (detection works on a 960 px image).
+- **Formats**: JPEG and PNG only; a JPEG counts as complete only if an end-of-image marker follows its scan data.
+- **No language detection**: `primary_language` stays `None`.
+- Databases filled by versions before 0.2.0 may still contain synthetic OCR texts until the photos are processed again.
+
+## 8. Models and Licence
+
+PP-OCRv5 mobile text detection and Latin recognition models by the PaddlePaddle Authors ([PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)), ONNX versions from Hugging Face (`PaddlePaddle/PP-OCRv5_mobile_det_onnx`, `PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx`), licensed under the Apache-2.0 License ([`models/LICENSE`](models/LICENSE)). Sources, sizes and SHA-256: [`models/SOURCE.md`](models/SOURCE.md).

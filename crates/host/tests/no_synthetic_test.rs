@@ -108,11 +108,12 @@ fn test_ac2_output_independent_of_file_name() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// no-synthetic-output AC-3: without an engine ocr-text and ai-tagging leave their field None and warn; face-detection has the built-in YuNet engine (ADR 0009) and reports no face in a plain image
+// no-synthetic-output AC-3: without an engine ai-tagging leaves its field None and warns; face-detection (YuNet) and ocr-text (PaddleOCR) have built-in engines (ADR 0009) whose result depends only on the image bytes, never on the (misleading) file name
 #[test]
 fn test_ac3_no_engine_no_result() {
     let dir = temp_dir("ac3");
     let bytes = plain_jpeg(64, 48);
+    let mut first_real = None;
     for name in MAGIC_NAMES {
         let path = write_file(&dir, name, &bytes);
         let caps = Arc::new(LogCaps::default());
@@ -121,11 +122,15 @@ fn test_ac3_no_engine_no_result() {
         let d = OcrTextPlugin::new().process(doc(&path), &c).unwrap();
         let d = AiTaggingPlugin::new().process(d, &c).unwrap();
         let d = FaceDetectionPlugin::new().process(d, &c).unwrap();
-        assert!(d.ocr.is_none() && d.ai.is_none(), "{}", name);
-        assert_eq!(d.faces.as_ref().map(|f| f.faces.len()), Some(0), "{}: checked, no face", name);
+        assert!(d.ai.is_none(), "{}", name);
+        let real = (d.ocr.clone().expect("ocr result"), d.faces.clone().expect("faces result"));
+        match &first_real {
+            None => first_real = Some(real),
+            Some(first) => assert_eq!(first, &real, "{}: result depends on the file name", name),
+        }
 
         let w = caps.warnings();
-        assert!(w.iter().any(|m| m.starts_with("ocr-text: no OCR engine available (ADR 0002)")), "{:?}", w);
+        assert!(!w.iter().any(|m| m.starts_with("ocr-text:")), "{:?}", w);
         assert!(w.iter().any(|m| m.starts_with("ai-tagging: no vision model available (ADR 0002)")), "{:?}", w);
         assert!(!w.iter().any(|m| m.starts_with("face-detection:")), "{:?}", w);
 
@@ -134,8 +139,13 @@ fn test_ac3_no_engine_no_result() {
         let d = OcrTextPlugin::new().process(doc(&path), &c).unwrap();
         let d = AiTaggingPlugin::new().process(d, &c).unwrap();
         let d = FaceDetectionPlugin::new().process(d, &c).unwrap();
-        assert!(d.ocr.is_none() && d.ai.is_none(), "{} with engine settings", name);
-        assert_eq!(d.faces.as_ref().map(|f| f.faces.len()), Some(0), "{} with engine settings", name);
+        assert!(d.ai.is_none(), "{} with engine settings", name);
+        assert_eq!(
+            Some(&(d.ocr.clone().expect("ocr result"), d.faces.clone().expect("faces result"))),
+            first_real.as_ref(),
+            "{} with engine settings",
+            name
+        );
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -259,7 +269,7 @@ fn test_ac5_engine_settings_not_supported() {
             "settings[ai-tagging]: 'mps' for 'device' is not supported yet (no vision model is built in, see ADR 0002), ignored",
             "settings[face-detection]: 'cpu' for 'device' is not supported yet (only the built-in YuNet detector is available, see ADR 0009), ignored",
             "settings[face-detection]: 'heavy' for 'tier' is not supported yet (only the built-in YuNet detector is available, see ADR 0009), ignored",
-            "settings[ocr-text]: 'tesseract' for 'engine' is not supported yet (no OCR engine is built in, see ADR 0002), ignored",
+            "settings[ocr-text]: 'tesseract' for 'engine' is not supported yet (only the built-in PaddleOCR engine is available, see ADR 0009), ignored",
         ]
     );
 
@@ -279,7 +289,7 @@ fn test_ac5_engine_settings_not_supported() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// no-synthetic-output AC-6: shipped configs and the built-in default disable ocr-text and ai-tagging; face-detection has a real engine since ADR 0009 and is enabled (config.docker.yaml is not maintained)
+// no-synthetic-output AC-6: shipped configs and the built-in default disable ai-tagging; face-detection and ocr-text have real engines since ADR 0009 and are enabled (config.docker.yaml is not maintained)
 #[test]
 fn test_ac6_shipped_configs_disable_experimental_plugins() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
@@ -290,8 +300,8 @@ fn test_ac6_shipped_configs_disable_experimental_plugins() {
     for (name, cfg) in configs {
         for plugin in ["ocr-text", "ai-tagging", "face-detection"] {
             let p = cfg.plugins.get(plugin).unwrap_or_else(|| panic!("{}: {} missing", name, plugin));
-            if plugin == "face-detection" {
-                assert!(p.enabled || name == "config.docker.yaml", "{}: face-detection must be enabled (ADR 0009)", name);
+            if plugin == "face-detection" || plugin == "ocr-text" {
+                assert!(p.enabled || name == "config.docker.yaml", "{}: {} must be enabled (ADR 0009)", name, plugin);
             } else {
                 assert!(!p.enabled, "{}: {} must be disabled (ADR 0002)", name, plugin);
             }
