@@ -7,7 +7,7 @@ The `reversegeo` plugin resolves GPS coordinates from the [`UnifiedDocument`](..
 - **International / English**: `country`, `country_code`, `region`, `county`, `city`.
 - **Native / localized**: `local_country`, `local_region`, `local_city`, `local_language` (e.g. `Deutschland` / `München` / `de`).
 
-Resolution order: **KV cache → offline table → online geocoder (Nominatim)**. If none of them resolves the coordinates, the name fields stay empty, the plugin logs `reversegeo: no location names for '<path>' (<lat>, <lon>): <cause>` and caches nothing; no placeholder location is invented ([#52](https://github.com/Zheng-Bote/wasm_geo-host/issues/52), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
+Resolution order: **KV cache → offline GeoNames gazetteer → online geocoder (Nominatim)**. If none of them resolves the coordinates, the name fields stay empty, the plugin logs `reversegeo: no location names for '<path>' (<lat>, <lon>): <cause>` and caches nothing; no placeholder location is invented ([#52](https://github.com/Zheng-Bote/wasm_geo-host/issues/52), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
 
 | Property | Value |
 | :--- | :--- |
@@ -24,9 +24,9 @@ Resolution order: **KV cache → offline table → online geocoder (Nominatim)**
 
 ## 1. Key Features
 
-1. **Offline Nearest-City Lookup** — 34 reference cities in 16 countries with native names (table in §2.4). Zero network overhead.
-2. **Country Bounding-Box Fallback** — 7 country boxes (DE, FR, IT, US, JP, ES, GB) when no reference city is close enough.
-3. **Online Fallback** — Nominatim / OpenStreetMap (`accept-language` configurable, default `en`) for coordinates outside the offline data.
+1. **Offline Nearest-Place Lookup** — embedded [GeoNames](https://www.geonames.org/) gazetteer `cities1000` (162,380 populated places worldwide, 7,280 in Germany; CC BY 4.0, data of 2026-11-27) with English and local names for place, county, region and country (§2.4, [ADR 0006](../../docs/adr/0006-geonames-gazetteer-names.md)). No network, no coordinates leave the machine.
+2. **No invented places** — without a place within `city_radius_km` the offline lookup returns nothing; there are no reference cities or country boxes any more (#62, #63).
+3. **Online Fallback** — Nominatim / OpenStreetMap (`accept-language` configurable, default `en`) for coordinates with no place within `city_radius_km`.
 4. **KV Caching** — results are stored per coordinate bucket (`geo:<lat>:<lon>`, default 3 decimals).
 5. **Dual-Mode Execution** — Wasm component (`media-plugin` world, feature `component`) run in the sandbox of `flagme-host`, or standalone CLI (`stdin` JSON → `stdout` JSON).
 
@@ -56,9 +56,9 @@ plugins:
 | Key | Type / range | Default | Effect |
 | :--- | :--- | :--- | :--- |
 | `offline_cache` | bool | `true` | `false` → no KV cache reads or writes. |
-| `offline_lookup` | bool | `true` | `false` → skip the embedded city table and country boxes. |
+| `offline_lookup` | bool | `true` | `false` → skip the embedded GeoNames gazetteer. |
 | `online_lookup` | bool | `true` | `false` → never query the online geocoder; coordinates outside the offline data keep empty names (warning). |
-| `city_radius_km` | integer 1–2000 | `200` | Search radius around the reference cities (200 km = the former fixed 1.8°). |
+| `city_radius_km` | integer 1–200 | `25` | Maximum great-circle distance from the photo to the nearest gazetteer place; farther places are not used (until 0.2.0: radius around 35 reference cities, default 200). |
 | `cache_precision` | integer 0–6 | `3` | Decimal places of the cache key `geo:<lat>:<lon>` (3 ≈ 111 m). |
 | `nominatim_url` | `http(s)://` URL | `https://nominatim.openstreetmap.org/reverse` | Base URL; the plugin appends `?format=jsonv2&lat=…&lon=…&accept-language=…`. |
 | `accept_language` | string | `en` | Language of the online request; stored as `local_language` for online results. |
@@ -66,7 +66,7 @@ plugins:
 ```yaml
     settings:
       online_lookup: "false"      # offline only
-      city_radius_km: "100"
+      city_radius_km: "50"
       accept_language: "de"
 ```
 
@@ -76,40 +76,44 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
-| Distance measure | `dist² = Δlat² + (Δlon · max(cos(lat), 0.2))²` in degrees, radius `city_radius_km / 111.1` | The nearest city within the radius wins. |
-| Online query | `<nominatim_url>?format=jsonv2&lat=…&lon=…&accept-language=<accept_language>` | Only if the offline lookup finds nothing and `online_lookup = true`. |
+| Distance measure | Great-circle distance (haversine, earth radius 6,371 km) over the 1° grid cells that cover `city_radius_km` | The nearest place within the radius wins; ties go to the lower index. |
+| Online query | `<nominatim_url>?format=jsonv2&lat=…&lon=…&accept-language=<accept_language>` | Only if no gazetteer place lies within `city_radius_km` and `online_lookup = true`. |
 | HTTP timeout | 2 s (host `curl --max-time 2`) | Defined by the host capability, not by the plugin. |
-| No result | Name fields stay `None`, coordinates are kept, warning with the cause (`online_lookup is off`, `unreadable geocoder response` or the `http_get` error), no cache entry | When offline and online both fail. |
+| No result | Name fields stay `None`, coordinates are kept, warning with the cause (`no place within city_radius_km (<n> km) … online_lookup is off`, `unreadable geocoder response` or the `http_get` error), no cache entry | When offline and online both fail. |
+| Unusable data | `reversegeo: offline data unusable: <reason>` warning; treated like "no place found" | `places.bin` damaged or of another format version. |
 
-### 2.4 Offline Reference Data
+### 2.4 Offline Gazetteer (GeoNames)
 
-| Country | Cities (English name) |
+| Property | Value |
 | :--- | :--- |
-| DE | Berlin, Munich, Hamburg, Cologne, Frankfurt, Stuttgart, Düsseldorf, Leipzig, Dresden |
-| AT | Vienna, Innsbruck |
-| CH | Zurich, Geneva |
-| FR | Paris, Lyon, Marseille |
-| IT | Rome, Milan, Venice |
-| ES | Madrid, Barcelona |
-| PT | Lisbon |
-| GB | London |
-| NL | Amsterdam |
-| SE / NO / DK | Stockholm / Oslo / Copenhagen |
-| US | San Francisco, Los Angeles, New York |
-| CA | Toronto |
-| JP | Tokyo, Osaka |
-| AU | Sydney |
+| Source | [GeoNames](https://www.geonames.org/) dumps `cities1000`, `admin1CodesASCII`, `admin2Codes`, `countryInfo`, `alternateNamesV2` |
+| Licence | **CC BY 4.0** ([creativecommons.org/licenses/by/4.0](https://creativecommons.org/licenses/by/4.0/)); attribution in [`NOTICE`](../../NOTICE) |
+| Data date | 2026-11-27 (also stored in the file header) |
+| Content | 162,380 populated places (> 1,000 inhabitants or administrative seats; city sections `PPLX` excluded), 252 countries, 3,865 first-level and 47,752 second-level divisions |
+| File | `data/places.bin` (≈ 7.0 MB, format version 1), embedded with `include_bytes!`; format described in `src/gazetteer.rs` |
+| Refresh | `make geonames` downloads the dumps (≈ 220 MB) outside the repository, rebuilds the file with `tools/geonames-import` and leaves it for review and commit |
+| Coverage | 0.1° grid over Germany and the Alps: median 3.7 km, 90 % within 10 km to the nearest place; 95.6 % of a 0.25° grid within 25 km (the rest is mostly sea) |
+
+Name rules ([ADR 0006](../../docs/adr/0006-geonames-gazetteer-names.md)):
+
+| Field | Source |
+| :--- | :--- |
+| `city`, `region`, `county` | Preferred English name (`alternateNamesV2`, `en`), else the GeoNames main name |
+| `local_city`, `local_region` | Preferred name in the country's **first** language (`countryInfo`), else the GeoNames main name |
+| `country` | `countryInfo` name (e.g. `Czechia`) |
+| `local_country` | Country name in its first language, short form first (`Deutschland`); empty if GeoNames has none |
+| `local_language` | First language of the country (`de`, `fr`, …) |
 
 ### 2.5 Field Mapping per Resolution Path
 
-| Field | Offline city | Country box | Nominatim |
-| :--- | :--- | :--- | :--- |
-| `country` | English name | English name | `address.country` |
-| `country_code` | ISO-3166 alpha-2 | ISO-3166 alpha-2 | `address.country_code` (upper case) |
-| `region` | English region | capital region of the box | `state` → `region` → city |
-| `county` | from table | capital city of the box | `county` → city |
-| `city` | English city | capital city of the box | `city` → `town` → `village` → `municipality` |
-| `local_*` | native names | native names | **copy of the English values**, `local_language = "en"` |
+| Field | Offline gazetteer | Nominatim |
+| :--- | :--- | :--- |
+| `country` | `countryInfo` name | `address.country` |
+| `country_code` | ISO-3166 alpha-2 | `address.country_code` (upper case) |
+| `region` | first-level division (English) | `state` → `region` → city |
+| `county` | second-level division (English), `None` if GeoNames has none | `county` → city |
+| `city` | nearest place (English) | `city` → `town` → `village` → `municipality` |
+| `local_*` | local names, see §2.4 | **copy of the English values**, `local_language = "en"` |
 
 ---
 
@@ -127,7 +131,7 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
 | `kv` | `kv_get` / `kv_set` with key `geo:<lat>:<lon>` | No caching; every document is resolved again. |
-| `http` | Nominatim request | Coordinates outside the offline data keep empty names; warning with the cause. |
+| `http` | Nominatim request | Coordinates with no gazetteer place within `city_radius_km` keep empty names; warning with the cause. |
 
 ---
 
@@ -143,7 +147,7 @@ pub struct LocationInfo {
     pub country: Option<String>,          // "Germany"
     pub country_code: Option<String>,     // "DE"
     pub region: Option<String>,           // "Bavaria"
-    pub county: Option<String>,           // "Munich"
+    pub county: Option<String>,           // "Upper Bavaria"
     pub city: Option<String>,             // "Munich"
 
     // Localized (native language of the country)
@@ -171,7 +175,7 @@ cat doc_with_coords.json | wasmtime run -S cli-exit-with-code \
   target/wasm32-wasip2/release/flagme-plugin-reversegeo.wasm
 ```
 
-The CLI runs with `NoopCapabilities`: no HTTP (offline lookup only) and no persistent cache.
+The CLI runs with `NoopCapabilities`: no HTTP (offline gazetteer only) and no persistent cache. It embeds the same `places.bin` as the component.
 
 ### 6.3 SQLite
 
@@ -183,7 +187,10 @@ SELECT photo_id, country, city, local_country, local_city, local_language FROM l
 
 ## 7. Limitations & Implementation Notes
 
-- **Country boxes are coarse:** a coordinate in Germany more than `city_radius_km` (default 200 km) away from every reference city is resolved as `Berlin` (box capital). The boxes overlap; the first matching entry (order DE, FR, IT, US, JP, ES, GB) wins.
+- **Nearest place, not municipality:** the gazetteer holds points, not boundaries. A photo gets the nearest populated place, which is usually the town it was taken in or a direct neighbour. Close to a border the nearest place can lie in the neighbouring country (e.g. a point in Rome's Trastevere resolves to `Vatican City`).
+- **Districts coded as places:** GeoNames lists some city districts as ordinary places or administrative seats (e.g. `Královské Vinohrady` in Prague, `Camden` in London, `Paris 18 Buttes-Montmartre`); a photo there gets the district name, not the city.
+- **Multilingual countries use their first language** for `local_*` (from `countryInfo`): Geneva is `Genf` (`de`), Brussels `Brussel` (`nl`), Bolzano `Bolzano` (`it`).
+- **Data size:** `places.bin` adds ≈ 7 MB to the component; on macOS wasmtime copies it into each instance (measured median of a `reversegeo` call via the host: < 1 ms).
 - **Online results use one language** (`accept_language`): `local_*` and the international fields get the same values.
 - **The KV cache lives in memory** of the host process and is lost on restart.
-- If the host has no network, `http_get` returns `{"status": "offline", …}`; this is treated like a failed request.
+- If the host has no network, `http_get` fails with the cause; the names stay empty and nothing is cached (#52).

@@ -125,7 +125,7 @@ flowchart LR
 | Plugin | Capability Requirements | Description |
 | :--- | :--- | :--- |
 | **`metadata`** | `filesystem` | Lossless extraction of EXIF, IPTC, and XMP tags; preserves all vendor metadata in `raw_tags`. |
-| **`reversegeo`** | `http`, `kv` | Resolves lat/lon coordinates to country, region, county, and city via offline Natural Earth and online OSM fallback. |
+| **`reversegeo`** | `http`, `kv` | Resolves lat/lon coordinates to country, region, county, and city via an embedded offline GeoNames gazetteer (162k places, CC BY 4.0) and an optional online OSM/Nominatim fallback. |
 | **`countryflag`** | _(none)_ | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g. 🇩🇪), continents, and regions. |
 | **`thumbnail`** | `filesystem` | Scales JPEG, PNG, WebP, TIFF and GIF to 128px, 512px and 1024px variants in pure Rust (aspect ratio and EXIF orientation kept). HEIC/AVIF are not supported yet. |
 | **`ai-tagging`** | `filesystem` | **Experimental, disabled by default.** Tags, description and embeddings from an exchangeable `VisionModel`; no model is built in yet ([ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md)). |

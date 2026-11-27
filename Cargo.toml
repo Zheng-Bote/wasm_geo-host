@@ -16,6 +16,7 @@ members = [
     "plugins/face-detection",
     "plugins/privacy-redact",
     "crates/host/tests/probe-plugin",
+    "tools/geonames-import",
 ]
 
 # Compiling the plugin components with an unoptimised Cranelift takes ~10 s per runtime start;

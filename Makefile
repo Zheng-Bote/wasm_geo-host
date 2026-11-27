@@ -2,6 +2,7 @@
 #
 #   make release   – tests, sdd gates, all release binaries and the packages in dist/packages
 #   make binaries  – only the binaries (host, plugin components, plugin CLIs)
+#   make geonames  – refresh the reversegeo offline gazetteer from GeoNames (network, ADR 0006)
 #   make help      – all targets
 #
 # The host loads plugins only as Wasm components (ADR 0003). Components (feature `component`)
@@ -40,7 +41,13 @@ PKG_COMP  := flagme-plugins-components-v$(VERSION)-$(WASM)
 PKG_CLI   := flagme-plugins-cli-v$(VERSION)-$(WASM)
 DOCS      := README.md CHANGELOG.md LICENSE NOTICE
 
-.PHONY: help release binaries host components wasm-cli native-cli verify test check dist clean-dist version
+# GeoNames dumps for `make geonames` (CC BY 4.0, https://www.geonames.org/); kept outside the repo
+GEONAMES_URL   := https://download.geonames.org/export/dump
+GEONAMES_DIR   ?= $(or $(TMPDIR),/tmp)/flagme-geonames
+GEONAMES_FILES := cities1000.zip alternateNamesV2.zip admin1CodesASCII.txt admin2Codes.txt countryInfo.txt
+GEONAMES_OUT   := plugins/reversegeo/data/places.bin
+
+.PHONY: help release binaries host components wasm-cli native-cli verify test check dist clean-dist version geonames
 
 help: ## Show the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-12s %s\n", $$1, $$2}'
@@ -74,6 +81,13 @@ verify: ## Check that every component exports the media-plugin world (needs wasm
 	  if wasm-tools component wit $$f | grep -q 'host-capabilities'; then echo "$$f: CLI imports host-capabilities"; exit 1; fi; \
 	done
 	@echo "verified $(words $(COMPONENTS)) components and $(words $(WASM_CLIS)) CLI binaries"
+
+geonames: ## Download GeoNames dumps and rebuild plugins/reversegeo/data/places.bin (commit it afterwards)
+	mkdir -p "$(GEONAMES_DIR)"
+	for f in $(GEONAMES_FILES); do curl -fsSL --retry 3 -o "$(GEONAMES_DIR)/$$f" "$(GEONAMES_URL)/$$f"; done
+	cd "$(GEONAMES_DIR)" && unzip -o -q cities1000.zip cities1000.txt && unzip -o -q alternateNamesV2.zip alternateNamesV2.txt
+	$(CARGO) run --release --locked -p geonames-import -- --input "$(GEONAMES_DIR)" --output $(GEONAMES_OUT) --date "$$(date -u +%F)"
+	@echo "Review and commit $(GEONAMES_OUT); update the data date in NOTICE, plugins/reversegeo/README.md and CHANGELOG.md"
 
 test: ## Workspace tests (the host tests build the components themselves)
 	$(CARGO) test --workspace --locked

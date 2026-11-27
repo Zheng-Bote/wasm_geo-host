@@ -334,21 +334,27 @@ fn reversegeo_online_lookup() {
     assert!(loc.country_code.is_none() && loc.country.is_none());
 }
 
-// plugin-settings AC-4: reversegeo city_radius_km limits the nearest-city search
+// plugin-settings AC-4: reversegeo city_radius_km limits the nearest-place search (maximum distance to the nearest GeoNames place, ADR 0006)
 #[test]
 fn reversegeo_city_radius_km() {
     let plugin = ReverseGeoPlugin::new();
     let caps = Arc::new(RecordingCaps::default());
-    let near_munich = || with_location(doc("a.jpg"), 48.4351, 11.582);
+    // North Sea, 30.7 km from Langeoog, the nearest place of the gazetteer.
+    let offshore = || with_location(doc("a.jpg"), 54.0, 7.3);
+    let offline = [("offline_cache", "off"), ("online_lookup", "off")];
 
-    let default = plugin.process(near_munich(), &ctx(&caps, &[("offline_cache", "off")])).unwrap();
-    assert_eq!(default.location.unwrap().city.as_deref(), Some("Munich"));
+    let default = plugin.process(offshore(), &ctx(&caps, &offline)).unwrap();
+    assert_eq!(default.location.unwrap().city, None, "default 25 km does not reach");
+
+    let wide = plugin
+        .process(offshore(), &ctx(&caps, &[offline[0], offline[1], ("city_radius_km", "50")]))
+        .unwrap();
+    assert_eq!(wide.location.unwrap().city.as_deref(), Some("Langeoog"));
 
     let small = plugin
-        .process(near_munich(), &ctx(&caps, &[("offline_cache", "off"), ("city_radius_km", "10")]))
+        .process(with_location(doc("a.jpg"), 48.4706, 11.9381), &ctx(&caps, &[offline[0], offline[1], ("city_radius_km", "1")]))
         .unwrap();
-    // No reference city within 10 km -> country bounding box (capital)
-    assert_eq!(small.location.unwrap().city.as_deref(), Some("Berlin"));
+    assert_eq!(small.location.unwrap().city.as_deref(), Some("Moosburg"), "a place within 1 km still resolves");
 }
 
 // plugin-settings AC-4: reversegeo cache_precision sets the decimals of the cache key
@@ -710,17 +716,16 @@ fn defaults_match_previous_behaviour() {
 
     let r = ReverseGeoSettings::default();
     assert!(r.offline_cache && r.offline_lookup && r.online_lookup);
-    assert_eq!((r.city_radius_km, r.cache_precision), (200, 3));
+    // city_radius_km changed with ADR 0006: maximum distance to the nearest GeoNames place.
+    assert_eq!((r.city_radius_km, r.cache_precision), (25, 3));
     assert_eq!(r.nominatim_url, "https://nominatim.openstreetmap.org/reverse");
     assert_eq!(r.accept_language, "en");
 
-    // Previous radius was 1.8 degrees: a point 1.79° (scaled) east of Berlin, outside every
-    // country box, still resolves to Berlin; with a smaller radius it would be unresolved.
+    // With the default radius a point in Berlin resolves offline to Berlin.
     let caps = Arc::new(RecordingCaps::default());
-    let lon = 13.405 + 1.79 / 52.52f64.to_radians().cos();
     let out = ReverseGeoPlugin::new()
         .process(
-            with_location(doc("a.jpg"), 52.52, lon),
+            with_location(doc("a.jpg"), 52.52, 13.405),
             &ctx(&caps, &[("offline_cache", "off"), ("online_lookup", "off")]),
         )
         .unwrap();

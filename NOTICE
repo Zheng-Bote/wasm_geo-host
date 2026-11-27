@@ -4,7 +4,11 @@ Copyright 2026 WASM Geo Host Contributors
 This product includes software developed by the WASM Geo Host Project.
 
 Third-Party Components & Attributions:
-- Natural Earth (public domain map and country boundary dataset)
+- GeoNames (https://www.geonames.org/), gazetteer data embedded in the reversegeo plugin
+  (plugins/reversegeo/data/places.bin, built from the cities1000, admin1CodesASCII, admin2Codes,
+  countryInfo and alternateNamesV2 dumps of 2026-11-27), licensed under
+  CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). The data was converted into a compact
+  binary format; city sections (PPLX) were dropped and names were selected per ADR 0006.
 - OpenStreetMap / Nominatim (ODbL / Attribution)
 - Wasmtime & Bytecode Alliance Component Model tooling (Apache-2.0 WITH LLVM-exception / MIT)
 - SQLite (Public Domain)

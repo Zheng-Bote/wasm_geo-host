@@ -32,6 +32,18 @@ cargo test --workspace
 | `make native-cli` | `target/release/flagme-plugin-<name>` |
 | `make verify` | every component exports `process`, no CLI binary imports `host-capabilities` (needs `wasm-tools`) |
 | `make dist` | `dist/v<version>/…` and `dist/packages/*.tar.gz` with `SHA256SUMS-v<version>` |
+| `make geonames` | refreshes `plugins/reversegeo/data/places.bin` from the GeoNames dumps (needs network and `unzip`; the only target that downloads) |
+
+### Offline gazetteer of `reversegeo` (`make geonames`)
+
+`reversegeo` embeds `plugins/reversegeo/data/places.bin`, built from [GeoNames](https://www.geonames.org/) (CC BY 4.0) by `tools/geonames-import` ([ADR 0006](adr/0006-geonames-gazetteer-names.md)). The file is committed, so normal builds need no network. To refresh it:
+
+```bash
+make geonames                       # downloads ≈ 220 MB into $TMPDIR/flagme-geonames (GEONAMES_DIR=… to change)
+git diff --stat plugins/reversegeo/data/places.bin
+```
+
+Then update the data date in `NOTICE`, `plugins/reversegeo/README.md` and `CHANGELOG.md` and commit the file on its own.
 
 The version comes from `crates/host/Cargo.toml`. In the packages, `config.yaml` uses `plugin_dir: "plugins"` (relative to the working directory, so start `bin/flagme-host` from the unpacked directory).
 
