@@ -829,6 +829,9 @@ name = "flagme-plugin-ocr-text"
 version = "0.3.0"
 dependencies = [
  "flagme-sdk",
+ "image",
+ "rten",
+ "rten-tensor",
 ]
 
 [[package]]

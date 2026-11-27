@@ -174,12 +174,12 @@ impl Default for AppConfig {
         plugins.insert(
             "ocr-text".to_string(),
             PluginConfig {
-                // experimental: no engine built in, produces no results (ADR 0002)
-                enabled: false,
+                // built-in PaddleOCR engine (ADR 0009)
+                enabled: true,
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
-                resource_limits: HashMap::new(),
+                resource_limits: HashMap::from([("timeout_ms".to_string(), serde_json::Value::from(30_000u64))]),
             },
         );
         plugins.insert(

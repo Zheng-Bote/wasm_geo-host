@@ -71,10 +71,12 @@ plugins:
       - kv
 
   ocr-text:
-  # experimental: no engine built in, produces no results (ADR 0002)
-    enabled: false
+  # built-in PaddleOCR PP-OCRv5 engine for Latin script (ADR 0009)
+    enabled: true
     capabilities:
       - filesystem
+    resource_limits:
+      timeout_ms: 30000
 
   face-detection:
   # built-in YuNet detector (ADR 0009); privacy-redact uses its boxes

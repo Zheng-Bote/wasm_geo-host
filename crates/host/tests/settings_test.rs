@@ -744,7 +744,8 @@ fn defaults_match_previous_behaviour() {
 
     assert_eq!(TimelineSettings::default().source_priority.len(), 6);
     assert_eq!(AiTaggingSettings::default().embedding_dim, 512);
-    assert_eq!(OcrSettings::default().min_confidence, 0.0);
+    // ocr-text filters noise by default since its real engine (ADR 0009, ocr-text-paddle AC-6).
+    assert_eq!(OcrSettings::default().min_confidence, 0.5);
     assert_eq!(FaceDetectionSettings::default().min_confidence, 0.0);
     let p = PrivacySettings::default();
     assert_eq!((p.block_size, p.gps_decimal_places, p.output_dir.as_str()), (16, 2, "cache/redacted"));

@@ -112,7 +112,7 @@ flowchart LR
     ai --> dup["6. duplicate\n(SHA256 & pHash Indexing)"]
     dup --> time["7. timeline\n(Timestamp Resolution)"]
     time --> weather["8. weather-enrich\n(Open-Meteo Historical)"]
-    weather --> ocr["9. ocr-text\n(experimental, off)"]
+    weather --> ocr["9. ocr-text\n(PP-OCRv5)"]
     ocr --> face["10. face-detection\n(YuNet)"]
     face --> privacy["11. privacy-redact\n(Pixelate / Blur / GPS Fuzz)"]
     privacy --> db[("12. SQLite Persistence\n(FTS5 & Vector Embeddings)")]
@@ -132,7 +132,7 @@ flowchart LR
 | **`duplicate`** | `filesystem`, `kv` | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to detect duplicates. |
 | **`timeline`** | `filesystem` | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime). |
 | **`weather-enrich`** | `http`, `kv` | Historical weather enrichment via Open-Meteo API (temperature, WMO weather codes, weather emojis, humidity). |
-| **`ocr-text`** | `filesystem` | **Experimental, disabled by default.** Text regions from an exchangeable `OcrEngine`, indexed into full-text search; no engine is built in yet ([ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md)). |
+| **`ocr-text`** | `filesystem` | Reads text (Latin script incl. umlauts and ß) with the embedded PaddleOCR PP-OCRv5 models (Apache-2.0) via `rten` in the sandbox: lines with boxes and confidences, indexed into full-text search ([ADR 0009](docs/adr/0009-plugin-inference-rten.md)). |
 | **`face-detection`** | `filesystem` | Detects faces with the embedded YuNet model (MIT) via the pure-Rust engine `rten` in the sandbox: normalised boxes, confidences and five landmarks; `privacy-redact` uses them to obfuscate faces ([ADR 0009](docs/adr/0009-plugin-inference-rten.md)). |
 | **`privacy-redact`** | `filesystem` | Privacy sanitization: visual obfuscation of detected faces/text (pixelate/blur), EXIF serial stripping, and GPS coordinate fuzzing. |
 

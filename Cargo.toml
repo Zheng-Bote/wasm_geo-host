@@ -39,3 +39,18 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.wasmparser]
 opt-level = 3
+
+# Inference in the plugins (ADR 0009): rten is extremely slow unoptimised; optimise it also in
+# dev/test builds, like the Cranelift crates above.
+[profile.dev.package.rten]
+opt-level = 3
+[profile.dev.package.rten-gemm]
+opt-level = 3
+[profile.dev.package.rten-vecmath]
+opt-level = 3
+[profile.dev.package.rten-simd]
+opt-level = 3
+[profile.dev.package.rten-tensor]
+opt-level = 3
+[profile.dev.package.rten-base]
+opt-level = 3

@@ -162,6 +162,9 @@ Real output of `flagme-host stream Examples/sample.jpg --config config.yaml` (20
     "precipitation_mm": 0.0,
     "is_day": true
   },
+  "ocr": {
+    "combined_text": ""
+  },
   "faces": {
     "detection_model": "yunet-2023mar"
   },
@@ -190,7 +193,8 @@ What the values show:
 | `timeline.modified_at` | `fs-modified` of the file (differs per checkout). |
 | `weather` | Live request to the Open-Meteo archive API through the `http` capability; absent without network. |
 | `faces` | `face-detection` runs the embedded YuNet model ([ADR 0009](adr/0009-plugin-inference-rten.md)). The sample has no face, so `faces` is empty (an empty list is not serialised) and only `detection_model` is shown; `privacy-redact` redacts nothing. |
-| `ai`, `ocr` | Absent: these plugins have no engine and are disabled ([ADR 0002](adr/0002-plugins-without-engine-no-output.md)). |
+| `ocr` | `ocr-text` runs the embedded PaddleOCR models ([ADR 0009](adr/0009-plugin-inference-rten.md)). The sample has no text, so `combined_text` is empty and no regions are listed. |
+| `ai` | Absent: `ai-tagging` has no engine and is disabled ([ADR 0002](adr/0002-plugins-without-engine-no-output.md)). |
 
 ---
 
