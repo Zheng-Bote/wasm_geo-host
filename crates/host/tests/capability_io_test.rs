@@ -74,7 +74,7 @@ fn runtime(grant: bool, out_dir: &Path) -> PluginRuntime {
         }
         config.plugins.insert(
             name.to_string(),
-            PluginConfig { enabled: true, path: None, capabilities: grants(grant), settings },
+            PluginConfig { enabled: true, path: None, capabilities: grants(grant), settings, resource_limits: HashMap::new() },
         );
     }
     config.pipeline = COMPONENT_PLUGINS.iter().map(|s| s.to_string()).collect();

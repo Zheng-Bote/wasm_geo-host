@@ -126,7 +126,7 @@ flowchart LR
 - **Ein Dokumentenmodell:** Alle Stufen lesen und schreiben `UnifiedDocument` (Quelle: `constitution.md:14`, `crates/models/src/lib.rs`).
 - **Ehrliche Lücken:** Plugins ohne echte Engine liefern nichts. Nicht bestimmbare Werte bleiben `None` mit einer Warnung (ADR 0002). `raw_tags` bleibt das verlustfreie Original (ADR 0001).
 - **Konfiguration statt Code:**
-  - `config.yaml` legt fest: Pipeline-Reihenfolge, `enabled`, Grants, `settings` je Plugin, `resource_limits`, `plugin_dir`.
+  - `config.yaml` legt fest: Pipeline-Reihenfolge, `enabled`, Grants, `settings` je Plugin, `resource_limits` (global und, nach 0.2.0, je Plugin), `plugin_dir`.
   - Die Settings liest das SDK nach gemeinsamen Regeln aus (Quelle: `docs/archive/design/plugin-settings.md:17-35`, `crates/host/src/config.rs`).
 
 # Bausteinsicht {#section-building-block-view}
@@ -339,7 +339,7 @@ Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität
 
    Quelle: `crates/host/src/storage.rs:66`, `crates/host/src/capabilities.rs:109`, `docs/archive/design/honest-http-get.md` (*Offene Punkte*).
 3. **KV-Speicher nur im Arbeitsspeicher:** Der Cache für Ortsnamen und Wetter geht mit dem Prozess verloren. Nach einem Neustart fragt der Host die externen Dienste deshalb erneut ab (Quelle: `crates/host/src/runtime.rs:57`).
-4. **Globale Ressourcengrenzen:** `resource_limits` gelten für alle Plugins gleich. Grenzen je Plugin sind ein Nicht-Ziel von 0.2.0 (Quelle: `docs/archive/prd/wasm-component-runtime.md:72`).
+4. **Globale Ressourcengrenzen:** In 0.2.0 gelten `resource_limits` für alle Plugins gleich. Nach 0.2.0 (unveröffentlicht) kann jedes Plugin eigene Grenzen bekommen (`plugins.<name>.resource_limits`); ohne Eintrag gilt weiter die globale Grenze (Quelle: `docs/prd/plugin-resource-limits.md`).
 5. **Startzeit:** In 0.2.0 werden die Komponenten bei jedem Host-Start kompiliert, im Release-Build etwa 1 s. Nach 0.2.0 (unveröffentlicht) behebt das der Komponenten-Cache aus ADR 0004. Dafür kommt ein neues Restrisiko hinzu: Ein Prozess desselben Benutzers kann Code über den Cache-Ordner einschleusen (Quelle: ADR 0004, *Konsequenzen*; `docs/prd/component-cache.md`).
 6. **Veraltete Archivtexte:** Die archivierte Tech Spec `wasm-geo-host` nennt noch `sqlx`-Migrationen und ältere WIT-Namen (Quelle: `docs/archive/design/wasm-geo-host.md:29`, `:53`, `:57-60`). Umgesetzt sind die `sqlite3`-CLI mit `migrations/20261125000000_init.sql` und WIT `wasmgeohost:media@0.2.0`.
 

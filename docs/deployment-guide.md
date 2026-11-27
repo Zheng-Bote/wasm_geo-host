@@ -23,6 +23,7 @@ WASM Geo Host is deployed as a single, self-contained binary (`flagme-host`) acc
    - Only plugins requiring filesystem reads receive the `filesystem` capability.
    - Only plugins requiring geocoding receive the `http` capability.
    - `resource_limits.max_memory_bytes` and `timeout_ms` are enforced for every plugin call.
+   - `plugins.<name>.resource_limits` gives one plugin its own `max_memory_bytes` and/or `timeout_ms` (higher or lower than the global values; missing fields inherit them). Give image-decoding plugins (`thumbnail`, `duplicate`, `privacy-redact`) more and metadata-only plugins less. Invalid values or unknown keys are logged as warnings at start and fall back to the global value; run with `RUST_LOG=flagme_host=debug` to see the effective limits per plugin.
 
 5. **Database Migration**:
    On first launch, `flagme-host` automatically executes embedded migrations (`migrations/20261125000000_init.sql`).

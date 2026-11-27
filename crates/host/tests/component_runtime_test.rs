@@ -26,6 +26,7 @@ fn probe_config(capabilities: &[&str], settings: &[(&str, &str)], limits: Option
             path: Some(common::probe_component().to_string_lossy().to_string()),
             capabilities: capabilities.iter().map(|s| s.to_string()).collect(),
             settings: settings.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            resource_limits: HashMap::new(),
         },
     );
     if let Some((memory, timeout)) = limits {

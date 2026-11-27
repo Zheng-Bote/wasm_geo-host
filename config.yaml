@@ -42,6 +42,10 @@ plugins:
     enabled: true
     capabilities:
       - filesystem
+    # Optional per-plugin limits; they replace the global resource_limits, missing fields inherit them.
+    # resource_limits:
+    #   max_memory_bytes: 1073741824 # 1 GB for large images
+    #   timeout_ms: 30000
 
   ai-tagging:
   # experimental: no engine built in, produces no results (ADR 0002)

@@ -38,6 +38,10 @@ plugins:
   thumbnail:
     enabled: true
     capabilities: ['filesystem']
+    # Optional per-plugin limits; they replace the global resource_limits, missing fields inherit them.
+    # resource_limits:
+    #   max_memory_bytes: 8589934592 # 8 GB for 2048 px variants of 100+ MP files
+    #   timeout_ms: 120000
     settings:
       quality: '95'
       variants: '128,256,512,1024,2048'
