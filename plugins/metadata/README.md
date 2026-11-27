@@ -9,7 +9,7 @@ The `metadata` plugin extracts EXIF, IPTC and XMP metadata from media files in p
 | Plugin name (`config.yaml`) | `metadata` |
 | Crate | `flagme-plugin-metadata` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_metadata.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-metadata`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.3.0` |
+| Version | `0.4.0` |
 | Reads | `doc.file.path` (file bytes) |
 | Writes | `doc.metadata`; `doc.location.latitude/longitude/altitude` (only if GPS was found) |
 | Capabilities | `filesystem` |

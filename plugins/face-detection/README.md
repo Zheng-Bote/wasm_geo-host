@@ -11,7 +11,7 @@ The detector receives only the image bytes, never the file name or path ([ADR 00
 | Plugin name (`config.yaml`) | `face-detection` |
 | Crate | `flagme-plugin-face-detection` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_face_detection.wasm`, built with `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-face-detection` (Wasm SIMD via `.cargo/config.toml`); loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.3.0` |
+| Version | `0.4.0` |
 | Model | YuNet 2023mar, 232,589 bytes, MIT, embedded (`models/`, see [`models/SOURCE.md`](models/SOURCE.md)) |
 | Reads | image bytes of `doc.file.path` (JPEG, PNG) |
 | Writes | `doc.faces` (`FacesInfo`, `detection_model = "yunet-2023mar"`) |
@@ -141,7 +141,7 @@ cat doc.json | wasmtime run -S cli-exit-with-code --dir . \
   target/wasm32-wasip2/release/flagme-plugin-face-detection.wasm
 ```
 
-Empty input prints `Plugin face-detection v0.3.0`. The CLI runs with `NoopCapabilities` (no file access), so it cannot read the image and leaves `doc.faces` empty with a warning.
+Empty input prints `Plugin face-detection v0.4.0`. The CLI runs with `NoopCapabilities` (no file access), so it cannot read the image and leaves `doc.faces` empty with a warning.
 
 ### 6.3 SQLite
 

@@ -9,7 +9,7 @@ The `duplicate` plugin finds exact copies (SHA-256) and visually similar images 
 | Plugin name (`config.yaml`) | `duplicate` |
 | Crate | `flagme-plugin-duplicate` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_duplicate.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-duplicate`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.3.0` |
+| Version | `0.4.0` |
 | Reads | `doc.id`, `doc.file.path` (file bytes) |
 | Writes | `doc.duplicate` (`DuplicateInfo`), `doc.file.sha256` |
 | Capabilities | `filesystem`, `kv` |

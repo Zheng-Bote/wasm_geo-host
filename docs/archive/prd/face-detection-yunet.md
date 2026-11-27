@@ -1,6 +1,6 @@
 ---
 feature: face-detection-yunet
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/face-detection/**
@@ -13,6 +13,7 @@ touches:
   - docs/arc42.md
   - CHANGELOG.md
   - Cargo.lock
+release: 0.4.0
 ---
 
 # PRD — Gesichtserkennung mit YuNet (`face-detection-yunet`)
@@ -23,7 +24,7 @@ touches:
 
 ## Ziel
 
-`face-detection` erkennt Gesichter mit dem eingebetteten Modell YuNet in `rten`, im Gast und mit Wasm-SIMD ([ADR 0009](../adr/0009-plugin-inference-rten.md)).
+`face-detection` erkennt Gesichter mit dem eingebetteten Modell YuNet in `rten`, im Gast und mit Wasm-SIMD ([ADR 0009](../../adr/0009-plugin-inference-rten.md)).
 
 - Es liefert für jedes Gesicht einen normierten Rahmen, eine Wahrscheinlichkeit und fünf Gesichtspunkte.
 - `privacy-redact` schwärzt damit echte Gesichter.

@@ -1,6 +1,6 @@
 [package]
 name = "clip-labels"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "Computes the CLIP text embeddings of the ai-tagging label list (plugins/ai-tagging/labels/labels.bin, ADR 0010)"
 publish = false

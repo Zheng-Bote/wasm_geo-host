@@ -1,6 +1,6 @@
 ---
 status: active
-release: 0.3.0
+release: 0.4.0
 ---
 <!--
 Gliederung: arc42-Template 9.1, © Dr. Peter Hruschka, Dr. Gernot Starke und Mitwirkende, https://arc42.org
@@ -18,7 +18,7 @@ Gliederung nach dem [arc42](https://arc42.org)-Template 9.1 (© Dr. Peter Hrusch
 
 WASM Geo Host (`flagme-host`) ist eine erweiterbare Medienverarbeitungsplattform in Rust. Sie reicht Fotos als `UnifiedDocument` durch eine konfigurierbare Pipeline von Plugins und speichert das Ergebnis in SQLite (Quelle: `docs/archive/prd/wasm-geo-host.md:26`).
 
-Die Plugins in Release 0.3.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
+Die Plugins in Release 0.4.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
 
 | Plugin | Aufgabe |
 |---|---|
@@ -30,9 +30,9 @@ Die Plugins in Release 0.3.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
 | `timeline` | Aufnahmezeit |
 | `weather-enrich` | historisches Wetter |
 | `privacy-redact` | Schwärzung, GPS-Unschärfe, Seriennummern |
-| `face-detection` | Gesichtserkennung mit dem eingebetteten Modell YuNet über `rten` im Gast (ADR 0009, nach 0.3.0) |
-| `ocr-text` | Texterkennung mit den eingebetteten Modellen PaddleOCR PP-OCRv5 (lateinische Schrift) über `rten` im Gast (ADR 0009, nach 0.3.0) |
-| `ai-tagging` | Embeddings und Schlagwörter aus fester Liste mit OpenAI CLIP ViT-B/32 (int8) über `rten` im Gast; Modelldatei über `make models` (ADR 0010, nach 0.3.0) |
+| `face-detection` | Gesichtserkennung mit dem eingebetteten Modell YuNet über `rten` im Gast (ADR 0009, seit 0.4.0) |
+| `ocr-text` | Texterkennung mit den eingebetteten Modellen PaddleOCR PP-OCRv5 (lateinische Schrift) über `rten` im Gast (ADR 0009, seit 0.4.0) |
+| `ai-tagging` | Embeddings und Schlagwörter aus fester Liste mit OpenAI CLIP ViT-B/32 (int8) über `rten` im Gast; Modelldatei über `make models` (ADR 0010, seit 0.4.0) |
 
 Dazu kommen Volltext- und Ähnlichkeitssuche, ein Verzeichnis-Watcher und eine eingebettete Web-Oberfläche (Quelle: `CHANGELOG.md`, Abschnitt 0.2.0 *Added*).
 
@@ -312,8 +312,8 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0006](adr/0006-geonames-gazetteer-names.md) | `reversegeo` bettet GeoNames `cities1000` als `places.bin` ein (committet, `make geonames`) und ordnet den nächsten Ort innerhalb von `city_radius_km` zu; Referenzstädte und Länder-Rechtecke entfallen. Lokale Namen: Landessprache, sonst GeoNames-Hauptname. Abgelöst durch 0008. |
 | [0007](adr/0007-http-client-rust.md) | Die Capability `http` läuft im Host-Prozess mit `ureq` (rustls, System-Zertifikate), mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen) und Proxy aus der Umgebung; ohne Rückfall auf ein externes Programm. (Seit 0.3.0.) |
 | [0008](adr/0008-short-region-names.md) | Ersetzt 0006 und übernimmt dessen Regeln. Regionsnamen (englisch und lokal) nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen als ganze Wortfolge steht (Salzburg statt State of Salzburg); sonst bleibt der Name (State of Berlin). Kreise bleiben unverändert. (Seit 0.3.0.) |
-| [0009](adr/0009-plugin-inference-rten.md) | Echte Engines laufen mit `rten` im Gast; Modelle mit freier Lizenz liegen mit Quelle im Repository und werden bis 16 MB eingebettet; Komponenten mit Wasm-SIMD. `face-detection` nutzt YuNet, `ocr-text` PaddleOCR PP-OCRv5. (Nach 0.3.0, unveröffentlicht.) |
-| [0010](adr/0010-ai-tagging-clip.md) | `ai-tagging` nutzt den Bildteil von CLIP ViT-B/32 (int8, MIT) als Modelldatei über `make models` (Ausnahme von der 16-MB-Grenze aus 0009), Schlagwörter aus fester Liste ohne Personenmerkmale, keine Bildbeschreibung. (Nach 0.3.0, unveröffentlicht.) |
+| [0009](adr/0009-plugin-inference-rten.md) | Echte Engines laufen mit `rten` im Gast; Modelle mit freier Lizenz liegen mit Quelle im Repository und werden bis 16 MB eingebettet; Komponenten mit Wasm-SIMD. `face-detection` nutzt YuNet, `ocr-text` PaddleOCR PP-OCRv5. (Seit 0.4.0.) |
+| [0010](adr/0010-ai-tagging-clip.md) | `ai-tagging` nutzt den Bildteil von CLIP ViT-B/32 (int8, MIT) als Modelldatei über `make models` (Ausnahme von der 16-MB-Grenze aus 0009), Schlagwörter aus fester Liste ohne Personenmerkmale, keine Bildbeschreibung. (Seit 0.4.0.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
@@ -328,6 +328,8 @@ Die Qualitätsanforderungen konkretisieren die vier Qualitätsziele aus Abschnit
 | 1 Sicherheit und Isolation | Ein Plugin ohne Grant `filesystem` versucht, eine Datei zu lesen. | `fs-read` liefert `capability-denied`. Dateisystem, Umgebungsvariablen und Netzwerk sind über WASI nicht erreichbar. | `wasm-component-runtime` AC-3, `crates/host/tests/component_runtime_test.rs` |
 | 1 Sicherheit und Isolation | Ein Gast belegt mehr als `max_memory_bytes` oder läuft länger als `timeout_ms`. | Der Aufruf endet mit einem Fehler, der die Grenze nennt. Das nächste Dokument läuft normal. | `wasm-component-runtime` AC-4, `crates/host/tests/component_runtime_test.rs` |
 | 2 Korrektheit der Daten | Ein HTTP-Abruf scheitert: Server nicht erreichbar, HTTP 404 oder 500. | Das Feld bleibt leer. Es gibt eine Warnung mit der Ursache, und nichts landet im Cache. | `honest-http-get` AC-3, `crates/host/tests/http_get_test.rs` |
+| 1 Sicherheit und Isolation | Ein Foto mit Gesichtern durchläuft die Pipeline mit `face-detection` und `privacy-redact`. | Die Gesichter werden erkannt und in der geschwärzten Kopie unkenntlich gemacht; die Pixel innerhalb der Rahmen ändern sich. | `face-detection-yunet` AC-5, `crates/host/tests/face_yunet_test.rs` |
+| 2 Korrektheit der Daten | Ein Modell findet nichts, oder seine Datei fehlt (`ai-tagging`). | Ohne Treffer bleibt die Liste leer (kein erfundenes Schlagwort); ohne gültige Modelldatei bleibt `ai` leer, mit Warnung. | `ai-tagging-clip` AC-3/AC-4, `crates/host/tests/clip_test.rs` |
 | 3 Erweiterbarkeit | Ein neues Plugin implementiert `Plugin` und ruft `export_plugin!` auf. | Der Host lädt die Komponente aus `plugin_dir`, ohne selbst neu gebaut zu werden. | `wasm-component-runtime` AC-1/AC-2, `crates/host/tests/component_runtime_test.rs` |
 | 4 Nachvollziehbarkeit | Ein Plugin warnt während `process`. | Die Warnung steht mit dem Plugin-Namen auf stderr. stdout enthält nur das Dokument-JSON. | `wasm-geo-host` AC-10, `crates/host/tests/logging_test.rs` |
 
@@ -335,7 +337,7 @@ Die Qualitätsanforderungen konkretisieren die vier Qualitätsziele aus Abschnit
 
 Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität zuerst, gemessen an den Qualitätszielen aus Abschnitt 1:
 
-1. **Keine echten Engines** (Ziel 2), nach 0.3.0 behoben:
+1. **Keine echten Engines** (Ziel 2), behoben in 0.4.0:
    - `face-detection` erkennt Gesichter mit YuNet (ADR 0009); damit schwärzt `privacy-redact` echte Gesichter.
    - `ocr-text` liest Text mit PaddleOCR PP-OCRv5.
    - `ai-tagging` liefert Embeddings und Schlagwörter mit CLIP (ADR 0010).
@@ -360,6 +362,12 @@ Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität
 8. **Datenstand des Ortsverzeichnisses** (Ziel 2, neu in 0.3.0): `places.bin` hat den Stand der GeoNames-Dumps vom 2026-11-27 und wird nur von Hand aktualisiert (`make geonames`). Jede Aktualisierung vergrößert die Git-Historie um etwa 7 MB (Quelle: ADR 0005, ADR 0008, `docs/build-instructions.md`).
 
 Die Punkte 7 und 8 sind mit 0.3.0 hinzugekommen; ihre Einordnung am Ende hat der Maintainer am 2026-11-27 bestätigt.
+
+9. **Modelldatei außerhalb der Komponente** (Ziel 2, neu in 0.4.0): `ai-tagging` braucht `models/clip-vit-b32-vision-int8.onnx` (89 MB, `make models` oder Release-Paket). Fehlt sie, liefert das Plugin nichts; die SHA-256-Prüfung verhindert, dass eine falsche Datei geladen wird (Quelle: ADR 0010).
+10. **Laufzeit und Speicher je Foto** (neu in 0.4.0): Die drei Modelle verlängern die Verarbeitung je Foto auf etwa 1–5 s und brauchen bis zu einige hundert MB; große Bestände dauern entsprechend (Quelle: `docs/archive/design/face-detection-yunet.md`, `docs/archive/design/ocr-text-paddle.md`, `docs/archive/design/ai-tagging-clip.md`, jeweils *Messwerte*).
+11. **Einsatzhinweis der CLIP-Modellkarte** (neu in 0.4.0): OpenAI rät vom produktiven Einsatz ohne gründlich getestete, feste Begriffsliste ab und warnt vor Verzerrungen bei Personen. Gemindert durch die feste Liste ohne Personenmerkmale und den rein lokalen Einsatz (Quelle: ADR 0010, `plugins/ai-tagging/README.md` §8).
+
+Die Punkte 9–11 sind mit 0.4.0 hinzugekommen; ihre Einordnung am Ende hat der Maintainer am 2026-11-27 bestätigt.
 
 # Glossar {#section-glossary}
 
