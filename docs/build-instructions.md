@@ -32,6 +32,8 @@ cargo test --workspace
 | `make native-cli` | `target/release/flagme-plugin-<name>` |
 | `make verify` | every component exports `process`, no CLI binary imports `host-capabilities` (needs `wasm-tools`) |
 | `make dist` | `dist/v<version>/…` and `dist/packages/*.tar.gz` with `SHA256SUMS-v<version>` |
+| `make models` | downloads the CLIP model files for `ai-tagging` into `models/` (fixed revision, SHA-256 checked against `models/SHA256SUMS`); `make test` and `make release` run it first |
+| `make labels` | recomputes `plugins/ai-tagging/labels/labels.bin` from `labels.txt` with `tools/clip-labels` |
 | `make geonames` | refreshes `plugins/reversegeo/data/places.bin` from the GeoNames dumps (needs network and `unzip`; the only target that downloads) |
 
 ### Offline gazetteer of `reversegeo` (`make geonames`)

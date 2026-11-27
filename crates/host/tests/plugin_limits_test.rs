@@ -210,8 +210,8 @@ plugins:
     assert_eq!(limits, cfg.resource_limits);
     assert_eq!(warnings.len(), 1, "{:?}", warnings);
 
-    // The example configs load without warnings; only ocr-text sets its own time limit (ADR 0009),
-    // every other plugin keeps the global limits.
+    // The example configs load without warnings; only ocr-text (ADR 0009) and ai-tagging
+    // (ADR 0010) set their own limits, every other plugin keeps the global limits.
     let root = common::repo_root();
     for name in ["config.yaml", "config.mac-studio.yaml"] {
         let cfg = AppConfig::load_from_file(Path::new(&root).join(name)).unwrap();
@@ -221,6 +221,8 @@ plugins:
             if plugin == "ocr-text" {
                 let expected = ResourceLimits { timeout_ms: 30_000, ..cfg.resource_limits.clone() };
                 assert_eq!(limits, expected, "{} {}", name, plugin);
+            } else if plugin == "ai-tagging" {
+                assert_eq!(limits, ResourceLimits { max_memory_bytes: 536_870_912, timeout_ms: 30_000 }, "{} {}", name, plugin);
             } else {
                 assert_eq!(limits, cfg.resource_limits, "{} {}", name, plugin);
             }

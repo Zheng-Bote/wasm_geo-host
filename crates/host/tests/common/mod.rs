@@ -315,3 +315,11 @@ impl FaceDetector for FailingEngine {
         Err("engine failure".to_string())
     }
 }
+
+/// The CLIP model file of ai-tagging (ADR 0010). It is not in the repository: tests that need
+/// it fail with a hint instead of being skipped silently.
+pub fn clip_model_path() -> PathBuf {
+    let path = repo_root().join("models/clip-vit-b32-vision-int8.onnx");
+    assert!(path.is_file(), "CLIP model missing at {}: run `make models`", path.display());
+    path
+}

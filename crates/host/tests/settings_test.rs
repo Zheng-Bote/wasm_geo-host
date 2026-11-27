@@ -979,7 +979,7 @@ fn readmes_list_all_keys() {
         // Engine-selecting keys are known but "not supported yet" (ADR 0002); no key may be unknown or invalid.
         let w = parse_warnings(plugin, &map(keys));
         assert!(
-            w.iter().all(|m| m.contains("is not supported yet") && (m.contains("ADR 0002") || m.contains("ADR 0009"))),
+            w.iter().all(|m| m.contains("is not supported yet") && (m.contains("ADR 0002") || m.contains("ADR 0009") || m.contains("ADR 0010"))),
             "{}: {:?}",
             plugin,
             w

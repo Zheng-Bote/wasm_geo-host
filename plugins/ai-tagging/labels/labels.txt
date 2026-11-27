@@ -1,0 +1,310 @@
+# Labels of the ai-tagging plugin (ADR 0010). One English label per line; `#` starts a comment.
+# `make labels` turns each label into the CLIP text embedding of "a photo of {label}"
+# (plugins/ai-tagging/labels/labels.bin). After editing this file, run `make labels` and commit
+# both files.
+#
+# Rule (ADR 0010, decision 5): no labels about personal attributes of people (gender, age,
+# origin, skin colour, religion, appearance, health or profession). For people only neutral
+# labels are allowed. The test of ai-tagging-clip AC-6 checks this against a block list.
+
+# Landscape and nature
+a mountain landscape
+mountains
+a mountain peak
+a valley
+hills
+a forest
+trees
+a meadow
+a field
+farmland
+a vineyard
+a desert
+sand dunes
+a canyon
+rocks
+a cave
+a volcano
+a glacier
+a waterfall
+a river
+a stream
+a lake
+a pond
+the sea
+an ocean
+waves
+a beach
+a coast
+cliffs
+an island
+a harbour
+a marsh
+a park
+a garden
+flowers
+a flower field
+a single flower
+leaves
+autumn leaves
+a tree in bloom
+grass
+a cactus
+mushrooms
+
+# Sky and weather
+the sky
+clouds
+a blue sky
+a sunset
+a sunrise
+the night sky
+stars
+the moon
+a rainbow
+fog
+rain
+a thunderstorm
+lightning
+snow
+a snowy landscape
+ice
+frost
+
+# Settlements and buildings
+a city
+a city skyline
+a city street
+a street at night
+a town
+a village
+a historic town centre
+a market square
+a building
+a skyscraper
+a house
+a cottage
+a farmhouse
+a castle
+a palace
+a church
+a cathedral
+a temple
+a mosque
+a monastery
+a tower
+a lighthouse
+a windmill
+a bridge
+a fountain
+a monument
+a statue
+ruins
+a museum
+a stadium
+a train station
+an airport
+a factory
+a construction site
+
+# Transport
+a car
+a vintage car
+a bus
+a truck
+a motorcycle
+a bicycle
+a train
+a tram
+a subway
+an airplane
+a helicopter
+a boat
+a sailing boat
+a ship
+a ferry
+a road
+a highway
+a traffic jam
+a parking lot
+a gas station
+
+# Space and science
+a space suit
+a rocket
+a spacecraft
+outer space
+the earth from space
+a telescope
+
+# Animals
+a dog
+a puppy
+a cat
+a kitten
+a horse
+a cow
+a sheep
+a goat
+a pig
+a chicken
+a duck
+a swan
+a bird
+a bird of prey
+a seagull
+a parrot
+a penguin
+a fish
+an aquarium
+a butterfly
+a bee
+an insect
+a spider
+a snake
+a lizard
+a turtle
+a frog
+a deer
+a fox
+a squirrel
+a rabbit
+a bear
+a lion
+a tiger
+an elephant
+a giraffe
+a zebra
+a monkey
+a zoo
+
+# Food and drink
+food
+a meal
+breakfast
+a dessert
+a cake
+bread
+pizza
+pasta
+a salad
+soup
+fruit
+vegetables
+seafood
+a barbecue
+coffee
+tea
+wine
+beer
+a cocktail
+a restaurant
+a café
+a kitchen
+a market stall
+
+# Indoors and objects
+a living room
+a bedroom
+a bathroom
+an office
+a desk
+a computer
+a laptop
+a smartphone
+a screen
+a television
+a camera
+books
+a bookshelf
+a library
+furniture
+a chair
+a table
+a lamp
+a window
+a door
+stairs
+a hallway
+a shop
+a supermarket
+clothes
+shoes
+a bag
+toys
+a clock
+tools
+a musical instrument
+a piano
+a guitar
+
+# Documents, text and signs
+a document
+a printed page
+handwriting
+a receipt
+a ticket
+a map
+a poster
+a book cover
+a menu
+a screenshot
+a street sign
+a town sign
+a road sign
+a shop sign
+a timetable
+an electricity meter
+a meter reading
+a whiteboard
+
+# People (neutral labels only)
+people
+a group of people
+a crowd
+a portrait
+a selfie
+hands
+
+# Events and activities
+a wedding
+a birthday party
+a party
+a concert
+a festival
+fireworks
+a parade
+a christmas tree
+a christmas market
+a market
+a picnic
+camping
+a tent
+hiking
+a hiking trail
+skiing
+swimming
+a swimming pool
+a sports game
+football
+tennis
+cycling
+running
+a playground
+a classroom
+a meeting
+a theatre
+an exhibition
+
+# Art and photography
+a painting
+a drawing
+graffiti
+a sculpture
+a mosaic
+a stained glass window
+a close-up
+a panorama
+an aerial view
+an underwater photo
+a long exposure

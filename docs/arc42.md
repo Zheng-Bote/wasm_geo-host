@@ -32,7 +32,7 @@ Die Plugins in Release 0.3.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
 | `privacy-redact` | Schwärzung, GPS-Unschärfe, Seriennummern |
 | `face-detection` | Gesichtserkennung mit dem eingebetteten Modell YuNet über `rten` im Gast (ADR 0009, nach 0.3.0) |
 | `ocr-text` | Texterkennung mit den eingebetteten Modellen PaddleOCR PP-OCRv5 (lateinische Schrift) über `rten` im Gast (ADR 0009, nach 0.3.0) |
-| `ai-tagging` | Engine-Schnittstelle, experimentell und deaktiviert (ADR 0002) |
+| `ai-tagging` | Embeddings und Schlagwörter aus fester Liste mit OpenAI CLIP ViT-B/32 (int8) über `rten` im Gast; Modelldatei über `make models` (ADR 0010, nach 0.3.0) |
 
 Dazu kommen Volltext- und Ähnlichkeitssuche, ein Verzeichnis-Watcher und eine eingebettete Web-Oberfläche (Quelle: `CHANGELOG.md`, Abschnitt 0.2.0 *Added*).
 
@@ -313,6 +313,7 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0007](adr/0007-http-client-rust.md) | Die Capability `http` läuft im Host-Prozess mit `ureq` (rustls, System-Zertifikate), mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen) und Proxy aus der Umgebung; ohne Rückfall auf ein externes Programm. (Seit 0.3.0.) |
 | [0008](adr/0008-short-region-names.md) | Ersetzt 0006 und übernimmt dessen Regeln. Regionsnamen (englisch und lokal) nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen als ganze Wortfolge steht (Salzburg statt State of Salzburg); sonst bleibt der Name (State of Berlin). Kreise bleiben unverändert. (Seit 0.3.0.) |
 | [0009](adr/0009-plugin-inference-rten.md) | Echte Engines laufen mit `rten` im Gast; Modelle mit freier Lizenz liegen mit Quelle im Repository und werden bis 16 MB eingebettet; Komponenten mit Wasm-SIMD. `face-detection` nutzt YuNet, `ocr-text` PaddleOCR PP-OCRv5. (Nach 0.3.0, unveröffentlicht.) |
+| [0010](adr/0010-ai-tagging-clip.md) | `ai-tagging` nutzt den Bildteil von CLIP ViT-B/32 (int8, MIT) als Modelldatei über `make models` (Ausnahme von der 16-MB-Grenze aus 0009), Schlagwörter aus fester Liste ohne Personenmerkmale, keine Bildbeschreibung. (Nach 0.3.0, unveröffentlicht.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
@@ -334,11 +335,13 @@ Die Qualitätsanforderungen konkretisieren die vier Qualitätsziele aus Abschnit
 
 Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität zuerst, gemessen an den Qualitätszielen aus Abschnitt 1:
 
-1. **Keine echten Engines** (Ziel 2), teilweise behoben:
-   - Ohne Engine liefern KI-Tags und Embeddings (`similar`) nichts.
-   - Nach 0.3.0 erkennt `face-detection` Gesichter mit YuNet (ADR 0009); damit schwärzt `privacy-redact` echte Gesichter. `ocr-text` liest Text mit PaddleOCR PP-OCRv5. `ai-tagging` folgt.
+1. **Keine echten Engines** (Ziel 2), nach 0.3.0 behoben:
+   - `face-detection` erkennt Gesichter mit YuNet (ADR 0009); damit schwärzt `privacy-redact` echte Gesichter.
+   - `ocr-text` liest Text mit PaddleOCR PP-OCRv5.
+   - `ai-tagging` liefert Embeddings und Schlagwörter mit CLIP (ADR 0010).
+   - Restrisiko: Die Modellkarte von CLIP rät vom produktiven Einsatz ab; das Projekt nutzt eine feste Begriffsliste ohne Personenmerkmale.
 
-   Quelle: ADR 0002, *Konsequenzen*; ADR 0009.
+   Quelle: ADR 0002, *Konsequenzen*; ADR 0009; ADR 0010.
 2. **Externes Programm zur Laufzeit:**
    - Der Speicher hängt vom Kommandozeilenprogramm `sqlite3` ab.
    - HTTP lief in 0.2.0 über ein externes Programm. Seit 0.3.0 läuft es im Host-Prozess mit `ureq`, mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen; ADR 0007).

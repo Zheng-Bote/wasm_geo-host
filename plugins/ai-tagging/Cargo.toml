@@ -17,3 +17,8 @@ component = []
 
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
+# Inference with the CLIP image encoder (ADR 0009, ADR 0010): pure Rust, ONNX format only.
+rten = { version = "0.28", default-features = false, features = ["onnx_format"] }
+rten-tensor = "0.28"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+sha2 = "0.10"
