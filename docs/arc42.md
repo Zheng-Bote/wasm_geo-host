@@ -307,8 +307,9 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0003](adr/0003-wasm-component-execution.md) | Plugins laufen als in den Host eingebettete Wasm-Komponenten. Der WIT-Vertrag ist typisiert, es gibt keinen nativen Modus, `stream` nutzt dieselbe Runtime, und die Grenzen setzen `ResourceLimiter` und Epoch Interruption durch. |
 | [0004](adr/0004-component-cache.md) | Kompilierte Komponenten liegen im eingebauten Cache von wasmtime (kein `unsafe`), standardmäßig in `cache/components`. Der Host nutzt den Ordner nur, wenn allein der eigene Benutzer ihn beschreiben kann; sonst kompiliert er mit Warnung wie bisher. (Nach 0.2.0, unveröffentlicht.) |
 | [0005](adr/0005-geonames-gazetteer.md) | Abgelöst durch 0006. |
-| [0006](adr/0006-geonames-gazetteer-names.md) | `reversegeo` bettet GeoNames `cities1000` als `places.bin` ein (committet, `make geonames`) und ordnet den nächsten Ort innerhalb von `city_radius_km` zu; Referenzstädte und Länder-Rechtecke entfallen. Lokale Namen: Landessprache, sonst GeoNames-Hauptname. (Nach 0.2.0, unveröffentlicht.) |
+| [0006](adr/0006-geonames-gazetteer-names.md) | `reversegeo` bettet GeoNames `cities1000` als `places.bin` ein (committet, `make geonames`) und ordnet den nächsten Ort innerhalb von `city_radius_km` zu; Referenzstädte und Länder-Rechtecke entfallen. Lokale Namen: Landessprache, sonst GeoNames-Hauptname. Abgelöst durch 0008. |
 | [0007](adr/0007-http-client-rust.md) | Die Capability `http` läuft im Host-Prozess mit `ureq` (rustls, System-Zertifikate), mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen) und Proxy aus der Umgebung; ohne Rückfall auf ein externes Programm. (Nach 0.2.0, unveröffentlicht.) |
+| [0008](adr/0008-short-region-names.md) | Ersetzt 0006 und übernimmt dessen Regeln. Regionsnamen (englisch und lokal) nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen als ganze Wortfolge steht (Salzburg statt State of Salzburg); sonst bleibt der Name (State of Berlin). Kreise bleiben unverändert. (Nach 0.2.0, unveröffentlicht.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 

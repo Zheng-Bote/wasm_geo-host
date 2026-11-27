@@ -222,11 +222,38 @@ impl Names {
         list.iter().min_by_key(|a| (!a.preferred, a.short, a.id)).map(|a| a.name.as_str())
     }
 
+    /// First-level divisions (ADR 0008): the base name (preferred name, else `fallback`), or a
+    /// short form of the same language that occurs in the base name as a whole word sequence
+    /// (lowest id among several). No name is built or cut.
+    fn region<'a>(&'a self, gid: Option<u64>, lang: Option<&str>, fallback: &'a str) -> &'a str {
+        let base = self.place(gid, lang).unwrap_or(fallback);
+        let (Some(gid), Some(lang)) = (gid, lang) else { return base };
+        let Some(list) = self.0.get(&(gid, lang.to_string())) else { return base };
+        list.iter()
+            .filter(|a| a.short && a.name != base && contains_words(base, &a.name))
+            .min_by_key(|a| a.id)
+            .map(|a| a.name.as_str())
+            .unwrap_or(base)
+    }
+
     /// Countries: short form first, then preferred, then the lowest id.
     fn country(&self, gid: Option<u64>, lang: Option<&str>) -> Option<&str> {
         let list = self.0.get(&(gid?, lang?.to_string()))?;
         list.iter().min_by_key(|a| (!a.short, !a.preferred, a.id)).map(|a| a.name.as_str())
     }
+}
+
+/// `true` if `needle` occurs in `haystack` (case-sensitive) with a word boundary on both sides:
+/// before it the start or one of ` - ' ’ (`, after it the end or one of ` - ' ’ ) ,`.
+pub fn contains_words(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let before_ok = |c: Option<char>| matches!(c, None | Some(' ' | '-' | '\'' | '’' | '('));
+    let after_ok = |c: Option<char>| matches!(c, None | Some(' ' | '-' | '\'' | '’' | ')' | ','));
+    haystack.match_indices(needle).any(|(i, m)| {
+        before_ok(haystack[..i].chars().next_back()) && after_ok(haystack[i + m.len()..].chars().next())
+    })
 }
 
 /// Deduplicating string table in order of first insertion.
@@ -321,8 +348,8 @@ pub fn build(dir: &Path, date: &str) -> Result<(Vec<u8>, Stats), String> {
     }
     for a in &admin1 {
         let lang = a.key.split('.').next().and_then(lang_of);
-        let en = names.place(a.geonameid, Some("en")).unwrap_or(&a.name);
-        let local = names.place(a.geonameid, lang).unwrap_or(&a.name);
+        let en = names.region(a.geonameid, Some("en"), &a.name);
+        let local = names.region(a.geonameid, lang, &a.name);
         out.extend_from_slice(&strings.opt(Some(en))?.to_le_bytes());
         out.extend_from_slice(&strings.opt(Some(local))?.to_le_bytes());
     }

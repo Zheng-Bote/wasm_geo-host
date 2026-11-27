@@ -113,3 +113,40 @@ fn test_ac8_deterministic_and_versioned() {
     assert_eq!(std::fs::read(&out).unwrap(), a, "a failed build leaves the previous file untouched");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// short-region-names AC-4: a short form is used only as a whole word sequence of the base name (lowest id among several); a contained fragment or a short form not in the base name is ignored; output stays deterministic
+#[test]
+fn test_ac4_short_form_rule() {
+    use geonames_import::contains_words;
+    assert!(contains_words("State of Salzburg", "Salzburg"));
+    assert!(contains_words("Canton of Basel-City", "Basel-City"));
+    assert!(contains_words("Free and Hanseatic City of Hamburg", "Hamburg"));
+    assert!(contains_words("Île-de-France Region", "Île-de-France"));
+    assert!(!contains_words("State of Salzburg", "Salz"), "fragment of a word");
+    assert!(!contains_words("Rhineland-Palatinate", "Rheinland-Pfalz"));
+    assert!(!contains_words("Entre Ríos Province", "Entre Rios"));
+    assert!(!contains_words("State of Berlin", ""));
+
+    let dir = fixture("ac4");
+    let mut alt = std::fs::read_to_string(dir.join("alternateNamesV2.txt")).unwrap();
+    alt.push_str(&[
+        "2101\t210\ten\tCanton of Geneva\t1\t\t\t\t\t",
+        "2103\t210\ten\tGeneva\t\t1\t\t\t\t",
+        "2102\t210\ten\tGe\t\t1\t\t\t\t", // fragment, not a whole word
+        "2104\t210\tde\tKanton Genf\t1\t\t\t\t\t",
+        "2105\t210\tde\tGenf\t\t1\t\t\t\t",
+        "2106\t210\tde\tGenève-Stadt\t\t1\t\t\t\t", // short, but not in the base name
+        "1103\t110\ten\tFree State of Bavaria\t\t1\t\t\t\t", // short, but not in the base name "Bavaria"
+    ].join("\n"));
+    alt.push('\n');
+    std::fs::write(dir.join("alternateNamesV2.txt"), alt).unwrap();
+    let a = build(&dir);
+    assert_eq!(a, build(&dir), "deterministic");
+    let g = Gazetteer::parse(&a).unwrap();
+    let (geneva, _) = g.nearest(46.2044, 6.1432, 5.0).unwrap();
+    assert_eq!((geneva.region(), geneva.local_region()), (Some("Geneva"), Some("Genf")));
+    let (munich, _) = g.nearest(48.1374, 11.5755, 5.0).unwrap();
+    assert_eq!((munich.region(), munich.local_region()), (Some("Bavaria"), Some("Bayern")));
+    assert_eq!(munich.county(), Some("Upper Bavaria"), "counties keep their rule");
+    let _ = std::fs::remove_dir_all(&dir);
+}

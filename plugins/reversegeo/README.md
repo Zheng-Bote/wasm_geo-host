@@ -24,7 +24,7 @@ Resolution order: **KV cache → offline GeoNames gazetteer → online geocoder 
 
 ## 1. Key Features
 
-1. **Offline Nearest-Place Lookup** — embedded [GeoNames](https://www.geonames.org/) gazetteer `cities1000` (162,380 populated places worldwide, 7,280 in Germany; CC BY 4.0, data of 2026-11-27) with English and local names for place, county, region and country (§2.4, [ADR 0006](../../docs/adr/0006-geonames-gazetteer-names.md)). No network, no coordinates leave the machine.
+1. **Offline Nearest-Place Lookup** — embedded [GeoNames](https://www.geonames.org/) gazetteer `cities1000` (162,380 populated places worldwide, 7,280 in Germany; CC BY 4.0, data of 2026-11-27) with English and local names for place, county, region and country (§2.4, [ADR 0008](../../docs/adr/0008-short-region-names.md)). No network, no coordinates leave the machine.
 2. **No invented places** — without a place within `city_radius_km` the offline lookup returns nothing; there are no reference cities or country boxes any more (#62, #63).
 3. **Online Fallback** — Nominatim / OpenStreetMap (`accept-language` configurable, default `en`) for coordinates with no place within `city_radius_km`.
 4. **KV Caching** — results are stored per coordinate bucket (`geo:<lat>:<lon>`, default 3 decimals).
@@ -94,12 +94,13 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 | Refresh | `make geonames` downloads the dumps (≈ 220 MB) outside the repository, rebuilds the file with `tools/geonames-import` and leaves it for review and commit |
 | Coverage | 0.1° grid over Germany and the Alps: median 3.7 km, 90 % within 10 km to the nearest place; 95.6 % of a 0.25° grid within 25 km (the rest is mostly sea) |
 
-Name rules ([ADR 0006](../../docs/adr/0006-geonames-gazetteer-names.md)):
+Name rules ([ADR 0008](../../docs/adr/0008-short-region-names.md), superseding ADR 0006):
 
 | Field | Source |
 | :--- | :--- |
-| `city`, `region`, `county` | Preferred English name (`alternateNamesV2`, `en`), else the GeoNames main name |
-| `local_city`, `local_region` | Preferred name in the country's **first** language (`countryInfo`), else the GeoNames main name |
+| `city`, `county` | Preferred English name (`alternateNamesV2`, `en`), else the GeoNames main name |
+| `local_city` | Preferred name in the country's **first** language (`countryInfo`), else the GeoNames main name |
+| `region`, `local_region` | Base name as for `city`/`local_city` (preferred name, else the `admin1CodesASCII` name); if GeoNames has a **short form** of the same language that occurs in the base name as a **whole word** sequence, the short form: `State of Salzburg` → `Salzburg`, `Canton of Geneva` → `Geneva`, `Free and Hanseatic City of Hamburg` → `Hamburg`, `Land Berlin` → `Berlin`, `Kanton Basel-Stadt` → `Basel-Stadt`, `Hlavní město Praha` → `Praha`. Without such a short form the base name stays, e.g. `State of Berlin` (GeoNames has no English short form for Berlin), `Rhineland-Palatinate`, `Walloon Region`. Names are never built or cut. |
 | `country` | `countryInfo` name (e.g. `Czechia`) |
 | `local_country` | Country name in its first language, short form first (`Deutschland`); empty if GeoNames has none |
 | `local_language` | First language of the country (`de`, `fr`, …) |

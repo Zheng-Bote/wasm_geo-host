@@ -7,6 +7,7 @@
     "docs/adr/0004-component-cache.md": "81a350b8817e58c26caa484b76ae3e5c3527d69ba4f886e5fa45380e08c93292",
     "docs/adr/0005-geonames-gazetteer.md": "2c5ec8b98a3e6bd149e7b5b30030159dcd143e782be6766d109b620b231a7a36",
     "docs/adr/0006-geonames-gazetteer-names.md": "3f36e07a4bb67605dd67a43f2e181fc78771afa6cb6f1f4b647af1398eb846c6",
-    "docs/adr/0007-http-client-rust.md": "ced3691029bb31d6db9db7f61a616fa8993792b4a56adb239c08b5f4d950ddd9"
+    "docs/adr/0007-http-client-rust.md": "ced3691029bb31d6db9db7f61a616fa8993792b4a56adb239c08b5f4d950ddd9",
+    "docs/adr/0008-short-region-names.md": "adde7d0003b705da2887a8e158e04a7671f07991b0a14c53d24a3ab26343da11"
   }
 }
