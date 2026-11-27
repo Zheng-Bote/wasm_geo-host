@@ -1,6 +1,6 @@
 ---
 feature: geonames-gazetteer
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/reversegeo/**
@@ -14,11 +14,12 @@ touches:
   - crates/host/tests/**
   - docs/arc42.md
   - docs/build-instructions.md
+release: 0.3.0
 ---
 
 # Tech Spec — Offline-Ortsverzeichnis aus GeoNames für reversegeo (`geonames-gazetteer`)
 
-Setzt das PRD `docs/prd/geonames-gazetteer.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0006](../adr/0006-geonames-gazetteer-names.md), das [ADR 0005](../adr/0005-geonames-gazetteer.md) ersetzt.
+Setzt das PRD `docs/prd/geonames-gazetteer.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0006](../../adr/0006-geonames-gazetteer-names.md), das [ADR 0005](../../adr/0005-geonames-gazetteer.md) ersetzt.
 
 ## Architektur
 

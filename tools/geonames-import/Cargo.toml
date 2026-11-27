@@ -1,6 +1,6 @@
 [package]
 name = "geonames-import"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Builds the reversegeo offline gazetteer (plugins/reversegeo/data/places.bin) from GeoNames dumps (ADR 0006)"
 publish = false

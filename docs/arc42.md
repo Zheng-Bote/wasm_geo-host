@@ -1,6 +1,6 @@
 ---
 status: active
-release: 0.2.0
+release: 0.3.0
 ---
 <!--
 Gliederung: arc42-Template 9.1, © Dr. Peter Hruschka, Dr. Gernot Starke und Mitwirkende, https://arc42.org
@@ -18,12 +18,12 @@ Gliederung nach dem [arc42](https://arc42.org)-Template 9.1 (© Dr. Peter Hrusch
 
 WASM Geo Host (`flagme-host`) ist eine erweiterbare Medienverarbeitungsplattform in Rust. Sie reicht Fotos als `UnifiedDocument` durch eine konfigurierbare Pipeline von Plugins und speichert das Ergebnis in SQLite (Quelle: `docs/archive/prd/wasm-geo-host.md:26`).
 
-Die Plugins in Release 0.2.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
+Die Plugins in Release 0.3.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
 
 | Plugin | Aufgabe |
 |---|---|
 | `metadata` | EXIF, IPTC, XMP |
-| `reversegeo` | Ortsnamen offline (eingebettetes GeoNames-Ortsverzeichnis, nach 0.2.0) und online |
+| `reversegeo` | Ortsnamen offline (eingebettetes GeoNames-Ortsverzeichnis, seit 0.3.0) und online |
 | `countryflag` | ISO-3166-Daten |
 | `thumbnail` | Vorschaubilder |
 | `duplicate` | SHA-256 und dHash |
@@ -83,7 +83,7 @@ Die Priorität hat der Maintainer festgelegt (Quelle: Entscheidung des Maintaine
 **Technik**
 - Zielplattform der Plugins ist `wasm32-wasip2`. Sie werden mit dem Feature `component` gebaut (Quelle: `README.md:180-190`).
 - Das Bauen braucht Rust 1.97 oder neuer, weil Wasmtime 51 das verlangt (Quelle: `CHANGELOG.md`, Abschnitt 0.2.0 *Breaking*).
-- Zur Laufzeit ruft der Host das Kommandozeilenprogramm `sqlite3` (Speicher) auf. Die Capability `http` lief in 0.2.0 über ein externes Programm; nach 0.2.0 (unveröffentlicht) läuft sie im Host-Prozess mit `ureq` und den System-Zertifikaten (Quelle: `crates/host/src/storage.rs:66`, ADR 0007).
+- Zur Laufzeit ruft der Host das Kommandozeilenprogramm `sqlite3` (Speicher) auf. Die Capability `http` lief in 0.2.0 über ein externes Programm; seit 0.3.0 läuft sie im Host-Prozess mit `ureq` und den System-Zertifikaten (Quelle: `crates/host/src/storage.rs:66`, ADR 0007).
 
 **Nicht-Ziele** (Quelle: `docs/archive/prd/wasm-geo-host.md:47-48`)
 - Kein Betrieb verteilt im Cluster.
@@ -112,7 +112,7 @@ flowchart LR
 | Nutzer (CLI) | `flagme-host process\|stream\|search\|similar\|watch\|serve`; Dokument-JSON auf stdout, Logs auf stderr | `crates/host/src/main.rs:30-35`, `docs/archive/prd/wasm-geo-host.md:61` |
 | Browser, Integratoren | HTTP: `/api/photos`, `/api/photos/:id`, `/api/photos/:id/thumbnail/:size`, `/api/map/markers` (GeoJSON), `/api/search` | `crates/host/src/server.rs:73-77` |
 | Dateisystem | Medien lesen, Vorschaubilder und geschwärzte Bilder schreiben, Importordner überwachen (`notify`) | `crates/host/src/capabilities.rs`, `crates/host/src/watcher.rs:172` |
-| Nominatim, Open-Meteo | HTTPS im Host-Prozess über `ureq` (nach 0.2.0; 2 s, 1 MiB, 5 Weiterleitungen, System-Zertifikate, Proxy aus der Umgebung), nur für Plugins mit dem Grant `http` | `crates/host/src/capabilities.rs`, ADR 0007 |
+| Nominatim, Open-Meteo | HTTPS im Host-Prozess über `ureq` (seit 0.3.0; 2 s, 1 MiB, 5 Weiterleitungen, System-Zertifikate, Proxy aus der Umgebung), nur für Plugins mit dem Grant `http` | `crates/host/src/capabilities.rs`, ADR 0007 |
 | SQLite (`media.db`) | `sqlite3`-CLI über stdin | `crates/host/src/storage.rs:63-66` |
 
 # Lösungsstrategie {#section-solution-strategy}
@@ -126,7 +126,7 @@ flowchart LR
 - **Ein Dokumentenmodell:** Alle Stufen lesen und schreiben `UnifiedDocument` (Quelle: `constitution.md:14`, `crates/models/src/lib.rs`).
 - **Ehrliche Lücken:** Plugins ohne echte Engine liefern nichts. Nicht bestimmbare Werte bleiben `None` mit einer Warnung (ADR 0002). `raw_tags` bleibt das verlustfreie Original (ADR 0001).
 - **Konfiguration statt Code:**
-  - `config.yaml` legt fest: Pipeline-Reihenfolge, `enabled`, Grants, `settings` je Plugin, `resource_limits` (global und, nach 0.2.0, je Plugin), `plugin_dir`.
+  - `config.yaml` legt fest: Pipeline-Reihenfolge, `enabled`, Grants, `settings` je Plugin, `resource_limits` (global und, seit 0.3.0, je Plugin), `plugin_dir`.
   - Die Settings liest das SDK nach gemeinsamen Regeln aus (Quelle: `docs/archive/design/plugin-settings.md:17-35`, `crates/host/src/config.rs`).
 
 # Bausteinsicht {#section-building-block-view}
@@ -283,7 +283,7 @@ offen: keine weiteren Infrastrukturelemente belegt.
   - Speichergrenze über `ResourceLimiter`, Zeitgrenze über Epoch Interruption im 10-ms-Takt.
 
   Quelle: `crates/host/src/component.rs:34`, `:43`, `:163-179`.
-- **Komponenten-Cache** (nach 0.2.0, unveröffentlicht): Kompilierter Code liegt im Cache von wasmtime in `component_cache_dir`. Der Ordner ist eine Vertrauensgrenze; der Host prüft Besitzer, Rechte (`0700`, nicht für Gruppe oder andere beschreibbar) und dass er kein symbolischer Link ist (Quelle: ADR 0004, `crates/host/src/component.rs`, `prepare_cache_dir`).
+- **Komponenten-Cache** (seit 0.3.0): Kompilierter Code liegt im Cache von wasmtime in `component_cache_dir`. Der Ordner ist eine Vertrauensgrenze; der Host prüft Besitzer, Rechte (`0700`, nicht für Gruppe oder andere beschreibbar) und dass er kein symbolischer Link ist (Quelle: ADR 0004, `crates/host/src/component.rs`, `prepare_cache_dir`).
 - **Plugin-Settings:**
   - Werte sind Strings, ausgelesen nach gemeinsamen Regeln für Bool, Zahlen, Listen, Pfade und URLs; ungültige Werte werden mit einer Warnung ersetzt;
   - eine Settings-Warnung erscheint je Plugin und Meldung nur einmal.
@@ -305,11 +305,11 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0001](adr/0001-raw-tags-original-serial-stripping.md) | `raw_tags` bleibt das verlustfreie Original. Nur die angeforderte Entfernung von Seriennummern durch `privacy-redact` darf es ändern. |
 | [0002](adr/0002-plugins-without-engine-no-output.md) | Plugins ohne echte Engine liefern keine Ergebnisse. Nicht bestimmbare Werte bleiben leer, mit Warnung. Die Experimente sind standardmäßig aus. |
 | [0003](adr/0003-wasm-component-execution.md) | Plugins laufen als in den Host eingebettete Wasm-Komponenten. Der WIT-Vertrag ist typisiert, es gibt keinen nativen Modus, `stream` nutzt dieselbe Runtime, und die Grenzen setzen `ResourceLimiter` und Epoch Interruption durch. |
-| [0004](adr/0004-component-cache.md) | Kompilierte Komponenten liegen im eingebauten Cache von wasmtime (kein `unsafe`), standardmäßig in `cache/components`. Der Host nutzt den Ordner nur, wenn allein der eigene Benutzer ihn beschreiben kann; sonst kompiliert er mit Warnung wie bisher. (Nach 0.2.0, unveröffentlicht.) |
+| [0004](adr/0004-component-cache.md) | Kompilierte Komponenten liegen im eingebauten Cache von wasmtime (kein `unsafe`), standardmäßig in `cache/components`. Der Host nutzt den Ordner nur, wenn allein der eigene Benutzer ihn beschreiben kann; sonst kompiliert er mit Warnung wie bisher. (Seit 0.3.0.) |
 | [0005](adr/0005-geonames-gazetteer.md) | Abgelöst durch 0006. |
 | [0006](adr/0006-geonames-gazetteer-names.md) | `reversegeo` bettet GeoNames `cities1000` als `places.bin` ein (committet, `make geonames`) und ordnet den nächsten Ort innerhalb von `city_radius_km` zu; Referenzstädte und Länder-Rechtecke entfallen. Lokale Namen: Landessprache, sonst GeoNames-Hauptname. Abgelöst durch 0008. |
-| [0007](adr/0007-http-client-rust.md) | Die Capability `http` läuft im Host-Prozess mit `ureq` (rustls, System-Zertifikate), mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen) und Proxy aus der Umgebung; ohne Rückfall auf ein externes Programm. (Nach 0.2.0, unveröffentlicht.) |
-| [0008](adr/0008-short-region-names.md) | Ersetzt 0006 und übernimmt dessen Regeln. Regionsnamen (englisch und lokal) nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen als ganze Wortfolge steht (Salzburg statt State of Salzburg); sonst bleibt der Name (State of Berlin). Kreise bleiben unverändert. (Nach 0.2.0, unveröffentlicht.) |
+| [0007](adr/0007-http-client-rust.md) | Die Capability `http` läuft im Host-Prozess mit `ureq` (rustls, System-Zertifikate), mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen) und Proxy aus der Umgebung; ohne Rückfall auf ein externes Programm. (Seit 0.3.0.) |
+| [0008](adr/0008-short-region-names.md) | Ersetzt 0006 und übernimmt dessen Regeln. Regionsnamen (englisch und lokal) nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen als ganze Wortfolge steht (Salzburg statt State of Salzburg); sonst bleibt der Name (State of Berlin). Kreise bleiben unverändert. (Seit 0.3.0.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
@@ -336,15 +336,24 @@ Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität
    - Deshalb kann `privacy-redact` keine Gesichter schwärzen.
 
    Quelle: ADR 0002, *Konsequenzen*.
-2. **Externe Programme zur Laufzeit:**
+2. **Externes Programm zur Laufzeit:**
    - Der Speicher hängt vom Kommandozeilenprogramm `sqlite3` ab.
-   - HTTP lief in 0.2.0 über ein externes Programm; nach 0.2.0 (unveröffentlicht) ersetzt es der Rust-Client `ureq` (ADR 0007).
+   - HTTP lief in 0.2.0 über ein externes Programm. Seit 0.3.0 läuft es im Host-Prozess mit `ureq`, mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen; ADR 0007).
 
    Quelle: `crates/host/src/storage.rs:66`, ADR 0007.
-3. **KV-Speicher nur im Arbeitsspeicher:** Der Cache für Ortsnamen und Wetter geht mit dem Prozess verloren. Nach einem Neustart fragt der Host die externen Dienste deshalb erneut ab (Quelle: `crates/host/src/runtime.rs:57`).
-4. **Globale Ressourcengrenzen:** In 0.2.0 gelten `resource_limits` für alle Plugins gleich. Nach 0.2.0 (unveröffentlicht) kann jedes Plugin eigene Grenzen bekommen (`plugins.<name>.resource_limits`); ohne Eintrag gilt weiter die globale Grenze (Quelle: `docs/prd/plugin-resource-limits.md`).
-5. **Startzeit:** In 0.2.0 werden die Komponenten bei jedem Host-Start kompiliert, im Release-Build etwa 1 s. Nach 0.2.0 (unveröffentlicht) behebt das der Komponenten-Cache aus ADR 0004. Dafür kommt ein neues Restrisiko hinzu: Ein Prozess desselben Benutzers kann Code über den Cache-Ordner einschleusen (Quelle: ADR 0004, *Konsequenzen*; `docs/prd/component-cache.md`).
+3. **KV-Speicher nur im Arbeitsspeicher:** Der Cache für Ortsnamen und Wetter geht mit dem Prozess verloren. Nach einem Neustart fragt der Host die externen Dienste deshalb erneut ab. Seit 0.3.0 löst `reversegeo` die meisten Orte offline auf, das trifft also vor allem `weather-enrich` (Quelle: `crates/host/src/runtime.rs`).
+4. **Globale Ressourcengrenzen — behoben in 0.3.0:** Jedes Plugin kann eigene Grenzen bekommen (`plugins.<name>.resource_limits`); ohne Eintrag gilt die globale Grenze (Quelle: `docs/archive/prd/plugin-resource-limits.md`).
+5. **Startzeit — behoben in 0.3.0, mit Restrisiko:** Der Komponenten-Cache (ADR 0004) erspart ab dem zweiten Start das Kompilieren. Ein Prozess desselben Benutzers kann aber Code über den Cache-Ordner einschleusen (Quelle: ADR 0004, *Konsequenzen*; `docs/archive/prd/component-cache.md`).
 6. **Veraltete Archivtexte:** Die archivierte Tech Spec `wasm-geo-host` nennt noch `sqlx`-Migrationen und ältere WIT-Namen (Quelle: `docs/archive/design/wasm-geo-host.md:29`, `:53`, `:57-60`). Umgesetzt sind die `sqlite3`-CLI mit `migrations/20261125000000_init.sql` und WIT `wasmgeohost:media@0.2.0`.
+7. **Ortszuordnung nach Punkten** (Ziel 2, neu in 0.3.0):
+   - `reversegeo` nimmt den nächsten GeoNames-Ort, nicht die Gemeinde, in der der Punkt liegt.
+   - In Grenznähe kann der Ort im Nachbarland liegen (Trastevere → Vatican City); manche Stadtteile führt GeoNames als eigene Orte (Královské Vinohrady).
+   - Mehrsprachige Länder bekommen lokale Namen in ihrer ersten Sprache (Genf → „Genf“).
+
+   Quelle: ADR 0006, ADR 0008, `plugins/reversegeo/README.md` §7.
+8. **Datenstand des Ortsverzeichnisses** (Ziel 2, neu in 0.3.0): `places.bin` hat den Stand der GeoNames-Dumps vom 2026-11-27 und wird nur von Hand aktualisiert (`make geonames`). Jede Aktualisierung vergrößert die Git-Historie um etwa 7 MB (Quelle: ADR 0005, ADR 0008, `docs/build-instructions.md`).
+
+Die Punkte 7 und 8 sind mit 0.3.0 hinzugekommen; ihre Einordnung am Ende hat der Maintainer am 2026-11-27 bestätigt.
 
 # Glossar {#section-glossary}
 

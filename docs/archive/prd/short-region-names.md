@@ -1,6 +1,6 @@
 ---
 feature: short-region-names
-status: accepted
+status: archived
 archive-after:
 touches:
   - tools/geonames-import/**
@@ -10,6 +10,7 @@ touches:
   - docs/pipeline_host_supervisor.md
   - docs/arc42.md
   - CHANGELOG.md
+release: 0.3.0
 ---
 
 # PRD — Kurze Regionsnamen im GeoNames-Ortsverzeichnis (`short-region-names`)
@@ -20,7 +21,7 @@ touches:
 
 ## Ziel
 
-`region` und `local_region` nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen wörtlich enthalten ist ([ADR 0008](../adr/0008-short-region-names.md)). Sonst bleibt der bisherige Name. Es wird kein Name gebildet oder gekürzt.
+`region` und `local_region` nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen wörtlich enthalten ist ([ADR 0008](../../adr/0008-short-region-names.md)). Sonst bleibt der bisherige Name. Es wird kein Name gebildet oder gekürzt.
 
 ## Nutzer
 

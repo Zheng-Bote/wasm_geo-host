@@ -1,6 +1,6 @@
 ---
 feature: geonames-gazetteer
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/reversegeo/**
@@ -14,6 +14,7 @@ touches:
   - crates/host/tests/**
   - docs/arc42.md
   - docs/build-instructions.md
+release: 0.3.0
 ---
 
 # PRD — Offline-Ortsverzeichnis aus GeoNames für reversegeo (`geonames-gazetteer`)
@@ -30,7 +31,7 @@ Die falschen Namen landen in der Datenbank, im KV-Cache und in den Zielordnern d
 
 ## Ziel
 
-`reversegeo` ordnet Fotos offline dem nächsten besiedelten Ort aus GeoNames `cities1000` zu, mit seiner Region und seinem Land ([ADR 0006](../adr/0006-geonames-gazetteer-names.md), ersetzt [ADR 0005](../adr/0005-geonames-gazetteer.md)).
+`reversegeo` ordnet Fotos offline dem nächsten besiedelten Ort aus GeoNames `cities1000` zu, mit seiner Region und seinem Land ([ADR 0006](../../adr/0006-geonames-gazetteer-names.md), ersetzt [ADR 0005](../../adr/0005-geonames-gazetteer.md)).
 
 - Die Namen kommen in Englisch und in der Landessprache.
 - Liegt kein Ort nahe genug, fragt das Plugin online oder lässt die Namen leer und warnt.
