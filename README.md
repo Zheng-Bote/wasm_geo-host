@@ -201,11 +201,13 @@ cargo test --workspace
 
 ### 1. Configure Capabilities and Pipeline (`config.yaml`)
 
-Edit `config.yaml` to specify which plugins are enabled, execution order, and granted sandbox permissions. Each enabled plugin is loaded from `plugins.<name>.path` if set, else from `<plugin_dir>/flagme_plugin_<name>.wasm` (`-` → `_`); a missing component stops the host. `resource_limits` cap the linear memory (`max_memory_bytes`) and run time (`timeout_ms`) of every plugin call:
+Edit `config.yaml` to specify which plugins are enabled, execution order, and granted sandbox permissions. Each enabled plugin is loaded from `plugins.<name>.path` if set, else from `<plugin_dir>/flagme_plugin_<name>.wasm` (`-` → `_`); a missing component stops the host. `resource_limits` cap the linear memory (`max_memory_bytes`) and run time (`timeout_ms`) of every plugin call. Compiled components are cached in `component_cache_dir` ([ADR 0004](docs/adr/0004-component-cache.md)), so later starts skip compilation; the host creates the directory with mode `0700` and uses it only if it is a real directory owned by the host user that neither group nor others can write; otherwise it warns and compiles on every start. `component_cache: false` turns the cache off:
 
 ```yaml
 database_path: 'media.db'
 plugin_dir: 'target/wasm32-wasip2/release' # components: flagme_plugin_<name>.wasm
+component_cache: true # default
+component_cache_dir: 'cache/components' # default, relative to the working directory
 
 resource_limits:
   max_memory_bytes: 268435456 # 256 MB

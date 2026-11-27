@@ -1,5 +1,5 @@
 use crate::capabilities::CapabilityManager;
-use crate::component::{ComponentEngine, HostState, MediaPluginPre};
+use crate::component::{CacheStats, ComponentEngine, HostState, MediaPluginPre};
 use crate::config::AppConfig;
 use flagme_sdk::{PluginError, PluginResult, UnifiedDocument};
 use std::collections::{HashMap, HashSet};
@@ -28,7 +28,7 @@ impl PluginRuntime {
     /// `media-plugin` world or its `name` export differs from the configured name. There is
     /// no native fallback.
     pub fn new(config: AppConfig) -> anyhow::Result<Self> {
-        let engine = ComponentEngine::new()?;
+        let engine = ComponentEngine::new(config.component_cache_dir().as_deref())?;
         let mut plugins = HashMap::new();
         for name in &config.pipeline {
             let Some(cfg) = config.plugins.get(name) else {
@@ -91,6 +91,11 @@ impl PluginRuntime {
             "Plugin execution completed"
         );
         Ok(result)
+    }
+
+    /// Hits and misses of the component cache, or `None` if it is off (ADR 0004).
+    pub fn component_cache_stats(&self) -> Option<CacheStats> {
+        self.engine.cache_stats()
     }
 
     /// Names of the loaded plugin components.

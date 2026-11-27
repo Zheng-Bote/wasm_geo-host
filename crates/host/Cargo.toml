@@ -27,6 +27,10 @@ wasmtime = "51"
 wasmtime-wasi = "51"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
 
+[target.'cfg(unix)'.dependencies]
+# Safe `geteuid` for the owner check of the component cache directory (ADR 0004).
+rustix = { version = "1", features = ["process"] }
+
 [dev-dependencies]
 # Plugin crates only for tests of the plugin logic; the host loads plugins as Wasm components (ADR 0003).
 flagme-plugin-metadata = { path = "../../plugins/metadata" }

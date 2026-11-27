@@ -9,6 +9,13 @@ pub struct AppConfig {
     /// Directory with the plugin components; used for plugins without an explicit `path`.
     #[serde(default = "default_plugin_dir")]
     pub plugin_dir: String,
+    /// Cache for compiled components (ADR 0004); `false` compiles on every start.
+    #[serde(default = "default_true")]
+    pub component_cache: bool,
+    /// Directory of the component cache; relative paths are resolved against the working
+    /// directory, like `plugin_dir`.
+    #[serde(default = "default_component_cache_dir")]
+    pub component_cache_dir: String,
     #[serde(default)]
     pub resource_limits: ResourceLimits,
     #[serde(default)]
@@ -43,6 +50,13 @@ pub const DEFAULT_PLUGIN_DIR: &str = "target/wasm32-wasip2/release";
 
 fn default_plugin_dir() -> String {
     DEFAULT_PLUGIN_DIR.to_string()
+}
+
+/// Default directory of the component cache (ADR 0004).
+pub const DEFAULT_COMPONENT_CACHE_DIR: &str = "cache/components";
+
+fn default_component_cache_dir() -> String {
+    DEFAULT_COMPONENT_CACHE_DIR.to_string()
 }
 
 fn default_max_memory_bytes() -> u64 {
@@ -178,6 +192,8 @@ impl Default for AppConfig {
         Self {
             database_path: default_database_path(),
             plugin_dir: default_plugin_dir(),
+            component_cache: true,
+            component_cache_dir: default_component_cache_dir(),
             resource_limits: ResourceLimits::default(),
             pipeline: vec![
                 "metadata".to_string(),
@@ -198,6 +214,11 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// Directory of the component cache, or `None` if `component_cache` is off.
+    pub fn component_cache_dir(&self) -> Option<std::path::PathBuf> {
+        self.component_cache.then(|| std::path::PathBuf::from(&self.component_cache_dir))
+    }
+
     /// Component file of a plugin: its `path`, else `<plugin_dir>/flagme_plugin_<name>.wasm`
     /// (`-` in the name becomes `_`, as in the Cargo artifact name).
     pub fn component_path(&self, name: &str) -> std::path::PathBuf {
@@ -257,6 +278,24 @@ impl AppConfig {
                             section = Section::Root;
                             if !v.is_empty() {
                                 cfg.plugin_dir = v;
+                            }
+                        }
+                        "component_cache" => {
+                            section = Section::Root;
+                            match v.to_ascii_lowercase().as_str() {
+                                "true" => cfg.component_cache = true,
+                                "false" => cfg.component_cache = false,
+                                _ => tracing::warn!(
+                                    value = %v,
+                                    "component_cache must be true or false; keeping {}",
+                                    cfg.component_cache
+                                ),
+                            }
+                        }
+                        "component_cache_dir" => {
+                            section = Section::Root;
+                            if !v.is_empty() {
+                                cfg.component_cache_dir = v;
                             }
                         }
                         "resource_limits" => {

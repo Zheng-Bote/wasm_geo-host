@@ -2,6 +2,9 @@
 database_path: 'media.db'
 # Wasm components of the plugins (ADR 0003): cargo build --release --target wasm32-wasip2 --lib --features component
 plugin_dir: 'target/wasm32-wasip2/release'
+# Cache for compiled components (ADR 0004): later starts skip compilation; the directory must be writable only by the host user.
+component_cache: true
+component_cache_dir: 'cache/components'
 
 resource_limits:
   max_memory_bytes: 4294967296 # 4 GB per plugin sandbox
@@ -39,7 +42,7 @@ plugins:
       quality: '95'
       variants: '128,256,512,1024,2048'
   ai-tagging:
-  # experimental: no engine built in, produces no results (ADR 0002)
+    # experimental: no engine built in, produces no results (ADR 0002)
     enabled: false
     capabilities: ['filesystem']
     settings:
@@ -56,11 +59,11 @@ plugins:
     enabled: true
     capabilities: ['http', 'kv']
   ocr-text:
-  # experimental: no engine built in, produces no results (ADR 0002)
+    # experimental: no engine built in, produces no results (ADR 0002)
     enabled: false
     capabilities: ['filesystem']
   face-detection:
-  # experimental: no engine built in, produces no results (ADR 0002)
+    # experimental: no engine built in, produces no results (ADR 0002)
     enabled: false
     capabilities: ['filesystem']
     settings:
@@ -72,5 +75,5 @@ plugins:
       style: 'blackout'
       blur_sigma: '24.0'
       fuzz_gps: 'true'
-      gps_decimal_places: '3'
+      gps_decimal_places: '4'
       strip_serials: 'true'

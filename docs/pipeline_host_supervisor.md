@@ -12,7 +12,7 @@ Until #30, `stream` spawned the external `wasmtime` CLI per stage and piped JSON
 flowchart TD
     subgraph Host["flagme-host (embedded Wasmtime)"]
         CLI["CLI: flagme-host stream|process <FILE>"]
-        Runtime["PluginRuntime: components from plugin_dir, compiled once"]
+        Runtime["PluginRuntime: components from plugin_dir, compiled once or loaded from the component cache"]
         Caps["CapabilityManager per plugin (grants from config.yaml)"]
         Storage["SQLite Storage (media.db)"]
     end
@@ -193,4 +193,4 @@ What the values show:
 ## 4. Trade-Offs
 
 - **Advantages**: one sandboxed execution path for `process`, `watch`, `serve` and `stream`; capabilities, settings and resource limits apply everywhere; no external `wasmtime` binary.
-- **Trade-offs**: components are compiled at every host start (≈ 1 s for all 11 in a release build); a compilation cache is a later extension. Limits apply globally (`resource_limits`), not per plugin.
+- **Trade-offs**: components are compiled on the first host start (≈ 1 s for all 11 in a release build) and then loaded from the component cache (`component_cache_dir`, [ADR 0004](adr/0004-component-cache.md)); without a usable cache directory they are compiled at every start. Limits apply globally (`resource_limits`), not per plugin.
