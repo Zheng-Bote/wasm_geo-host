@@ -108,7 +108,7 @@ flowchart LR
     meta --> geo["2. reversegeo\n(Coordinates to City)"]
     geo --> flag["3. countryflag\n(ISO Code to Flag Emoji)"]
     flag --> thumb["4. thumbnail\n(128px, 512px, 1024px)"]
-    thumb --> ai["5. ai-tagging\n(experimental, off)"]
+    thumb --> ai["5. ai-tagging\n(CLIP)"]
     ai --> dup["6. duplicate\n(SHA256 & pHash Indexing)"]
     dup --> time["7. timeline\n(Timestamp Resolution)"]
     time --> weather["8. weather-enrich\n(Open-Meteo Historical)"]
@@ -128,7 +128,7 @@ flowchart LR
 | **`reversegeo`** | `http`, `kv` | Resolves lat/lon coordinates to country, region, county, and city via an embedded offline GeoNames gazetteer (162k places, CC BY 4.0) and an optional online OSM/Nominatim fallback. |
 | **`countryflag`** | _(none)_ | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g. 🇩🇪), continents, and regions. |
 | **`thumbnail`** | `filesystem` | Scales JPEG, PNG, WebP, TIFF and GIF to 128px, 512px and 1024px variants in pure Rust (aspect ratio and EXIF orientation kept). HEIC/AVIF are not supported yet. |
-| **`ai-tagging`** | `filesystem` | **Experimental, disabled by default.** Tags, description and embeddings from an exchangeable `VisionModel`; no model is built in yet ([ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md)). |
+| **`ai-tagging`** | `filesystem` | Image embeddings and tags from a fixed list with OpenAI CLIP ViT-B/32 (int8, MIT) via `rten` in the sandbox; the model file comes from `make models` ([ADR 0010](docs/adr/0010-ai-tagging-clip.md)). Powers `flagme-host similar`. |
 | **`duplicate`** | `filesystem`, `kv` | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to detect duplicates. |
 | **`timeline`** | `filesystem` | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime). |
 | **`weather-enrich`** | `http`, `kv` | Historical weather enrichment via Open-Meteo API (temperature, WMO weather codes, weather emojis, humidity). |

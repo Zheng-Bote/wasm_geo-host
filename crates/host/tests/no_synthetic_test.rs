@@ -108,7 +108,7 @@ fn test_ac2_output_independent_of_file_name() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// no-synthetic-output AC-3: without an engine ai-tagging leaves its field None and warns; face-detection (YuNet) and ocr-text (PaddleOCR) have built-in engines (ADR 0009) whose result depends only on the image bytes, never on the (misleading) file name
+// no-synthetic-output AC-3: ocr-text (PaddleOCR), ai-tagging (CLIP) and face-detection (YuNet) have built-in engines (ADR 0009, ADR 0010) whose result depends only on the image bytes, never on the (misleading) file name
 #[test]
 fn test_ac3_no_engine_no_result() {
     let dir = temp_dir("ac3");
@@ -118,12 +118,12 @@ fn test_ac3_no_engine_no_result() {
         let path = write_file(&dir, name, &bytes);
         let caps = Arc::new(LogCaps::default());
         // Settings that used to select built-in engines must not bring them back.
-        let c = ctx(&caps, &[]);
+        let model = common::clip_model_path().to_string_lossy().to_string();
+        let c = ctx(&caps, &[("model_path", &model)]);
         let d = OcrTextPlugin::new().process(doc(&path), &c).unwrap();
         let d = AiTaggingPlugin::new().process(d, &c).unwrap();
         let d = FaceDetectionPlugin::new().process(d, &c).unwrap();
-        assert!(d.ai.is_none(), "{}", name);
-        let real = (d.ocr.clone().expect("ocr result"), d.faces.clone().expect("faces result"));
+        let real = (d.ocr.clone().expect("ocr result"), d.faces.clone().expect("faces result"), d.ai.clone().expect("ai result"));
         match &first_real {
             None => first_real = Some(real),
             Some(first) => assert_eq!(first, &real, "{}: result depends on the file name", name),
@@ -131,17 +131,16 @@ fn test_ac3_no_engine_no_result() {
 
         let w = caps.warnings();
         assert!(!w.iter().any(|m| m.starts_with("ocr-text:")), "{:?}", w);
-        assert!(w.iter().any(|m| m.starts_with("ai-tagging: no vision model available (ADR 0002)")), "{:?}", w);
+        assert!(!w.iter().any(|m| m.starts_with("ai-tagging:")), "{:?}", w);
         assert!(!w.iter().any(|m| m.starts_with("face-detection:")), "{:?}", w);
 
         let caps = Arc::new(LogCaps::default());
-        let c = ctx(&caps, &[("engine", "default"), ("model", "clip"), ("model_tier", "heavy"), ("tier", "heavy")]);
+        let c = ctx(&caps, &[("engine", "default"), ("model", "clip"), ("model_tier", "heavy"), ("tier", "heavy"), ("model_path", &model)]);
         let d = OcrTextPlugin::new().process(doc(&path), &c).unwrap();
         let d = AiTaggingPlugin::new().process(d, &c).unwrap();
         let d = FaceDetectionPlugin::new().process(d, &c).unwrap();
-        assert!(d.ai.is_none(), "{} with engine settings", name);
         assert_eq!(
-            Some(&(d.ocr.clone().expect("ocr result"), d.faces.clone().expect("faces result"))),
+            Some(&(d.ocr.clone().expect("ocr result"), d.faces.clone().expect("faces result"), d.ai.clone().expect("ai result"))),
             first_real.as_ref(),
             "{} with engine settings",
             name
@@ -264,9 +263,9 @@ fn test_ac5_engine_settings_not_supported() {
     assert_eq!(
         w,
         vec![
-            "settings[ai-tagging]: 'clip' for 'model' is not supported yet (no vision model is built in, see ADR 0002), ignored",
-            "settings[ai-tagging]: 'heavy' for 'model_tier' is not supported yet (no vision model is built in, see ADR 0002), ignored",
-            "settings[ai-tagging]: 'mps' for 'device' is not supported yet (no vision model is built in, see ADR 0002), ignored",
+            "settings[ai-tagging]: 'clip' for 'model' is not supported yet (only the built-in CLIP model is available, see ADR 0010), ignored",
+            "settings[ai-tagging]: 'heavy' for 'model_tier' is not supported yet (only the built-in CLIP model is available, see ADR 0010), ignored",
+            "settings[ai-tagging]: 'mps' for 'device' is not supported yet (only the built-in CLIP model is available, see ADR 0010), ignored",
             "settings[face-detection]: 'cpu' for 'device' is not supported yet (only the built-in YuNet detector is available, see ADR 0009), ignored",
             "settings[face-detection]: 'heavy' for 'tier' is not supported yet (only the built-in YuNet detector is available, see ADR 0009), ignored",
             "settings[ocr-text]: 'tesseract' for 'engine' is not supported yet (only the built-in PaddleOCR engine is available, see ADR 0009), ignored",
@@ -300,11 +299,8 @@ fn test_ac6_shipped_configs_disable_experimental_plugins() {
     for (name, cfg) in configs {
         for plugin in ["ocr-text", "ai-tagging", "face-detection"] {
             let p = cfg.plugins.get(plugin).unwrap_or_else(|| panic!("{}: {} missing", name, plugin));
-            if plugin == "face-detection" || plugin == "ocr-text" {
-                assert!(p.enabled || name == "config.docker.yaml", "{}: {} must be enabled (ADR 0009)", name, plugin);
-            } else {
-                assert!(!p.enabled, "{}: {} must be disabled (ADR 0002)", name, plugin);
-            }
+            // All three have real engines since ADR 0009/0010 and are enabled (Docker is not maintained).
+            assert!(p.enabled || name == "config.docker.yaml", "{}: {} must be enabled (ADR 0009/0010)", name, plugin);
             for key in ["model", "model_tier", "tier", "engine", "device"] {
                 assert!(!p.settings.contains_key(key), "{}: {} still sets '{}'", name, plugin, key);
             }

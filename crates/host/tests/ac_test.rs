@@ -261,7 +261,8 @@ fn test_ac8_sqlite_storage_and_persistence() {
 fn test_ac9_end_to_end_pipeline() {
     let db_path = std::env::temp_dir().join(format!("media_e2e_{}.db", uuid_simple()));
     let db_path_str = db_path.to_str().unwrap();
-    let config = common::with_components(AppConfig::default());
+    let mut config = common::with_components(AppConfig::default());
+    config.plugins.get_mut("ai-tagging").unwrap().settings.insert("model_path".to_string(), common::clip_model_path().to_string_lossy().to_string());
     let storage = Arc::new(Storage::new(db_path_str));
     storage.init_schema().unwrap();
 
@@ -287,9 +288,9 @@ fn test_ac9_end_to_end_pipeline() {
     assert!(processed.location.is_some());
     assert!(processed.country.is_some());
     assert_eq!(processed.thumbnails.len(), 3);
-    // ai-tagging has no engine and is disabled by default (ADR 0002); face-detection (YuNet) and
-    // ocr-text (PaddleOCR) run their built-in models and find nothing in this image (ADR 0009).
-    assert!(processed.ai.is_none());
+    // All three engines run (ADR 0009, ADR 0010): an embedding from CLIP; YuNet and PaddleOCR find
+    // nothing in this image.
+    assert_eq!(processed.ai.as_ref().and_then(|a| a.embedding.as_ref()).map(|e| e.len()), Some(512));
     assert_eq!(processed.ocr.as_ref().map(|o| o.regions.len()), Some(0));
     assert_eq!(processed.faces.as_ref().map(|f| f.faces.len()), Some(0));
     assert!(processed.duplicate.is_some());

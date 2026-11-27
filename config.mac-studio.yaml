@@ -46,9 +46,12 @@ plugins:
       quality: '95'
       variants: '128,256,512,1024,2048'
   ai-tagging:
-    # experimental: no engine built in, produces no results (ADR 0002)
-    enabled: false
+    # built-in CLIP ViT-B/32 model file, see `make models` (ADR 0010)
+    enabled: true
     capabilities: ['filesystem']
+    resource_limits:
+      max_memory_bytes: 536870912
+      timeout_ms: 30000
     settings:
       embedding_dim: '512'
   duplicate:

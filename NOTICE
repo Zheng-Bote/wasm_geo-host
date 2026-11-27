@@ -15,6 +15,13 @@ Third-Party Components & Attributions:
 - PaddleOCR PP-OCRv5 mobile text detection and Latin recognition models (ONNX), Copyright
   PaddlePaddle Authors (https://github.com/PaddlePaddle/PaddleOCR), licensed under the
   Apache-2.0 License; embedded in the ocr-text plugin (plugins/ocr-text/models/).
+- OpenAI CLIP ViT-B/32 (https://github.com/openai/CLIP), Copyright (c) 2021 OpenAI, MIT License;
+  ONNX conversion by Xenova (huggingface.co/Xenova/clip-vit-base-patch32, MIT). The model file is
+  not part of the source repository: `make models` downloads it into models/, and the release
+  packages ship it with its licence (models/CLIP-LICENSE). Usage note: OpenAI's model card
+  describes CLIP as a research output and considers deployed use out of scope without thorough
+  testing on a fixed class taxonomy; this project uses a fixed label list without personal
+  attributes for local photo sorting only (see plugins/ai-tagging/README.md, ADR 0010).
 - rten inference engine (https://github.com/robertknight/rten) (MIT / Apache-2.0)
 - OpenStreetMap / Nominatim (ODbL / Attribution)
 - Wasmtime & Bytecode Alliance Component Model tooling (Apache-2.0 WITH LLVM-exception / MIT)

@@ -2,6 +2,7 @@
 #
 #   make release   – tests, sdd gates, all release binaries and the packages in dist/packages
 #   make binaries  – only the binaries (host, plugin components, plugin CLIs)
+#   make models    – download the CLIP model files into models/ (network, SHA-256 checked, ADR 0010)
 #   make geonames  – refresh the reversegeo offline gazetteer from GeoNames (network, ADR 0006)
 #   make help      – all targets
 #
@@ -47,7 +48,15 @@ GEONAMES_DIR   ?= $(or $(TMPDIR),/tmp)/flagme-geonames
 GEONAMES_FILES := cities1000.zip alternateNamesV2.zip admin1CodesASCII.txt admin2Codes.txt countryInfo.txt
 GEONAMES_OUT   := plugins/reversegeo/data/places.bin
 
-.PHONY: help release binaries host components wasm-cli native-cli verify test check dist clean-dist version geonames
+# CLIP model files for ai-tagging (ADR 0010); fixed revision, checked against models/SHA256SUMS
+CLIP_URL     := https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/6b7c523703ae26e39be4b03774966f8571c7f523
+CLIP_FILES   := clip-vit-b32-vision-int8.onnx=onnx/vision_model_int8.onnx \
+                clip-vit-b32-text-int8.onnx=onnx/text_model_int8.onnx \
+                clip-vit-b32-tokenizer.json=tokenizer.json
+CLIP_LICENSE := https://raw.githubusercontent.com/openai/CLIP/main/LICENSE
+CLIP_MODEL   := models/clip-vit-b32-vision-int8.onnx
+
+.PHONY: help release binaries host components wasm-cli native-cli verify test check dist clean-dist version geonames models labels
 
 help: ## Show the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-12s %s\n", $$1, $$2}'
@@ -55,7 +64,7 @@ help: ## Show the targets
 version: ## Print the release version (from crates/host/Cargo.toml)
 	@echo $(VERSION)
 
-release: check test binaries verify dist ## Tests, sdd gates, binaries and packages
+release: check models test binaries verify dist ## Tests, sdd gates, binaries and packages
 	@echo "Release v$(VERSION) ready in $(PACKAGES)"
 
 binaries: host components wasm-cli native-cli ## All release binaries
@@ -89,7 +98,25 @@ geonames: ## Download GeoNames dumps and rebuild plugins/reversegeo/data/places.
 	$(CARGO) run --release --locked -p geonames-import -- --input "$(GEONAMES_DIR)" --output $(GEONAMES_OUT) --date "$$(date -u +%F)"
 	@echo "Review and commit $(GEONAMES_OUT); update the data date in NOTICE, plugins/reversegeo/README.md and CHANGELOG.md"
 
-test: ## Workspace tests (the host tests build the components themselves)
+models: ## Download the CLIP model files (ai-tagging) into models/ and verify their SHA-256
+	@for pair in $(CLIP_FILES); do \
+	  name=$${pair%%=*}; src=$${pair#*=}; \
+	  if [ -f "models/$$name" ] && (cd models && grep " $$name\$$" SHA256SUMS | shasum -a 256 -c --status); then \
+	    echo "models/$$name: OK (present)"; continue; fi; \
+	  curl -fsSL --retry 3 -o "models/$$name.part" "$(CLIP_URL)/$$src"; \
+	  mv "models/$$name.part" "models/$$name"; \
+	  if ! (cd models && grep " $$name\$$" SHA256SUMS | shasum -a 256 -c --status); then \
+	    rm -f "models/$$name"; echo "models/$$name: SHA-256 mismatch, removed"; exit 1; fi; \
+	  echo "models/$$name: OK (downloaded)"; \
+	done
+	@[ -f models/CLIP-LICENSE ] || curl -fsSL --retry 3 -o models/CLIP-LICENSE "$(CLIP_LICENSE)"
+
+labels: models ## Recompute plugins/ai-tagging/labels/labels.bin from labels.txt (commit it afterwards)
+	$(CARGO) run --release --locked -p clip-labels -- --labels plugins/ai-tagging/labels/labels.txt \
+	  --model models/clip-vit-b32-text-int8.onnx --tokenizer models/clip-vit-b32-tokenizer.json \
+	  --output plugins/ai-tagging/labels/labels.bin
+
+test: models ## Workspace tests (the host tests build the components themselves; ai-tagging needs make models)
 	$(CARGO) test --workspace --locked
 
 check: ## sdd lint and pre-release gate
@@ -108,9 +135,10 @@ dist: ## Assemble dist/v<version> and the packages with SHA256SUMS
 	  sed -E 's|^plugin_dir:.*|plugin_dir: "plugins" # relative to the working directory|' $$c > $(STAGE)/$(COMPLETE)/$$c; \
 	done
 	cp $(DOCS) $(STAGE)/$(COMPLETE)/
+	mkdir -p $(STAGE)/$(COMPLETE)/models && cp $(CLIP_MODEL) models/CLIP-LICENSE $(STAGE)/$(COMPLETE)/models/
 	@# Platform package: what is needed to run the host (host, components, configs, docs) plus the native plugin CLIs
 	mkdir -p $(STAGE)/$(PLATFORM)
-	cp -R $(STAGE)/$(COMPLETE)/bin $(STAGE)/$(COMPLETE)/plugins $(STAGE)/$(PLATFORM)/
+	cp -R $(STAGE)/$(COMPLETE)/bin $(STAGE)/$(COMPLETE)/plugins $(STAGE)/$(COMPLETE)/models $(STAGE)/$(PLATFORM)/
 	cp $(STAGE)/$(COMPLETE)/config*.yaml $(STAGE)/$(PLATFORM)/
 	cp $(DOCS) $(STAGE)/$(PLATFORM)/
 	@# Plugin packages

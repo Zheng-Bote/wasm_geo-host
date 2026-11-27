@@ -27,13 +27,16 @@ Runtime requirements on the host system: the `sqlite3` command-line tool (storag
    - `resource_limits.max_memory_bytes` and `timeout_ms` are enforced for every plugin call.
    - `plugins.<name>.resource_limits` gives one plugin its own `max_memory_bytes` and/or `timeout_ms` (higher or lower than the global values; missing fields inherit them). Give image-decoding plugins (`thumbnail`, `duplicate`, `privacy-redact`) more and metadata-only plugins less. Invalid values or unknown keys are logged as warnings at start and fall back to the global value; run with `RUST_LOG=flagme_host=debug` to see the effective limits per plugin.
 
-5. **Outbound HTTP (`http` capability)**:
+5. **Model file of `ai-tagging`**:
+   `ai-tagging` reads the CLIP model from `models/clip-vit-b32-vision-int8.onnx` (setting `model_path`, relative to the working directory; [ADR 0010](adr/0010-ai-tagging-clip.md)). The release packages contain it; from source run `make models`. The plugin checks its SHA-256; without a valid file it logs `CLIP model unavailable … (run \`make models\`)` and stores no tags or embeddings. The shipped configs give the plugin `max_memory_bytes: 536870912` and `timeout_ms: 30000`.
+
+6. **Outbound HTTP (`http` capability)**:
    Requests run in-process (`ureq` with rustls, [ADR 0007](adr/0007-http-client-rust.md)) with fixed limits: **2 s** in total per request, at most **1 MiB** per response and at most **5 redirects** (http/https only). Exceeding a limit fails the request with an error that names it; the plugin then leaves its fields empty and warns. TLS certificates are always verified against the system certificate store (macOS keychain; Linux needs `ca-certificates`); there is no switch to disable verification, and an untrusted certificate fails the request. Proxies are taken from the environment of the host process, as with common command-line tools: `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY` (requests through a proxy use an HTTP `CONNECT` tunnel). Every request sends `User-Agent: flagme-host/<version>`.
 
-6. **Database Migration**:
+7. **Database Migration**:
    On first launch, `flagme-host` automatically executes embedded migrations (`migrations/20261125000000_init.sql`).
 
-7. **Running the Pipeline**:
+8. **Running the Pipeline**:
    ```bash
    flagme-host process /path/to/photo.jpg --config config.yaml
    ```

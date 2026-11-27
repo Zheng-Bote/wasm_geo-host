@@ -69,6 +69,9 @@ fn real_stream_run() -> UnifiedDocument {
     let dir = common::temp_dir("examples_ac12");
     std::fs::create_dir_all(dir.join("Examples")).unwrap();
     std::fs::copy(repo_root().join("Examples/sample.jpg"), dir.join("Examples/sample.jpg")).unwrap();
+    // ai-tagging reads its model from the relative default path (ADR 0010).
+    std::fs::create_dir_all(dir.join("models")).unwrap();
+    std::fs::copy(common::clip_model_path(), dir.join("models/clip-vit-b32-vision-int8.onnx")).unwrap();
     let config: String = std::fs::read_to_string(repo_root().join("config.yaml"))
         .unwrap()
         .lines()
@@ -120,8 +123,10 @@ fn test_ac12_documented_output_matches_real_run() {
     assert_eq!((et.taken_at, et.resolution_source), (at.taken_at, at.resolution_source), "timeline");
     assert!(at.modified_at.is_some(), "fs-modified through the capability");
     // `weather` depends on the network (live Open-Meteo request) and is not compared.
-    assert!(documented.get("ai").is_none(), "ai must be absent (ADR 0002)");
-    assert!(actual.ai.is_none());
+    // ai-tagging runs CLIP (ADR 0010): the documented output omits the 512 embedding values.
+    let (eai, aai) = (expected.ai.clone().expect("documented ai"), actual.ai.clone().expect("ai"));
+    assert_eq!((&eai.tags, &eai.description), (&aai.tags, &aai.description), "ai");
+    assert_eq!(aai.embedding.map(|e| e.len()), Some(512));
     // ocr-text runs the built-in PaddleOCR models (ADR 0009): checked, no text in the sample.
     assert_eq!(expected.ocr, actual.ocr, "ocr");
     // face-detection runs the built-in YuNet model (ADR 0009): checked, no face in the sample.

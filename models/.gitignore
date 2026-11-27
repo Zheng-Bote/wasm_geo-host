@@ -1,0 +1,4 @@
+# Downloaded by `make models` (ADR 0010); only this file and SHA256SUMS are versioned.
+*
+!.gitignore
+!SHA256SUMS

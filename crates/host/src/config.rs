@@ -133,12 +133,15 @@ impl Default for AppConfig {
         plugins.insert(
             "ai-tagging".to_string(),
             PluginConfig {
-                // experimental: no engine built in, produces no results (ADR 0002)
-                enabled: false,
+                // built-in CLIP model file, `make models` (ADR 0010)
+                enabled: true,
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
-                resource_limits: HashMap::new(),
+                resource_limits: HashMap::from([
+                    ("max_memory_bytes".to_string(), serde_json::Value::from(536_870_912u64)),
+                    ("timeout_ms".to_string(), serde_json::Value::from(30_000u64)),
+                ]),
             },
         );
         plugins.insert(
