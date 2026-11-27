@@ -1,6 +1,6 @@
 ---
 feature: http-client-rust
-status: accepted
+status: archived
 archive-after:
 touches:
   - crates/host/src/**
@@ -11,6 +11,7 @@ touches:
   - docs/deployment-guide.md
   - docs/arc42.md
   - CHANGELOG.md
+release: 0.3.0
 ---
 
 # PRD — HTTP-Client in Rust statt curl (`http-client-rust`)
@@ -28,7 +29,7 @@ Die Fehlertexte hängen von der `curl`-Version ab. Ein externes C-Programm im Pf
 
 ## Ziel
 
-`http_get` arbeitet im Host-Prozess mit `ureq` 3 und prüft TLS gegen die System-Zertifikate ([ADR 0007](../adr/0007-http-client-rust.md)).
+`http_get` arbeitet im Host-Prozess mit `ureq` 3 und prüft TLS gegen die System-Zertifikate ([ADR 0007](../../adr/0007-http-client-rust.md)).
 
 - Es gelten feste Grenzen: 2 s gesamt, 1 MiB Antwort, 5 Weiterleitungen.
 - Proxy-Variablen werden wie bei `curl` beachtet.

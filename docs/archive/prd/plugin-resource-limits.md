@@ -1,6 +1,6 @@
 ---
 feature: plugin-resource-limits
-status: accepted
+status: archived
 archive-after:
 touches:
   - crates/host/src/**
@@ -12,13 +12,14 @@ touches:
   - docs/pipeline_host_supervisor.md
   - docs/arc42.md
   - CHANGELOG.md
+release: 0.3.0
 ---
 
 # PRD — Ressourcengrenzen je Plugin (`plugin-resource-limits`)
 
 ## Problem
 
-`resource_limits.max_memory_bytes` und `resource_limits.timeout_ms` gelten heute für jedes Plugin gleich ([ADR 0003](../adr/0003-wasm-component-execution.md), Entscheidung 5). ADR 0003 nennt Grenzen je Plugin ausdrücklich als spätere Erweiterung.
+`resource_limits.max_memory_bytes` und `resource_limits.timeout_ms` gelten heute für jedes Plugin gleich ([ADR 0003](../../adr/0003-wasm-component-execution.md), Entscheidung 5). ADR 0003 nennt Grenzen je Plugin ausdrücklich als spätere Erweiterung.
 
 Die Plugins brauchen aber sehr verschieden viel:
 

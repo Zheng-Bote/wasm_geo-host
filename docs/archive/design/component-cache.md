@@ -1,6 +1,6 @@
 ---
 feature: component-cache
-status: accepted
+status: archived
 archive-after:
 touches:
   - crates/host/src/**
@@ -12,11 +12,12 @@ touches:
   - docs/deployment-guide.md
   - docs/arc42.md
   - CHANGELOG.md
+release: 0.3.0
 ---
 
 # Tech Spec — Cache für kompilierte Wasm-Komponenten (`component-cache`)
 
-Setzt das PRD `docs/prd/component-cache.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0004](../adr/0004-component-cache.md).
+Setzt das PRD `docs/prd/component-cache.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0004](../../adr/0004-component-cache.md).
 
 ## Architektur
 

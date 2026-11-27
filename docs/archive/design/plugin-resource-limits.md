@@ -1,6 +1,6 @@
 ---
 feature: plugin-resource-limits
-status: accepted
+status: archived
 archive-after:
 touches:
   - crates/host/src/**
@@ -12,11 +12,12 @@ touches:
   - docs/pipeline_host_supervisor.md
   - docs/arc42.md
   - CHANGELOG.md
+release: 0.3.0
 ---
 
 # Tech Spec — Ressourcengrenzen je Plugin (`plugin-resource-limits`)
 
-Setzt das PRD `docs/prd/plugin-resource-limits.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0003](../adr/0003-wasm-component-execution.md), Entscheidung 5 („Grenzen je Plugin sind eine spätere Erweiterung“).
+Setzt das PRD `docs/prd/plugin-resource-limits.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0003](../../adr/0003-wasm-component-execution.md), Entscheidung 5 („Grenzen je Plugin sind eine spätere Erweiterung“).
 
 ## Architektur
 

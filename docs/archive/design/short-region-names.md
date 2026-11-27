@@ -1,6 +1,6 @@
 ---
 feature: short-region-names
-status: accepted
+status: archived
 archive-after:
 touches:
   - tools/geonames-import/**
@@ -10,11 +10,12 @@ touches:
   - docs/pipeline_host_supervisor.md
   - docs/arc42.md
   - CHANGELOG.md
+release: 0.3.0
 ---
 
 # Tech Spec — Kurze Regionsnamen im GeoNames-Ortsverzeichnis (`short-region-names`)
 
-Setzt das PRD `docs/prd/short-region-names.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0008](../adr/0008-short-region-names.md).
+Setzt das PRD `docs/prd/short-region-names.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0008](../../adr/0008-short-region-names.md).
 
 ## Architektur
 

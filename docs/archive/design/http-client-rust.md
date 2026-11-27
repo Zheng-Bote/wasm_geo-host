@@ -1,6 +1,6 @@
 ---
 feature: http-client-rust
-status: accepted
+status: archived
 archive-after:
 touches:
   - crates/host/src/**
@@ -11,11 +11,12 @@ touches:
   - docs/deployment-guide.md
   - docs/arc42.md
   - CHANGELOG.md
+release: 0.3.0
 ---
 
 # Tech Spec — HTTP-Client in Rust statt curl (`http-client-rust`)
 
-Setzt das PRD `docs/prd/http-client-rust.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0007](../adr/0007-http-client-rust.md).
+Setzt das PRD `docs/prd/http-client-rust.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0007](../../adr/0007-http-client-rust.md).
 
 ## Architektur
 

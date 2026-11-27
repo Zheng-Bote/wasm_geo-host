@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
+### Breaking
+- **`reversegeo` results change** (ADR 0006/0008): offline lookups now return the nearest GeoNames place with its own region and country instead of one of 35 reference cities or a country capital, and region names are shorter. Photos already stored keep their old names until they are processed again; the watcher's target folders (`<Country>/<City>/<Year>`) follow the new names for new photos.
+- **`reversegeo` `city_radius_km`** now means the maximum distance to the nearest place: default **25** (was 200), range 1–200 (was 1–2000). Explicit values above 200 are clamped with a warning.
+- **`http_get` error texts** no longer contain `curl exit <n>`; `curl` is no longer called. Proxies are used through an HTTP `CONNECT` tunnel, also for `http://` URLs. On Linux, HTTPS needs the `ca-certificates` package.
+
 ### Changed
 - **Shorter region names in `reversegeo`** ([ADR 0008](docs/adr/0008-short-region-names.md), #67): `region` and `local_region` use GeoNames' short form when it occurs as a whole word sequence in the previous name, e.g. `State of Salzburg` → `Salzburg`, `Canton of Geneva` → `Geneva`, `Free and Hanseatic City of Hamburg` → `Hamburg`, `Land Berlin` → `Berlin`. 871 English and 333 local region names change; names without such a short form stay (`State of Berlin`). Counties are unchanged. `places.bin` was rebuilt from the same dumps (2026-11-27).
 - **`http` capability without `curl`** ([ADR 0007](docs/adr/0007-http-client-rust.md), #66): outbound requests run in-process with the Rust client `ureq` (rustls, system certificate store) instead of spawning `curl`. Fixed limits: 2 s per request, at most 1 MiB per response (never read beyond), at most 5 redirects. Proxies come from `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY`/`NO_PROXY`. Error messages keep the form `http_get <url>: <cause>` but no longer contain `curl exit <n>` (e.g. `HTTP status 404`, `timed out after 2 s`, `response larger than 1048576 bytes`). `curl` is no longer a runtime requirement; on Linux the `ca-certificates` package is.
@@ -101,7 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Spec-Driven Development (SDD) governance artifacts: Verfassung ([constitution.md](constitution.md)), PRD, Tech Spec, and Execution Plan.
   - Comprehensive user, build, and plugin developer guides.
 
-[Unreleased]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Zheng-Bote/wasm_geo-host/releases/tag/v0.1.0

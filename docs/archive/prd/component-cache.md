@@ -1,6 +1,6 @@
 ---
 feature: component-cache
-status: accepted
+status: archived
 archive-after:
 touches:
   - crates/host/src/**
@@ -13,6 +13,7 @@ touches:
   - docs/deployment-guide.md
   - docs/arc42.md
   - CHANGELOG.md
+release: 0.3.0
 ---
 
 # PRD — Cache für kompilierte Wasm-Komponenten (`component-cache`)
@@ -25,7 +26,7 @@ Wer `process` oder `stream` für viele Dateien einzeln aufruft, zahlt diese Zeit
 
 ## Ziel
 
-Ab dem zweiten Start mit unveränderten Komponenten lädt der Host den kompilierten Code aus einem Cache, statt neu zu kompilieren. So legt es [ADR 0004](../adr/0004-component-cache.md) fest.
+Ab dem zweiten Start mit unveränderten Komponenten lädt der Host den kompilierten Code aus einem Cache, statt neu zu kompilieren. So legt es [ADR 0004](../../adr/0004-component-cache.md) fest.
 
 - Der Cache ist standardmäßig an.
 - Der Host nutzt ihn nur in einem Ordner, den allein der eigene Benutzer beschreiben kann.
