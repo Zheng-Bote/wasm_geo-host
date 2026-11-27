@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`reversegeo` offline lookup uses an embedded GeoNames gazetteer** ([ADR 0006](docs/adr/0006-geonames-gazetteer-names.md), #64): 162,380 populated places from [GeoNames](https://www.geonames.org/) `cities1000` (CC BY 4.0, data of 2026-11-27) with English and local names for place, county, region and country. Photos now resolve offline to the nearest town (e.g. Freising, Moosburg, Garmisch-Partenkirchen) in its own country. `city_radius_km` is now the maximum distance to the nearest place (default **25**, range 1–200; previously a radius around 35 reference cities, default 200). `make geonames` rebuilds `plugins/reversegeo/data/places.bin` with the new `tools/geonames-import`.
+
+### Fixed
+- **`reversegeo` no longer invents places** (#62, #63): the country boxes (capital as city for any point in the box) and the nearest-of-35-reference-cities rule (wrong country across borders, e.g. Prague → Dresden, Germany) are removed.
+
 ### Added
 - **Per-plugin resource limits**: `plugins.<name>.resource_limits` (`max_memory_bytes`, `timeout_ms`) replaces the global `resource_limits` for one plugin, higher or lower; missing fields inherit the global values. Invalid values (0, not an integer) and unknown keys are logged as warnings at start and fall back to the global value. The limits also apply when the host queries `name`/`version` at load time.
 - **Component cache** ([ADR 0004](docs/adr/0004-component-cache.md)): compiled plugin components are kept in wasmtime's cache, so later starts skip compilation (measured with 8 plugins: `flagme-host process` 0.8 s → 0.2 s from the second start on). New `config.yaml` keys `component_cache` (default `true`) and `component_cache_dir` (default `cache/components`). The host creates the directory with mode `0700` and uses it only if it is owned by the host user, not writable by group or others and not a symbolic link; otherwise it warns and compiles as before.

@@ -23,7 +23,7 @@ Die Plugins in Release 0.2.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
 | Plugin | Aufgabe |
 |---|---|
 | `metadata` | EXIF, IPTC, XMP |
-| `reversegeo` | Ortsnamen offline und online |
+| `reversegeo` | Ortsnamen offline (eingebettetes GeoNames-Ortsverzeichnis, nach 0.2.0) und online |
 | `countryflag` | ISO-3166-Daten |
 | `thumbnail` | Vorschaubilder |
 | `duplicate` | SHA-256 und dHash |
@@ -307,6 +307,8 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0002](adr/0002-plugins-without-engine-no-output.md) | Plugins ohne echte Engine liefern keine Ergebnisse. Nicht bestimmbare Werte bleiben leer, mit Warnung. Die Experimente sind standardmäßig aus. |
 | [0003](adr/0003-wasm-component-execution.md) | Plugins laufen als in den Host eingebettete Wasm-Komponenten. Der WIT-Vertrag ist typisiert, es gibt keinen nativen Modus, `stream` nutzt dieselbe Runtime, und die Grenzen setzen `ResourceLimiter` und Epoch Interruption durch. |
 | [0004](adr/0004-component-cache.md) | Kompilierte Komponenten liegen im eingebauten Cache von wasmtime (kein `unsafe`), standardmäßig in `cache/components`. Der Host nutzt den Ordner nur, wenn allein der eigene Benutzer ihn beschreiben kann; sonst kompiliert er mit Warnung wie bisher. (Nach 0.2.0, unveröffentlicht.) |
+| [0005](adr/0005-geonames-gazetteer.md) | Abgelöst durch 0006. |
+| [0006](adr/0006-geonames-gazetteer-names.md) | `reversegeo` bettet GeoNames `cities1000` als `places.bin` ein (committet, `make geonames`) und ordnet den nächsten Ort innerhalb von `city_radius_km` zu; Referenzstädte und Länder-Rechtecke entfallen. Lokale Namen: Landessprache, sonst GeoNames-Hauptname. (Nach 0.2.0, unveröffentlicht.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
