@@ -39,7 +39,7 @@ plugins:
       quality: '95'
       variants: '128,256,512,1024,2048'
   ai-tagging:
-  # experimental: no engine built in, produces no results (ADR 0002)
+    # experimental: no engine built in, produces no results (ADR 0002)
     enabled: false
     capabilities: ['filesystem']
     settings:
@@ -56,11 +56,11 @@ plugins:
     enabled: true
     capabilities: ['http', 'kv']
   ocr-text:
-  # experimental: no engine built in, produces no results (ADR 0002)
+    # experimental: no engine built in, produces no results (ADR 0002)
     enabled: false
     capabilities: ['filesystem']
   face-detection:
-  # experimental: no engine built in, produces no results (ADR 0002)
+    # experimental: no engine built in, produces no results (ADR 0002)
     enabled: false
     capabilities: ['filesystem']
     settings:
@@ -72,5 +72,5 @@ plugins:
       style: 'blackout'
       blur_sigma: '24.0'
       fuzz_gps: 'true'
-      gps_decimal_places: '3'
+      gps_decimal_places: '4'
       strip_serials: 'true'
