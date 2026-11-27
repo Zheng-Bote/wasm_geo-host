@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 date: 2026-11-27
 supersedes:
   - docs/adr/0005-geonames-gazetteer.md

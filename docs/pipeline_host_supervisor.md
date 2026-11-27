@@ -109,7 +109,7 @@ Real output of `flagme-host stream Examples/sample.jpg --config config.yaml` (20
     "county": null,
     "city": "Berlin",
     "local_country": "Deutschland",
-    "local_region": "Land Berlin",
+    "local_region": "Berlin",
     "local_city": "Berlin",
     "local_language": "de"
   },
