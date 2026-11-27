@@ -127,7 +127,8 @@ fn located(lat: f64, lon: f64) -> UnifiedDocument {
 fn test_ac1_unreachable_server_is_an_error() {
     let url = unreachable_url();
     let err = manager().http_get(&url).unwrap_err();
-    assert!(matches!(&err, PluginError::Io(m) if m.contains(&url) && m.contains("curl exit")), "{:?}", err);
+    // Since ADR 0007 the cause comes from the in-process client (no `curl exit` any more).
+    assert!(matches!(&err, PluginError::Io(m) if m.starts_with(&format!("http_get {}: ", url)) && m.contains("Connection refused")), "{:?}", err);
     assert!(!err.to_string().contains("offline"), "{}", err);
 }
 
@@ -145,6 +146,7 @@ fn test_ac2_http_status_and_empty_body() {
 }
 
 // honest-http-get AC-3: when http_get fails, weather-enrich and reversegeo leave their fields empty, warn with the cause and cache nothing
+// http-client-rust AC-8: with the in-process client weather-enrich and reversegeo behave as before on failure (fields empty, warning with the cause, no cache entry)
 #[test]
 fn test_ac3_plugins_on_http_failure() {
     let base = serve();
@@ -153,7 +155,8 @@ fn test_ac3_plugins_on_http_failure() {
         let out = WeatherEnrichPlugin::new().process(located(52.52, 13.40), &ctx(&caps, &[("endpoint", &endpoint)])).unwrap();
         assert!(out.weather.is_none());
         let warnings = caps.warnings.lock().unwrap().clone();
-        assert!(warnings.iter().any(|w| w.contains("no measured weather") && w.contains("curl exit")), "{:?}", warnings);
+        let cause = |w: &String| w.contains(&format!("http_get {}", endpoint)) && (w.contains("Connection refused") || w.contains("HTTP status 500"));
+        assert!(warnings.iter().any(|w| w.contains("no measured weather") && cause(w)), "{:?}", warnings);
         assert!(caps.kv_writes.lock().unwrap().is_empty(), "weather cached after a failed request");
 
         // (0, 0) lies outside the offline data, so reversegeo asks the online geocoder.
@@ -163,7 +166,7 @@ fn test_ac3_plugins_on_http_failure() {
         assert_eq!((loc.latitude, loc.longitude), (Some(0.0), Some(0.0)));
         assert!(loc.country.is_none() && loc.country_code.is_none() && loc.city.is_none(), "{:?}", loc);
         let warnings = caps.warnings.lock().unwrap().clone();
-        assert!(warnings.iter().any(|w| w.contains("reversegeo: no location names") && w.contains("curl exit")), "{:?}", warnings);
+        assert!(warnings.iter().any(|w| w.contains("reversegeo: no location names") && cause(w)), "{:?}", warnings);
         assert!(caps.kv_writes.lock().unwrap().is_empty(), "location cached after a failed request");
     }
 }

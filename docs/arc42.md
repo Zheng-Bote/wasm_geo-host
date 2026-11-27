@@ -83,7 +83,7 @@ Die Priorität hat der Maintainer festgelegt (Quelle: Entscheidung des Maintaine
 **Technik**
 - Zielplattform der Plugins ist `wasm32-wasip2`. Sie werden mit dem Feature `component` gebaut (Quelle: `README.md:180-190`).
 - Das Bauen braucht Rust 1.97 oder neuer, weil Wasmtime 51 das verlangt (Quelle: `CHANGELOG.md`, Abschnitt 0.2.0 *Breaking*).
-- Zur Laufzeit ruft der Host die Kommandozeilenprogramme `sqlite3` (Speicher) und `curl` (Capability `http`) auf (Quelle: `crates/host/src/storage.rs:66`, `crates/host/src/capabilities.rs:109`).
+- Zur Laufzeit ruft der Host das Kommandozeilenprogramm `sqlite3` (Speicher) auf. Die Capability `http` lief in 0.2.0 über ein externes Programm; nach 0.2.0 (unveröffentlicht) läuft sie im Host-Prozess mit `ureq` und den System-Zertifikaten (Quelle: `crates/host/src/storage.rs:66`, ADR 0007).
 
 **Nicht-Ziele** (Quelle: `docs/archive/prd/wasm-geo-host.md:47-48`)
 - Kein Betrieb verteilt im Cluster.
@@ -112,7 +112,7 @@ flowchart LR
 | Nutzer (CLI) | `flagme-host process\|stream\|search\|similar\|watch\|serve`; Dokument-JSON auf stdout, Logs auf stderr | `crates/host/src/main.rs:30-35`, `docs/archive/prd/wasm-geo-host.md:61` |
 | Browser, Integratoren | HTTP: `/api/photos`, `/api/photos/:id`, `/api/photos/:id/thumbnail/:size`, `/api/map/markers` (GeoJSON), `/api/search` | `crates/host/src/server.rs:73-77` |
 | Dateisystem | Medien lesen, Vorschaubilder und geschwärzte Bilder schreiben, Importordner überwachen (`notify`) | `crates/host/src/capabilities.rs`, `crates/host/src/watcher.rs:172` |
-| Nominatim, Open-Meteo | HTTPS über `curl` (Zeitgrenze 2 s), nur für Plugins mit dem Grant `http` | `crates/host/src/capabilities.rs:8`, `:98-136` |
+| Nominatim, Open-Meteo | HTTPS im Host-Prozess über `ureq` (nach 0.2.0; 2 s, 1 MiB, 5 Weiterleitungen, System-Zertifikate, Proxy aus der Umgebung), nur für Plugins mit dem Grant `http` | `crates/host/src/capabilities.rs`, ADR 0007 |
 | SQLite (`media.db`) | `sqlite3`-CLI über stdin | `crates/host/src/storage.rs:63-66` |
 
 # Lösungsstrategie {#section-solution-strategy}
@@ -253,13 +253,12 @@ flowchart LR
         Komp["plugins/flagme_plugin_*.wasm"]
         Conf["config.yaml (plugin_dir)"]
         Sqlite["sqlite3 CLI"]
-        Curl["curl"]
     end
     Host -->|"lädt"| Komp
     Host -->|"liest"| Conf
     Host -->|"stdin"| Sqlite
     Sqlite --> DB[("media.db")]
-    Host -->|"http-Capability"| Curl
+    Host -->|"http-Capability (ureq, TLS)"| Web["Nominatim, Open-Meteo"]
     Host --> Cache[("cache/ (Vorschaubilder, geschwärzte Bilder)")]
 ```
 
@@ -309,6 +308,7 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0004](adr/0004-component-cache.md) | Kompilierte Komponenten liegen im eingebauten Cache von wasmtime (kein `unsafe`), standardmäßig in `cache/components`. Der Host nutzt den Ordner nur, wenn allein der eigene Benutzer ihn beschreiben kann; sonst kompiliert er mit Warnung wie bisher. (Nach 0.2.0, unveröffentlicht.) |
 | [0005](adr/0005-geonames-gazetteer.md) | Abgelöst durch 0006. |
 | [0006](adr/0006-geonames-gazetteer-names.md) | `reversegeo` bettet GeoNames `cities1000` als `places.bin` ein (committet, `make geonames`) und ordnet den nächsten Ort innerhalb von `city_radius_km` zu; Referenzstädte und Länder-Rechtecke entfallen. Lokale Namen: Landessprache, sonst GeoNames-Hauptname. (Nach 0.2.0, unveröffentlicht.) |
+| [0007](adr/0007-http-client-rust.md) | Die Capability `http` läuft im Host-Prozess mit `ureq` (rustls, System-Zertifikate), mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen) und Proxy aus der Umgebung; ohne Rückfall auf ein externes Programm. (Nach 0.2.0, unveröffentlicht.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
@@ -336,10 +336,10 @@ Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität
 
    Quelle: ADR 0002, *Konsequenzen*.
 2. **Externe Programme zur Laufzeit:**
-   - Speicher und HTTP hängen von den Kommandozeilenprogrammen `sqlite3` und `curl` ab.
-   - Ein HTTP-Client in reinem Rust ist als spätere Erweiterung genannt.
+   - Der Speicher hängt vom Kommandozeilenprogramm `sqlite3` ab.
+   - HTTP lief in 0.2.0 über ein externes Programm; nach 0.2.0 (unveröffentlicht) ersetzt es der Rust-Client `ureq` (ADR 0007).
 
-   Quelle: `crates/host/src/storage.rs:66`, `crates/host/src/capabilities.rs:109`, `docs/archive/design/honest-http-get.md` (*Offene Punkte*).
+   Quelle: `crates/host/src/storage.rs:66`, ADR 0007.
 3. **KV-Speicher nur im Arbeitsspeicher:** Der Cache für Ortsnamen und Wetter geht mit dem Prozess verloren. Nach einem Neustart fragt der Host die externen Dienste deshalb erneut ab (Quelle: `crates/host/src/runtime.rs:57`).
 4. **Globale Ressourcengrenzen:** In 0.2.0 gelten `resource_limits` für alle Plugins gleich. Nach 0.2.0 (unveröffentlicht) kann jedes Plugin eigene Grenzen bekommen (`plugins.<name>.resource_limits`); ohne Eintrag gilt weiter die globale Grenze (Quelle: `docs/prd/plugin-resource-limits.md`).
 5. **Startzeit:** In 0.2.0 werden die Komponenten bei jedem Host-Start kompiliert, im Release-Build etwa 1 s. Nach 0.2.0 (unveröffentlicht) behebt das der Komponenten-Cache aus ADR 0004. Dafür kommt ein neues Restrisiko hinzu: Ein Prozess desselben Benutzers kann Code über den Cache-Ordner einschleusen (Quelle: ADR 0004, *Konsequenzen*; `docs/prd/component-cache.md`).

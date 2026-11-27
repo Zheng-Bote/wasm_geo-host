@@ -19,6 +19,8 @@ pub struct PluginRuntime {
     config: AppConfig,
     engine: ComponentEngine,
     kv_store: Arc<RwLock<HashMap<String, String>>>,
+    /// HTTP client shared by all plugins (ADR 0007).
+    http: ureq::Agent,
     warned: Arc<Mutex<HashSet<String>>>,
     plugins: HashMap<String, LoadedPlugin>,
 }
@@ -69,6 +71,7 @@ impl PluginRuntime {
             config,
             engine,
             kv_store: Arc::new(RwLock::new(HashMap::new())),
+            http: crate::capabilities::http_agent(),
             warned: Arc::new(Mutex::new(HashSet::new())),
             plugins,
         })
@@ -88,7 +91,8 @@ impl PluginRuntime {
             PluginError::ProcessingFailed(format!("Plugin '{}' not loaded", name))
         })?;
 
-        let caps = CapabilityManager::new(name, cfg.capabilities.clone(), self.kv_store.clone());
+        let caps = CapabilityManager::new(name, cfg.capabilities.clone(), self.kv_store.clone())
+            .with_http_agent(self.http.clone());
         let start = std::time::Instant::now();
         tracing::debug!(plugin = %name, "Invoking plugin");
         let result = self.engine.process(

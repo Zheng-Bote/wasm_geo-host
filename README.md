@@ -157,7 +157,7 @@ flowchart LR
 1. **Install Rust and build essentials**:
    ```bash
    # Debian / Ubuntu
-   sudo apt update && sudo apt install -y build-essential pkg-config libssl-dev sqlite3 curl
+   sudo apt update && sudo apt install -y build-essential pkg-config libssl-dev sqlite3 curl ca-certificates  # curl only for rustup; ca-certificates for HTTPS of the http capability
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
 2. **Add WASM target**:

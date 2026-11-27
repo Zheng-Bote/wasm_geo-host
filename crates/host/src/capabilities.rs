@@ -1,11 +1,47 @@
 use flagme_sdk::{HostCapabilities, PluginError, PluginResult};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::process::Command;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
-/// Timeout of an outbound `http_get` request.
+/// Total time limit of an outbound `http_get` request, including redirects (ADR 0007).
 pub const HTTP_TIMEOUT_SECS: u64 = 2;
+/// Largest accepted response body; the body is never read beyond it (ADR 0007).
+pub const HTTP_MAX_RESPONSE_BYTES: u64 = 1_048_576;
+/// Largest number of followed redirects (ADR 0007).
+pub const HTTP_MAX_REDIRECTS: u32 = 5;
+/// `User-Agent` of every request (required by Nominatim's usage policy).
+pub const HTTP_USER_AGENT: &str = concat!("flagme-host/", env!("CARGO_PKG_VERSION"));
+
+/// The HTTP client of the `http` capability (ADR 0007): `ureq` with rustls and the system
+/// certificate store, fixed limits and the proxy settings of the environment
+/// (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`). Cloning shares the connection pool.
+pub fn http_agent() -> ureq::Agent {
+    let tls = ureq::tls::TlsConfig::builder()
+        .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+        .build();
+    ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(HTTP_TIMEOUT_SECS)))
+        .max_redirects(HTTP_MAX_REDIRECTS)
+        .max_redirects_will_error(true)
+        .http_status_as_error(true)
+        .user_agent(HTTP_USER_AGENT)
+        .tls_config(tls)
+        .build()
+        .into()
+}
+
+/// Short cause of a failed request, without client-specific prefixes.
+fn http_cause(e: &ureq::Error) -> String {
+    match e {
+        ureq::Error::StatusCode(s) => format!("HTTP status {}", s),
+        ureq::Error::Timeout(_) => format!("timed out after {} s", HTTP_TIMEOUT_SECS),
+        ureq::Error::TooManyRedirects => format!("more than {} redirects", HTTP_MAX_REDIRECTS),
+        ureq::Error::BodyExceedsLimit(_) => format!("response larger than {} bytes", HTTP_MAX_RESPONSE_BYTES),
+        ureq::Error::Tls(_) | ureq::Error::Rustls(_) => format!("TLS: {}", e),
+        other => other.to_string(),
+    }
+}
 
 /// Capability enforcement manager for a specific plugin.
 pub struct CapabilityManager {
@@ -13,6 +49,7 @@ pub struct CapabilityManager {
     granted_capabilities: HashSet<String>,
     kv_store: Arc<RwLock<HashMap<String, String>>>,
     secrets: HashMap<String, String>,
+    http: ureq::Agent,
 }
 
 impl CapabilityManager {
@@ -30,7 +67,14 @@ impl CapabilityManager {
             granted_capabilities: set,
             kv_store,
             secrets: HashMap::new(),
+            http: http_agent(),
         }
+    }
+
+    /// Uses a shared HTTP client (and its connection pool) instead of an own one.
+    pub fn with_http_agent(mut self, agent: ureq::Agent) -> Self {
+        self.http = agent;
+        self
     }
 
     pub fn set_secret(&mut self, key: impl Into<String>, val: impl Into<String>) {
@@ -104,32 +148,19 @@ impl HostCapabilities for CapabilityManager {
 
         tracing::info!(plugin = %self.plugin_name, url = %url, "Executing HTTP GET");
 
-        // Outbound request via the system `curl` (2 s timeout). Every failure is reported as an
-        // error; the host never builds a response body itself (#52, ADR 0002).
-        let output = Command::new("curl")
-            .args([
-                "-sS",
-                "-L",
-                "--fail",
-                "--max-time",
-                &HTTP_TIMEOUT_SECS.to_string(),
-                "-H",
-                concat!("User-Agent: flagme-host/", env!("CARGO_PKG_VERSION")),
-                url,
-            ])
-            .output()
-            .map_err(|e| PluginError::Io(format!("http_get {}: cannot run curl: {}", url, e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let cause = stderr.trim().trim_start_matches("curl: ");
-            let code = output.status.code().map_or("signal".to_string(), |c| c.to_string());
-            return Err(PluginError::Io(format!("http_get {}: {} (curl exit {})", url, cause, code)));
-        }
-        let body = String::from_utf8(output.stdout)
-            .map_err(|_| PluginError::Io(format!("http_get {}: response is not UTF-8", url)))?;
+        // In-process request (ADR 0007). Every failure is reported as an error; the host never
+        // builds a response body itself (#52, ADR 0002).
+        let fail = |cause: String| PluginError::Io(format!("http_get {}: {}", url, cause));
+        let mut response = self.http.get(url).call().map_err(|e| fail(http_cause(&e)))?;
+        let bytes = response
+            .body_mut()
+            .with_config()
+            .limit(HTTP_MAX_RESPONSE_BYTES)
+            .read_to_vec()
+            .map_err(|e| fail(http_cause(&e)))?;
+        let body = String::from_utf8(bytes).map_err(|_| fail("response is not UTF-8".to_string()))?;
         if body.trim().is_empty() {
-            return Err(PluginError::Io(format!("http_get {}: empty response", url)));
+            return Err(fail("empty response".to_string()));
         }
         Ok(body)
     }
