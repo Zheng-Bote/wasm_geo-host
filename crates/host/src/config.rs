@@ -185,8 +185,8 @@ impl Default for AppConfig {
         plugins.insert(
             "face-detection".to_string(),
             PluginConfig {
-                // experimental: no engine built in, produces no results (ADR 0002)
-                enabled: false,
+                // built-in YuNet detector (ADR 0009)
+                enabled: true,
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),

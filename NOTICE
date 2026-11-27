@@ -9,6 +9,10 @@ Third-Party Components & Attributions:
   countryInfo and alternateNamesV2 dumps of 2026-11-27), licensed under
   CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). The data was converted into a compact
   binary format; city sections (PPLX) were dropped and names were selected per ADR 0006.
+- YuNet face detection model (face_detection_yunet_2023mar.onnx) from the OpenCV Zoo
+  (https://github.com/opencv/opencv_zoo), Copyright (c) 2020 Shiqi Yu, licensed under the
+  MIT License; embedded in the face-detection plugin (plugins/face-detection/models/).
+- rten inference engine (https://github.com/robertknight/rten) (MIT / Apache-2.0)
 - OpenStreetMap / Nominatim (ODbL / Attribution)
 - Wasmtime & Bytecode Alliance Component Model tooling (Apache-2.0 WITH LLVM-exception / MIT)
 - SQLite (Public Domain)

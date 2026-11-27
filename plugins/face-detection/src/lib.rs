@@ -1,3 +1,5 @@
+pub mod yunet;
+
 use flagme_sdk::{
     DetectedFace, FacesInfo, Plugin, PluginContext, PluginResult, PluginSettings, SettingsCache,
     SettingsReader, UnifiedDocument,
@@ -22,7 +24,8 @@ impl PluginSettings for FaceDetectionSettings {
     const PLUGIN: &'static str = "face-detection";
 
     fn from_reader(base: &Self, r: &mut SettingsReader<'_>) -> Self {
-        let reason = "no face detector is built in, see ADR 0002";
+        let reason = "only the built-in YuNet detector is available, see ADR 0009";
+        r.not_supported("model", &[], reason);
         r.not_supported("tier", &[], reason);
         r.not_supported("device", &[], reason);
         Self {
@@ -31,11 +34,14 @@ impl PluginSettings for FaceDetectionSettings {
     }
 }
 
-/// Face Detection Plugin with a swappable detector.
+/// Face Detection Plugin with a swappable detector; by default the embedded YuNet model
+/// (ADR 0009).
 ///
 /// Without a detector the plugin leaves `doc.faces` untouched and logs a warning (ADR 0002).
 pub struct FaceDetectionPlugin {
     detector: Option<Box<dyn FaceDetector>>,
+    /// Why the built-in detector could not be loaded, reported in `process`.
+    unavailable: Option<String>,
     settings: SettingsCache<FaceDetectionSettings>,
 }
 
@@ -46,18 +52,24 @@ impl Default for FaceDetectionPlugin {
 }
 
 impl FaceDetectionPlugin {
-    /// Plugin without a face detector.
+    /// Plugin with the built-in YuNet detector (ADR 0009).
     pub fn new() -> Self {
-        Self {
-            detector: None,
-            settings: SettingsCache::new(FaceDetectionSettings::default()),
+        match yunet::YuNetDetector::new() {
+            Ok(detector) => Self::with_detector(Box::new(detector)),
+            Err(e) => Self {
+                detector: None,
+                unavailable: Some(e),
+                settings: SettingsCache::new(FaceDetectionSettings::default()),
+            },
         }
     }
 
+    /// Plugin with the given detector (used by tests).
     pub fn with_detector(detector: Box<dyn FaceDetector>) -> Self {
         Self {
             detector: Some(detector),
-            ..Self::new()
+            unavailable: None,
+            settings: SettingsCache::new(FaceDetectionSettings::default()),
         }
     }
 }
@@ -76,7 +88,10 @@ impl Plugin for FaceDetectionPlugin {
         let warn = |msg: String| ctx.capabilities.log("warn", &format!("face-detection: {}", msg));
 
         let Some(detector) = self.detector.as_deref() else {
-            warn(format!("no face detector available (ADR 0002); '{}' not processed", doc.file.path));
+            match &self.unavailable {
+                Some(e) => warn(format!("built-in detector unavailable: {}; '{}' not processed", e, doc.file.path)),
+                None => warn(format!("no face detector available (ADR 0002); '{}' not processed", doc.file.path)),
+            }
             return Ok(doc);
         };
         let bytes = match ctx.capabilities.fs_read(&doc.file.path) {

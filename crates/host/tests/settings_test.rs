@@ -977,7 +977,12 @@ fn readmes_list_all_keys() {
     for (plugin, keys) in ALL_KEYS {
         // Engine-selecting keys are known but "not supported yet" (ADR 0002); no key may be unknown or invalid.
         let w = parse_warnings(plugin, &map(keys));
-        assert!(w.iter().all(|m| m.contains("is not supported yet") && m.contains("ADR 0002")), "{}: {:?}", plugin, w);
+        assert!(
+            w.iter().all(|m| m.contains("is not supported yet") && (m.contains("ADR 0002") || m.contains("ADR 0009"))),
+            "{}: {:?}",
+            plugin,
+            w
+        );
 
         let readme = std::fs::read_to_string(repo_root().join("plugins").join(plugin).join("README.md")).unwrap();
         let section = readme

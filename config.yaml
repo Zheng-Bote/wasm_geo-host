@@ -77,8 +77,8 @@ plugins:
       - filesystem
 
   face-detection:
-  # experimental: no engine built in, produces no results (ADR 0002)
-    enabled: false
+  # built-in YuNet detector (ADR 0009); privacy-redact uses its boxes
+    enabled: true
     capabilities:
       - filesystem
 

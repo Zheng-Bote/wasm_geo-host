@@ -22,7 +22,14 @@ fn write_config(dir: &Path) -> PathBuf {
             }
         })
         .collect::<Vec<_>>()
-        .join("\n");
+        .join("\n")
+        // These tests need a deterministic plugin warning: without face-detection, privacy-redact
+        // reports the missing face result.
+        .replace(
+            "  face-detection:\n  # built-in YuNet detector (ADR 0009); privacy-redact uses its boxes\n    enabled: true",
+            "  face-detection:\n    enabled: false",
+        );
+    assert!(config.contains("  face-detection:\n    enabled: false"), "config.yaml layout changed");
     let path = dir.join("config.yaml");
     std::fs::write(&path, config).unwrap();
     path

@@ -30,7 +30,8 @@ Die Plugins in Release 0.3.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
 | `timeline` | Aufnahmezeit |
 | `weather-enrich` | historisches Wetter |
 | `privacy-redact` | Schwärzung, GPS-Unschärfe, Seriennummern |
-| `ai-tagging`, `ocr-text`, `face-detection` | Engine-Schnittstellen, experimentell und deaktiviert (ADR 0002) |
+| `face-detection` | Gesichtserkennung mit dem eingebetteten Modell YuNet über `rten` im Gast (ADR 0009, nach 0.3.0) |
+| `ai-tagging`, `ocr-text` | Engine-Schnittstellen, experimentell und deaktiviert (ADR 0002) |
 
 Dazu kommen Volltext- und Ähnlichkeitssuche, ein Verzeichnis-Watcher und eine eingebettete Web-Oberfläche (Quelle: `CHANGELOG.md`, Abschnitt 0.2.0 *Added*).
 
@@ -310,6 +311,7 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0006](adr/0006-geonames-gazetteer-names.md) | `reversegeo` bettet GeoNames `cities1000` als `places.bin` ein (committet, `make geonames`) und ordnet den nächsten Ort innerhalb von `city_radius_km` zu; Referenzstädte und Länder-Rechtecke entfallen. Lokale Namen: Landessprache, sonst GeoNames-Hauptname. Abgelöst durch 0008. |
 | [0007](adr/0007-http-client-rust.md) | Die Capability `http` läuft im Host-Prozess mit `ureq` (rustls, System-Zertifikate), mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen) und Proxy aus der Umgebung; ohne Rückfall auf ein externes Programm. (Seit 0.3.0.) |
 | [0008](adr/0008-short-region-names.md) | Ersetzt 0006 und übernimmt dessen Regeln. Regionsnamen (englisch und lokal) nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen als ganze Wortfolge steht (Salzburg statt State of Salzburg); sonst bleibt der Name (State of Berlin). Kreise bleiben unverändert. (Seit 0.3.0.) |
+| [0009](adr/0009-plugin-inference-rten.md) | Echte Engines laufen mit `rten` im Gast; Modelle mit freier Lizenz liegen mit Quelle im Repository und werden bis 16 MB eingebettet; Komponenten mit Wasm-SIMD. `face-detection` nutzt YuNet. (Nach 0.3.0, unveröffentlicht.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
@@ -331,11 +333,11 @@ Die Qualitätsanforderungen konkretisieren die vier Qualitätsziele aus Abschnit
 
 Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität zuerst, gemessen an den Qualitätszielen aus Abschnitt 1:
 
-1. **Keine echten Engines** (Ziel 2):
-   - Ohne Engine liefern OCR, KI-Tags, Embeddings (`similar`) und die Gesichtserkennung nichts.
-   - Deshalb kann `privacy-redact` keine Gesichter schwärzen.
+1. **Keine echten Engines** (Ziel 2), teilweise behoben:
+   - Ohne Engine liefern OCR, KI-Tags und Embeddings (`similar`) nichts.
+   - Nach 0.3.0 erkennt `face-detection` Gesichter mit YuNet (ADR 0009); damit schwärzt `privacy-redact` echte Gesichter. `ocr-text` und `ai-tagging` folgen.
 
-   Quelle: ADR 0002, *Konsequenzen*.
+   Quelle: ADR 0002, *Konsequenzen*; ADR 0009.
 2. **Externes Programm zur Laufzeit:**
    - Der Speicher hängt vom Kommandozeilenprogramm `sqlite3` ab.
    - HTTP lief in 0.2.0 über ein externes Programm. Seit 0.3.0 läuft es im Host-Prozess mit `ureq`, mit festen Grenzen (2 s, 1 MiB, 5 Weiterleitungen; ADR 0007).

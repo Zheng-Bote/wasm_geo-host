@@ -108,7 +108,7 @@ fn test_ac2_output_independent_of_file_name() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// no-synthetic-output AC-3: without an engine ocr-text, ai-tagging and face-detection leave their field None and warn
+// no-synthetic-output AC-3: without an engine ocr-text and ai-tagging leave their field None and warn; face-detection has the built-in YuNet engine (ADR 0009) and reports no face in a plain image
 #[test]
 fn test_ac3_no_engine_no_result() {
     let dir = temp_dir("ac3");
@@ -121,19 +121,21 @@ fn test_ac3_no_engine_no_result() {
         let d = OcrTextPlugin::new().process(doc(&path), &c).unwrap();
         let d = AiTaggingPlugin::new().process(d, &c).unwrap();
         let d = FaceDetectionPlugin::new().process(d, &c).unwrap();
-        assert!(d.ocr.is_none() && d.ai.is_none() && d.faces.is_none(), "{}", name);
+        assert!(d.ocr.is_none() && d.ai.is_none(), "{}", name);
+        assert_eq!(d.faces.as_ref().map(|f| f.faces.len()), Some(0), "{}: checked, no face", name);
 
         let w = caps.warnings();
         assert!(w.iter().any(|m| m.starts_with("ocr-text: no OCR engine available (ADR 0002)")), "{:?}", w);
         assert!(w.iter().any(|m| m.starts_with("ai-tagging: no vision model available (ADR 0002)")), "{:?}", w);
-        assert!(w.iter().any(|m| m.starts_with("face-detection: no face detector available (ADR 0002)")), "{:?}", w);
+        assert!(!w.iter().any(|m| m.starts_with("face-detection:")), "{:?}", w);
 
         let caps = Arc::new(LogCaps::default());
         let c = ctx(&caps, &[("engine", "default"), ("model", "clip"), ("model_tier", "heavy"), ("tier", "heavy")]);
         let d = OcrTextPlugin::new().process(doc(&path), &c).unwrap();
         let d = AiTaggingPlugin::new().process(d, &c).unwrap();
         let d = FaceDetectionPlugin::new().process(d, &c).unwrap();
-        assert!(d.ocr.is_none() && d.ai.is_none() && d.faces.is_none(), "{} with engine settings", name);
+        assert!(d.ocr.is_none() && d.ai.is_none(), "{} with engine settings", name);
+        assert_eq!(d.faces.as_ref().map(|f| f.faces.len()), Some(0), "{} with engine settings", name);
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -255,8 +257,8 @@ fn test_ac5_engine_settings_not_supported() {
             "settings[ai-tagging]: 'clip' for 'model' is not supported yet (no vision model is built in, see ADR 0002), ignored",
             "settings[ai-tagging]: 'heavy' for 'model_tier' is not supported yet (no vision model is built in, see ADR 0002), ignored",
             "settings[ai-tagging]: 'mps' for 'device' is not supported yet (no vision model is built in, see ADR 0002), ignored",
-            "settings[face-detection]: 'cpu' for 'device' is not supported yet (no face detector is built in, see ADR 0002), ignored",
-            "settings[face-detection]: 'heavy' for 'tier' is not supported yet (no face detector is built in, see ADR 0002), ignored",
+            "settings[face-detection]: 'cpu' for 'device' is not supported yet (only the built-in YuNet detector is available, see ADR 0009), ignored",
+            "settings[face-detection]: 'heavy' for 'tier' is not supported yet (only the built-in YuNet detector is available, see ADR 0009), ignored",
             "settings[ocr-text]: 'tesseract' for 'engine' is not supported yet (no OCR engine is built in, see ADR 0002), ignored",
         ]
     );
@@ -277,7 +279,7 @@ fn test_ac5_engine_settings_not_supported() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// no-synthetic-output AC-6: shipped configs and the built-in default disable ocr-text, ai-tagging and face-detection
+// no-synthetic-output AC-6: shipped configs and the built-in default disable ocr-text and ai-tagging; face-detection has a real engine since ADR 0009 and is enabled (config.docker.yaml is not maintained)
 #[test]
 fn test_ac6_shipped_configs_disable_experimental_plugins() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
@@ -288,7 +290,11 @@ fn test_ac6_shipped_configs_disable_experimental_plugins() {
     for (name, cfg) in configs {
         for plugin in ["ocr-text", "ai-tagging", "face-detection"] {
             let p = cfg.plugins.get(plugin).unwrap_or_else(|| panic!("{}: {} missing", name, plugin));
-            assert!(!p.enabled, "{}: {} must be disabled (ADR 0002)", name, plugin);
+            if plugin == "face-detection" {
+                assert!(p.enabled || name == "config.docker.yaml", "{}: face-detection must be enabled (ADR 0009)", name);
+            } else {
+                assert!(!p.enabled, "{}: {} must be disabled (ADR 0002)", name, plugin);
+            }
             for key in ["model", "model_tier", "tier", "engine", "device"] {
                 assert!(!p.settings.contains_key(key), "{}: {} still sets '{}'", name, plugin, key);
             }
