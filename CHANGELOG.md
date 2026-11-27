@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Component cache** ([ADR 0004](docs/adr/0004-component-cache.md)): compiled plugin components are kept in wasmtime's cache, so later starts skip compilation (measured with 8 plugins: `flagme-host process` 0.8 s → 0.2 s from the second start on). New `config.yaml` keys `component_cache` (default `true`) and `component_cache_dir` (default `cache/components`). The host creates the directory with mode `0700` and uses it only if it is owned by the host user, not writable by group or others and not a symbolic link; otherwise it warns and compiles as before.
+
 ## [0.2.0] - 2026-11-26
 
 ### Breaking

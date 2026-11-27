@@ -1,6 +1,9 @@
 database_path: "media.db"
 # Wasm components of the plugins (ADR 0003): cargo build --release --target wasm32-wasip2 --lib --features component
 plugin_dir: "target/wasm32-wasip2/release"
+# Cache for compiled components (ADR 0004); the directory must be writable only by the host user.
+component_cache: true
+component_cache_dir: "cache/components"
 
 resource_limits:
   max_memory_bytes: 268435456

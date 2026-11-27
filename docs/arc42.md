@@ -284,6 +284,7 @@ offen: keine weiteren Infrastrukturelemente belegt.
   - Speichergrenze über `ResourceLimiter`, Zeitgrenze über Epoch Interruption im 10-ms-Takt.
 
   Quelle: `crates/host/src/component.rs:34`, `:43`, `:163-179`.
+- **Komponenten-Cache** (nach 0.2.0, unveröffentlicht): Kompilierter Code liegt im Cache von wasmtime in `component_cache_dir`. Der Ordner ist eine Vertrauensgrenze; der Host prüft Besitzer, Rechte (`0700`, nicht für Gruppe oder andere beschreibbar) und dass er kein symbolischer Link ist (Quelle: ADR 0004, `crates/host/src/component.rs`, `prepare_cache_dir`).
 - **Plugin-Settings:**
   - Werte sind Strings, ausgelesen nach gemeinsamen Regeln für Bool, Zahlen, Listen, Pfade und URLs; ungültige Werte werden mit einer Warnung ersetzt;
   - eine Settings-Warnung erscheint je Plugin und Meldung nur einmal.
@@ -305,6 +306,7 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0001](adr/0001-raw-tags-original-serial-stripping.md) | `raw_tags` bleibt das verlustfreie Original. Nur die angeforderte Entfernung von Seriennummern durch `privacy-redact` darf es ändern. |
 | [0002](adr/0002-plugins-without-engine-no-output.md) | Plugins ohne echte Engine liefern keine Ergebnisse. Nicht bestimmbare Werte bleiben leer, mit Warnung. Die Experimente sind standardmäßig aus. |
 | [0003](adr/0003-wasm-component-execution.md) | Plugins laufen als in den Host eingebettete Wasm-Komponenten. Der WIT-Vertrag ist typisiert, es gibt keinen nativen Modus, `stream` nutzt dieselbe Runtime, und die Grenzen setzen `ResourceLimiter` und Epoch Interruption durch. |
+| [0004](adr/0004-component-cache.md) | Kompilierte Komponenten liegen im eingebauten Cache von wasmtime (kein `unsafe`), standardmäßig in `cache/components`. Der Host nutzt den Ordner nur, wenn allein der eigene Benutzer ihn beschreiben kann; sonst kompiliert er mit Warnung wie bisher. (Nach 0.2.0, unveröffentlicht.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
@@ -338,7 +340,7 @@ Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität
    Quelle: `crates/host/src/storage.rs:66`, `crates/host/src/capabilities.rs:109`, `docs/archive/design/honest-http-get.md` (*Offene Punkte*).
 3. **KV-Speicher nur im Arbeitsspeicher:** Der Cache für Ortsnamen und Wetter geht mit dem Prozess verloren. Nach einem Neustart fragt der Host die externen Dienste deshalb erneut ab (Quelle: `crates/host/src/runtime.rs:57`).
 4. **Globale Ressourcengrenzen:** `resource_limits` gelten für alle Plugins gleich. Grenzen je Plugin sind ein Nicht-Ziel von 0.2.0 (Quelle: `docs/archive/prd/wasm-component-runtime.md:72`).
-5. **Startzeit:** Die Komponenten werden bei jedem Host-Start kompiliert, im Release-Build etwa 1 s. Ein Cache ist ein Nicht-Ziel von 0.2.0 (Quelle: `docs/archive/prd/wasm-component-runtime.md:73`, `docs/pipeline_host_supervisor.md` §4).
+5. **Startzeit:** In 0.2.0 werden die Komponenten bei jedem Host-Start kompiliert, im Release-Build etwa 1 s. Nach 0.2.0 (unveröffentlicht) behebt das der Komponenten-Cache aus ADR 0004. Dafür kommt ein neues Restrisiko hinzu: Ein Prozess desselben Benutzers kann Code über den Cache-Ordner einschleusen (Quelle: ADR 0004, *Konsequenzen*; `docs/prd/component-cache.md`).
 6. **Veraltete Archivtexte:** Die archivierte Tech Spec `wasm-geo-host` nennt noch `sqlx`-Migrationen und ältere WIT-Namen (Quelle: `docs/archive/design/wasm-geo-host.md:29`, `:53`, `:57-60`). Umgesetzt sind die `sqlite3`-CLI mit `migrations/20261125000000_init.sql` und WIT `wasmgeohost:media@0.2.0`.
 
 # Glossar {#section-glossary}

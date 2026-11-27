@@ -5,18 +5,21 @@
 //! directories, sockets, environment or stdin; all I/O goes through `host-capabilities`, which
 //! the [`CapabilityManager`] checks per plugin. Memory is capped by a [`ResourceLimiter`]
 //! (`max_memory_bytes`), run time by epoch interruption (`timeout_ms`).
+//!
+//! Compiled code is kept in wasmtime's own cache (ADR 0004), in a directory that only the host
+//! user may write; otherwise components are compiled on every start.
 
 use crate::capabilities::CapabilityManager;
 use crate::config::ResourceLimits;
 use flagme_sdk::{HostCapabilities, PluginError, PluginResult};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use wasm_geo_models as m;
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
-use wasmtime::{Config, Engine, ResourceLimiter, Store};
+use wasmtime::{Cache, CacheConfig, Config, Engine, ResourceLimiter, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 mod bindings {
@@ -109,18 +112,48 @@ impl host::Host for HostState {
     }
 }
 
+/// Hits and misses of the component cache since the engine was created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheStats {
+    /// Components loaded from the cache.
+    pub hits: usize,
+    /// Components compiled and written to the cache.
+    pub misses: usize,
+}
+
 /// Shared Wasmtime engine with the epoch timer for `timeout_ms`.
 pub struct ComponentEngine {
     engine: Engine,
     linker: Linker<HostState>,
     stop: Arc<AtomicBool>,
+    cache: Option<Cache>,
 }
 
 impl ComponentEngine {
-    pub fn new() -> anyhow::Result<Self> {
+    /// Creates the engine. With `cache_dir`, compiled components are cached there if the
+    /// directory passes the checks of ADR 0004; otherwise the host warns and compiles on every
+    /// start.
+    pub fn new(cache_dir: Option<&Path>) -> anyhow::Result<Self> {
         let mut config = Config::new();
         config.wasm_component_model(true);
         config.epoch_interruption(true);
+        let cache = match cache_dir {
+            None => {
+                tracing::debug!("Component cache disabled by configuration");
+                None
+            }
+            Some(dir) => match open_cache(dir) {
+                Ok(cache) => {
+                    tracing::debug!(dir = %cache.directory().display(), "Component cache enabled");
+                    Some(cache)
+                }
+                Err(reason) => {
+                    tracing::warn!("component cache disabled: '{}': {}", dir.display(), reason);
+                    None
+                }
+            },
+        };
+        config.cache(cache.clone());
         let engine = Engine::new(&config)?;
 
         let mut linker = Linker::<HostState>::new(&engine);
@@ -138,7 +171,12 @@ impl ComponentEngine {
                 }
             })?;
 
-        Ok(Self { engine, linker, stop })
+        Ok(Self { engine, linker, stop, cache })
+    }
+
+    /// Cache hits and misses, or `None` if the cache is off.
+    pub fn cache_stats(&self) -> Option<CacheStats> {
+        self.cache.as_ref().map(|c| CacheStats { hits: c.cache_hits(), misses: c.cache_misses() })
     }
 
     /// Compiles a component file and checks that it implements `media-plugin`.
@@ -222,6 +260,62 @@ impl Drop for ComponentEngine {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
     }
+}
+
+/// Checks the cache directory and builds wasmtime's cache on it.
+fn open_cache(dir: &Path) -> Result<Cache, String> {
+    let dir = prepare_cache_dir(dir)?;
+    let mut config = CacheConfig::new();
+    config.with_directory(dir);
+    Cache::new(config).map_err(|e| format!("{:#}", e))
+}
+
+/// Makes `dir` absolute, creates it with mode `0700` if missing and accepts it only if it is a
+/// real directory owned by the host user that neither group nor others can write (ADR 0004).
+#[cfg(unix)]
+fn prepare_cache_dir(dir: &Path) -> Result<PathBuf, String> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+
+    // Not canonicalized: a symbolic link must not be resolved before it is rejected.
+    let dir = if dir.is_absolute() {
+        dir.to_path_buf()
+    } else {
+        std::env::current_dir().map_err(|e| format!("no working directory: {}", e))?.join(dir)
+    };
+    let meta = match std::fs::symlink_metadata(&dir) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(parent) = dir.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("cannot create parent directory: {}", e))?;
+            }
+            match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(format!("cannot create: {}", e)),
+            }
+            std::fs::symlink_metadata(&dir).map_err(|e| format!("cannot inspect: {}", e))?
+        }
+        Err(e) => return Err(format!("cannot inspect: {}", e)),
+    };
+    if meta.file_type().is_symlink() {
+        return Err("is a symbolic link".to_string());
+    }
+    if !meta.is_dir() {
+        return Err("is not a directory".to_string());
+    }
+    let host_uid = rustix::process::geteuid().as_raw();
+    if meta.uid() != host_uid {
+        return Err(format!("is owned by uid {}, not by the host user (uid {})", meta.uid(), host_uid));
+    }
+    if meta.mode() & 0o022 != 0 {
+        return Err(format!("is writable by group or others (mode {:o})", meta.mode() & 0o7777));
+    }
+    Ok(dir)
+}
+
+#[cfg(not(unix))]
+fn prepare_cache_dir(_dir: &Path) -> Result<PathBuf, String> {
+    Err("owner and permissions cannot be checked on this platform".to_string())
 }
 
 /// Describes a failed guest call, naming the exceeded limit if there is one.
