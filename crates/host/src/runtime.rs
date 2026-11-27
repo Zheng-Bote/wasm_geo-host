@@ -1,6 +1,6 @@
 use crate::capabilities::CapabilityManager;
 use crate::component::{CacheStats, ComponentEngine, HostState, MediaPluginPre};
-use crate::config::AppConfig;
+use crate::config::{AppConfig, ResourceLimits};
 use flagme_sdk::{PluginError, PluginResult, UnifiedDocument};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, RwLock};
@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex, RwLock};
 struct LoadedPlugin {
     pre: MediaPluginPre<HostState>,
     version: String,
+    /// Effective limits: `plugins.<name>.resource_limits` over the global `resource_limits`.
+    limits: ResourceLimits,
 }
 
 /// Plugin host runtime: loads every enabled pipeline plugin from its Wasm component
@@ -37,9 +39,21 @@ impl PluginRuntime {
             if !cfg.enabled || plugins.contains_key(name) {
                 continue;
             }
+            let (limits, warnings) = config.plugin_limits(name);
+            for warning in &warnings {
+                tracing::warn!(plugin = %name, "{}", warning);
+            }
+            tracing::debug!(
+                plugin = %name,
+                max_memory_bytes = limits.max_memory_bytes,
+                timeout_ms = limits.timeout_ms,
+                "Effective resource limits"
+            );
             let path = config.component_path(name);
             let pre = engine.load(&path)?;
-            let (component_name, version) = engine.component_identity(&pre, &config.resource_limits)?;
+            let (component_name, version) = engine
+                .component_identity(&pre, &limits)
+                .map_err(|e| anyhow::anyhow!("plugin '{}': cannot query name/version: {}", name, e))?;
             if component_name != *name {
                 anyhow::bail!(
                     "component '{}' is plugin '{}', but is configured as '{}'",
@@ -49,7 +63,7 @@ impl PluginRuntime {
                 );
             }
             tracing::debug!(plugin = %name, version = %version, path = %path.display(), "Loaded plugin component");
-            plugins.insert(name.clone(), LoadedPlugin { pre, version });
+            plugins.insert(name.clone(), LoadedPlugin { pre, version, limits });
         }
         Ok(Self {
             config,
@@ -80,7 +94,7 @@ impl PluginRuntime {
         let result = self.engine.process(
             &plugin.pre,
             caps,
-            &self.config.resource_limits,
+            &plugin.limits,
             self.warned.clone(),
             doc,
             &cfg.settings,
@@ -96,6 +110,11 @@ impl PluginRuntime {
     /// Hits and misses of the component cache, or `None` if it is off (ADR 0004).
     pub fn component_cache_stats(&self) -> Option<CacheStats> {
         self.engine.cache_stats()
+    }
+
+    /// Effective resource limits of a loaded plugin.
+    pub fn plugin_limits(&self, name: &str) -> Option<&ResourceLimits> {
+        self.plugins.get(name).map(|p| &p.limits)
     }
 
     /// Names of the loaded plugin components.

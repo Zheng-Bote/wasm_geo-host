@@ -37,7 +37,7 @@ flowchart TD
 2. For each stage the host creates a fresh `Store` with:
    - a WASI context **without ambient authority** — no preopened directories, no environment variables, no stdin, no sockets; only clocks, random and stderr;
    - the plugin's `CapabilityManager`: `fs-read`, `fs-write`, `fs-modified`, `http-get`, `kv-*`, `secret-get` succeed only with the grant in `config.yaml`;
-   - `resource_limits.max_memory_bytes` (linear memory) and `resource_limits.timeout_ms` (epoch interruption, 10 ms ticks).
+   - `resource_limits.max_memory_bytes` (linear memory) and `resource_limits.timeout_ms` (epoch interruption, 10 ms ticks); `plugins.<name>.resource_limits` overrides either value per plugin.
 3. It calls `process(doc, settings)` with the plugin's `settings` from `config.yaml`.
 4. A failing stage (plugin error, trap, exceeded limit) fails the document with an error naming the stage; `watch` continues with the next file.
 5. The final document is written to `media.db` (`database_path`) and printed as JSON.
@@ -193,4 +193,4 @@ What the values show:
 ## 4. Trade-Offs
 
 - **Advantages**: one sandboxed execution path for `process`, `watch`, `serve` and `stream`; capabilities, settings and resource limits apply everywhere; no external `wasmtime` binary.
-- **Trade-offs**: components are compiled on the first host start (≈ 1 s for all 11 in a release build) and then loaded from the component cache (`component_cache_dir`, [ADR 0004](adr/0004-component-cache.md)); without a usable cache directory they are compiled at every start. Limits apply globally (`resource_limits`), not per plugin.
+- **Trade-offs**: components are compiled on the first host start (≈ 1 s for all 11 in a release build) and then loaded from the component cache (`component_cache_dir`, [ADR 0004](adr/0004-component-cache.md)); without a usable cache directory they are compiled at every start. Limits default to the global `resource_limits` and can be set per plugin (`plugins.<name>.resource_limits`).

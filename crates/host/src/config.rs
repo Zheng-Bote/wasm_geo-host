@@ -24,7 +24,7 @@ pub struct AppConfig {
     pub plugins: HashMap<String, PluginConfig>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceLimits {
     #[serde(default = "default_max_memory_bytes")]
     pub max_memory_bytes: u64,
@@ -77,6 +77,10 @@ pub struct PluginConfig {
     pub capabilities: Vec<String>,
     #[serde(default)]
     pub settings: HashMap<String, String>,
+    /// Limits of this plugin (`max_memory_bytes`, `timeout_ms`) as raw values; resolved
+    /// against the global `resource_limits` by [`AppConfig::plugin_limits`].
+    #[serde(default)]
+    pub resource_limits: HashMap<String, serde_json::Value>,
 }
 
 fn default_true() -> bool {
@@ -93,6 +97,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -102,6 +107,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["http".to_string(), "kv".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -111,6 +117,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec![],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -120,6 +127,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -130,6 +138,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -139,6 +148,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["filesystem".to_string(), "kv".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -148,6 +158,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -157,6 +168,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["http".to_string(), "kv".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -167,6 +179,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -177,6 +190,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
         plugins.insert(
@@ -186,6 +200,7 @@ impl Default for AppConfig {
                 path: None,
                 capabilities: vec!["filesystem".to_string()],
                 settings: HashMap::new(),
+                resource_limits: HashMap::new(),
             },
         );
 
@@ -219,6 +234,43 @@ impl AppConfig {
         self.component_cache.then(|| std::path::PathBuf::from(&self.component_cache_dir))
     }
 
+    /// Effective limits of plugin `name`: each field of `plugins.<name>.resource_limits` that is
+    /// a positive integer replaces the global value, a missing or invalid field inherits it.
+    /// Returns the limits and one warning per invalid value or unknown key (sorted by key).
+    pub fn plugin_limits(&self, name: &str) -> (ResourceLimits, Vec<String>) {
+        let mut limits = self.resource_limits.clone();
+        let mut warnings = Vec::new();
+        let Some(raw) = self.plugins.get(name).map(|p| &p.resource_limits) else {
+            return (limits, warnings);
+        };
+        let mut keys: Vec<&String> = raw.keys().collect();
+        keys.sort();
+        for key in keys {
+            let value = &raw[key];
+            let field = match key.as_str() {
+                "max_memory_bytes" => &mut limits.max_memory_bytes,
+                "timeout_ms" => &mut limits.timeout_ms,
+                _ => {
+                    warnings.push(format!("plugin '{}': unknown resource_limits key '{}'; ignored", name, key));
+                    continue;
+                }
+            };
+            let parsed = match value {
+                serde_json::Value::Number(n) => n.as_u64(),
+                serde_json::Value::String(s) => s.trim().parse::<u64>().ok(),
+                _ => None,
+            };
+            match parsed {
+                Some(v) if v > 0 => *field = v,
+                _ => warnings.push(format!(
+                    "plugin '{}': resource_limits.{} = {} is not a positive integer; using the global value {}",
+                    name, key, value, field
+                )),
+            }
+        }
+        (limits, warnings)
+    }
+
     /// Component file of a plugin: its `path`, else `<plugin_dir>/flagme_plugin_<name>.wasm`
     /// (`-` in the name becomes `_`, as in the Cargo artifact name).
     pub fn component_path(&self, name: &str) -> std::path::PathBuf {
@@ -249,6 +301,7 @@ impl AppConfig {
         let mut current_plugin: Option<String> = None;
         let mut in_capabilities = false;
         let mut in_settings = false;
+        let mut in_limits = false;
 
         for raw_line in s.lines() {
             let line_no_comment = strip_comment(raw_line);
@@ -263,6 +316,7 @@ impl AppConfig {
                 current_plugin = None;
                 in_capabilities = false;
                 in_settings = false;
+                in_limits = false;
 
                 if let Some((k, v)) = trimmed.split_once(':') {
                     let k = k.trim();
@@ -348,10 +402,12 @@ impl AppConfig {
                             path: None,
                             capabilities: Vec::new(),
                             settings: HashMap::new(),
+                            resource_limits: HashMap::new(),
                         });
                         current_plugin = Some(pname);
                         in_capabilities = false;
                         in_settings = false;
+                        in_limits = false;
                     } else if let Some(ref pname) = current_plugin {
                         if indent == 4 {
                             if let Some((k, v)) = trimmed.split_once(':') {
@@ -360,6 +416,7 @@ impl AppConfig {
                                 let v_clean = clean_yaml_scalar(v_raw);
                                 in_capabilities = false;
                                 in_settings = false;
+                                in_limits = false;
 
                                 if let Some(pcfg) = cfg.plugins.get_mut(pname) {
                                     match k {
@@ -388,6 +445,9 @@ impl AppConfig {
                                         "settings" => {
                                             in_settings = true;
                                         }
+                                        "resource_limits" => {
+                                            in_limits = true;
+                                        }
                                         _ => {}
                                     }
                                 }
@@ -400,6 +460,14 @@ impl AppConfig {
                                         if let Some(pcfg) = cfg.plugins.get_mut(pname) {
                                             pcfg.capabilities.push(cap);
                                         }
+                                    }
+                                }
+                            } else if in_limits {
+                                if let Some((lk, lv)) = trimmed.split_once(':') {
+                                    let lk = clean_yaml_scalar(lk);
+                                    let lv = clean_yaml_scalar(lv);
+                                    if let Some(pcfg) = cfg.plugins.get_mut(pname) {
+                                        pcfg.resource_limits.insert(lk, serde_json::Value::String(lv));
                                     }
                                 }
                             } else if in_settings {
