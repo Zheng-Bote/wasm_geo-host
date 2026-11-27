@@ -1,6 +1,6 @@
 ---
 feature: face-detection-yunet
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/face-detection/**
@@ -13,11 +13,12 @@ touches:
   - docs/arc42.md
   - CHANGELOG.md
   - Cargo.lock
+release: 0.4.0
 ---
 
 # Tech Spec — Gesichtserkennung mit YuNet (`face-detection-yunet`)
 
-Setzt das PRD `docs/prd/face-detection-yunet.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0009](../adr/0009-plugin-inference-rten.md).
+Setzt das PRD `docs/prd/face-detection-yunet.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0009](../../adr/0009-plugin-inference-rten.md).
 
 ## Architektur
 

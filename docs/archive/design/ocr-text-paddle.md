@@ -1,6 +1,6 @@
 ---
 feature: ocr-text-paddle
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/ocr-text/**
@@ -14,11 +14,12 @@ touches:
   - docs/pipeline_host_supervisor.md
   - CHANGELOG.md
   - Cargo.lock
+release: 0.4.0
 ---
 
 # Tech Spec — Texterkennung mit PP-OCRv5 (`ocr-text-paddle`)
 
-Setzt das PRD `docs/prd/ocr-text-paddle.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0009](../adr/0009-plugin-inference-rten.md).
+Setzt das PRD `docs/prd/ocr-text-paddle.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0009](../../adr/0009-plugin-inference-rten.md).
 
 ## Architektur
 

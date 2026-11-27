@@ -11,7 +11,7 @@ The engine receives only the image bytes, never the file name or path ([ADR 0002
 | Plugin name (`config.yaml`) | `ocr-text` |
 | Crate | `flagme-plugin-ocr-text` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_ocr_text.wasm`, built with `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ocr-text` (Wasm SIMD via `.cargo/config.toml`); loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.3.0` |
+| Version | `0.4.0` |
 | Models | `PP-OCRv5_mobile_det` (4.8 MB) and `latin_PP-OCRv5_mobile_rec` (8.0 MB, 836 characters), Apache-2.0, embedded (`models/`, see [`models/SOURCE.md`](models/SOURCE.md)) |
 | Reads | image bytes of `doc.file.path` (JPEG, PNG) |
 | Writes | `doc.ocr` (`OcrInfo`) |
@@ -145,7 +145,7 @@ cat doc.json | wasmtime run -S cli-exit-with-code --dir . \
   target/wasm32-wasip2/release/flagme-plugin-ocr-text.wasm
 ```
 
-Empty input prints `Plugin ocr-text v0.3.0`. The CLI runs with `NoopCapabilities` (no file access), so it cannot read the image and leaves `doc.ocr` empty with a warning.
+Empty input prints `Plugin ocr-text v0.4.0`. The CLI runs with `NoopCapabilities` (no file access), so it cannot read the image and leaves `doc.ocr` empty with a warning.
 
 ### 6.3 SQLite
 

@@ -1,6 +1,6 @@
 ---
 feature: ai-tagging-clip
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/ai-tagging/**
@@ -20,11 +20,12 @@ touches:
   - docs/arc42.md
   - docs/pipeline_host_supervisor.md
   - CHANGELOG.md
+release: 0.4.0
 ---
 
 # Tech Spec — Schlagwörter und Embeddings mit CLIP (`ai-tagging-clip`)
 
-Setzt das PRD `docs/prd/ai-tagging-clip.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage sind [ADR 0010](../adr/0010-ai-tagging-clip.md) und [ADR 0009](../adr/0009-plugin-inference-rten.md).
+Setzt das PRD `docs/prd/ai-tagging-clip.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage sind [ADR 0010](../../adr/0010-ai-tagging-clip.md) und [ADR 0009](../../adr/0009-plugin-inference-rten.md).
 
 ## Architektur
 

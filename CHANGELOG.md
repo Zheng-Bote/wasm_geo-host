@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
+### Breaking
+- **`face-detection`, `ocr-text` and `ai-tagging` are enabled by default** and run real models (ADR 0009, ADR 0010). Processing takes noticeably longer per photo (measured via the host: ≈ 0.14 s faces, ≈ 0.75–4 s OCR depending on the amount of text, ≈ 0.85 s CLIP) and needs more memory; the shipped configs set per-plugin limits (`ocr-text` 30 s; `ai-tagging` 512 MB, 30 s). Disable a plugin with `enabled: false` if you do not need it.
+- **`ai-tagging` needs a model file**: the release packages contain `models/clip-vit-b32-vision-int8.onnx`; from source run `make models` (network, ≈ 155 MB, SHA-256 checked). Without it the plugin warns and stores nothing. `make test` and `make release` run `make models` first.
+- **`ocr-text`**: `min_confidence` defaults to 0.5 (was 0.0), `combined_text` joins lines with newlines (was spaces), `primary_language` stays empty.
+- **`ai-tagging`**: `embedding_dim` is fixed to 512; `description` stays empty (CLIP produces no caption).
+- **Wasm SIMD**: plugin components and WASI CLI binaries are built with `+simd128` and need a Wasm runtime with SIMD (wasmtime supports it by default).
+
 ### Added
 - **Real face detection** ([ADR 0009](docs/adr/0009-plugin-inference-rten.md)): `face-detection` now runs the embedded YuNet model (OpenCV Zoo, `face_detection_yunet_2023mar`, MIT) with the pure-Rust engine `rten` inside its Wasm component. It writes normalised boxes, confidences and five landmarks to `doc.faces` (`detection_model = "yunet-2023mar"`), so `privacy-redact` now redacts real faces. The plugin is enabled by default in `config.yaml`, `config.mac-studio.yaml` and `AppConfig::default()`. Measured on a 9 MP photo: ≈ 0.2 s (decode and detection). JPEG and PNG only; truncated JPEGs are rejected.
 - **Real text recognition**: `ocr-text` now runs the embedded PaddleOCR PP-OCRv5 mobile models (text detection and Latin recognition, Apache-2.0) with `rten` inside its Wasm component. It writes text lines in reading order with normalised boxes and confidences; umlauts and ß are recognised. The text is searchable via `flagme-host search`. Enabled by default with `plugins.ocr-text.resource_limits.timeout_ms: 30000`. New setting `max_regions` (default 200); `min_confidence` now defaults to 0.5; `combined_text` joins lines with newlines; `primary_language` stays empty. Measured: ≈ 0.6–4.3 s per image depending on the amount of text.
@@ -114,7 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Spec-Driven Development (SDD) governance artifacts: Verfassung ([constitution.md](constitution.md)), PRD, Tech Spec, and Execution Plan.
   - Comprehensive user, build, and plugin developer guides.
 
-[Unreleased]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Zheng-Bote/wasm_geo-host/compare/v0.1.0...v0.1.1

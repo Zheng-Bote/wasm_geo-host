@@ -1,6 +1,6 @@
 ---
 feature: ocr-text-paddle
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/ocr-text/**
@@ -14,6 +14,7 @@ touches:
   - docs/pipeline_host_supervisor.md
   - CHANGELOG.md
   - Cargo.lock
+release: 0.4.0
 ---
 
 # PRD — Texterkennung mit PP-OCRv5 (`ocr-text-paddle`)
@@ -24,7 +25,7 @@ touches:
 
 ## Ziel
 
-`ocr-text` erkennt Text mit den eingebetteten Modellen von PaddleOCR in `rten`, im Gast und mit Wasm-SIMD ([ADR 0009](../adr/0009-plugin-inference-rten.md)). Erkannt werden Umlaute, ß und die übrigen Zeichen lateinischer Schrift. Das Plugin ist standardmäßig an.
+`ocr-text` erkennt Text mit den eingebetteten Modellen von PaddleOCR in `rten`, im Gast und mit Wasm-SIMD ([ADR 0009](../../adr/0009-plugin-inference-rten.md)). Erkannt werden Umlaute, ß und die übrigen Zeichen lateinischer Schrift. Das Plugin ist standardmäßig an.
 
 **Prototyp vom 2026-11-27** (Release-Build, `wasm32-wasip2` mit SIMD, macOS, Apple Silicon):
 

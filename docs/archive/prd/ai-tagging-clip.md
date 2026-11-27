@@ -1,6 +1,6 @@
 ---
 feature: ai-tagging-clip
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/ai-tagging/**
@@ -20,6 +20,7 @@ touches:
   - docs/arc42.md
   - docs/pipeline_host_supervisor.md
   - CHANGELOG.md
+release: 0.4.0
 ---
 
 # PRD — Schlagwörter und Embeddings mit CLIP (`ai-tagging-clip`)
@@ -30,7 +31,7 @@ touches:
 
 ## Ziel
 
-`ai-tagging` berechnet mit dem Bildteil von CLIP ViT-B/32 (int8, MIT) in `rten` ein Embedding je Foto und vergibt Schlagwörter aus einer festen Begriffsliste ([ADR 0010](../adr/0010-ai-tagging-clip.md), auf Grundlage von [ADR 0009](../adr/0009-plugin-inference-rten.md)).
+`ai-tagging` berechnet mit dem Bildteil von CLIP ViT-B/32 (int8, MIT) in `rten` ein Embedding je Foto und vergibt Schlagwörter aus einer festen Begriffsliste ([ADR 0010](../../adr/0010-ai-tagging-clip.md), auf Grundlage von [ADR 0009](../../adr/0009-plugin-inference-rten.md)).
 
 - Das Modell kommt als Datei über `make models`.
 - Das Plugin ist standardmäßig an, mit eigenen Grenzen.
