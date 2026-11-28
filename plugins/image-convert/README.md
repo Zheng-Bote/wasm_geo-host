@@ -11,7 +11,7 @@ All decoders are pure Rust and run inside the plugin's Wasm sandbox with its own
 | Plugin name (`config.yaml`) | `image-convert` |
 | Crate | `flagme-plugin-image-convert` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_image_convert.wasm`, built with `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-image-convert`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.4.0` |
+| Version | `0.5.0` |
 | Reads | image bytes of `doc.file.path`; an existing working image in `output_dir` |
 | Writes | `doc.working_image` (`WorkingImage`), the file `<output_dir>/<sha256>.working.jpg` |
 | Capabilities | `filesystem` |

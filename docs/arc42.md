@@ -1,6 +1,6 @@
 ---
 status: active
-release: 0.4.0
+release: 0.5.0
 ---
 <!--
 Gliederung: arc42-Template 9.1, © Dr. Peter Hruschka, Dr. Gernot Starke und Mitwirkende, https://arc42.org
@@ -18,15 +18,15 @@ Gliederung nach dem [arc42](https://arc42.org)-Template 9.1 (© Dr. Peter Hrusch
 
 WASM Geo Host (`flagme-host`) ist eine erweiterbare Medienverarbeitungsplattform in Rust. Sie reicht Fotos als `UnifiedDocument` durch eine konfigurierbare Pipeline von Plugins und speichert das Ergebnis in SQLite (Quelle: `docs/archive/prd/wasm-geo-host.md:26`).
 
-Die Plugins in Release 0.4.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
+Die Plugins in Release 0.5.0 und ihre Aufgaben (Quelle: `README.md`, Abschnitt *Included Plugins*):
 
 | Plugin | Aufgabe |
 |---|---|
 | `metadata` | EXIF, IPTC, XMP |
-| `image-convert` | Arbeitsbild: JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF und AVIF als aufrechtes JPEG für alle Bild-Plugins, Decoder in reinem Rust im Gast (ADR 0011, unveröffentlicht) |
+| `image-convert` | Arbeitsbild: JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF und AVIF als aufrechtes JPEG für alle Bild-Plugins, Decoder in reinem Rust im Gast (ADR 0011, seit 0.5.0) |
 | `reversegeo` | Ortsnamen offline (eingebettetes GeoNames-Ortsverzeichnis, seit 0.3.0) und online |
 | `countryflag` | ISO-3166-Daten |
-| `thumbnail` | Vorschaubilder als AVIF, nur aus geschwärzten Bildern, am Ende der Pipeline (ADR 0012, unveröffentlicht) |
+| `thumbnail` | Vorschaubilder als AVIF, nur aus geschwärzten Bildern, am Ende der Pipeline (ADR 0012, seit 0.5.0) |
 | `duplicate` | SHA-256 und dHash |
 | `timeline` | Aufnahmezeit |
 | `weather-enrich` | historisches Wetter |
@@ -315,8 +315,8 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0008](adr/0008-short-region-names.md) | Ersetzt 0006 und übernimmt dessen Regeln. Regionsnamen (englisch und lokal) nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen als ganze Wortfolge steht (Salzburg statt State of Salzburg); sonst bleibt der Name (State of Berlin). Kreise bleiben unverändert. (Seit 0.3.0.) |
 | [0009](adr/0009-plugin-inference-rten.md) | Echte Engines laufen mit `rten` im Gast; Modelle mit freier Lizenz liegen mit Quelle im Repository und werden bis 16 MB eingebettet; Komponenten mit Wasm-SIMD. `face-detection` nutzt YuNet, `ocr-text` PaddleOCR PP-OCRv5. (Seit 0.4.0.) |
 | [0010](adr/0010-ai-tagging-clip.md) | `ai-tagging` nutzt den Bildteil von CLIP ViT-B/32 (int8, MIT) als Modelldatei über `make models` (Ausnahme von der 16-MB-Grenze aus 0009), Schlagwörter aus fester Liste ohne Personenmerkmale, keine Bildbeschreibung. (Seit 0.4.0.) |
-| [0011](adr/0011-working-image-pure-rust-decoders.md) | `image-convert` schreibt direkt nach `metadata` ein aufrechtes JPEG-Arbeitsbild (ohne EXIF/GPS, mit ICC), das alle Bild-Plugins über `pixel_source` lesen; fertige JPEGs ohne Drehung werden nicht neu kodiert. Decoder: `image`, `heic-rs` (=0.1.5), `oxideav-avif` (=0.0.18), alle in reinem Rust im Gast. WIT `@0.3.0`. (Unveröffentlicht.) |
-| [0012](adr/0012-redacted-avif-thumbnails.md) | `thumbnail` läuft nach `privacy-redact` und liest über `display_source` das geschwärzte Bild; scheitert das Schwärzen (`face_redaction = failed`), entstehen keine Thumbnails (fail closed). Der Host lehnt eine andere Reihenfolge ab. Der Server liefert nur Thumbnail-Dateien (`404` statt Original oder Ersatzbild, `private`). Thumbnails sind AVIF (`oxideav-avif`), `format: jpeg` wählbar. (Unveröffentlicht.) |
+| [0011](adr/0011-working-image-pure-rust-decoders.md) | `image-convert` schreibt direkt nach `metadata` ein aufrechtes JPEG-Arbeitsbild (ohne EXIF/GPS, mit ICC), das alle Bild-Plugins über `pixel_source` lesen; fertige JPEGs ohne Drehung werden nicht neu kodiert. Decoder: `image`, `heic-rs` (=0.1.5), `oxideav-avif` (=0.0.18), alle in reinem Rust im Gast. WIT `@0.3.0`. (Seit 0.5.0.) |
+| [0012](adr/0012-redacted-avif-thumbnails.md) | `thumbnail` läuft nach `privacy-redact` und liest über `display_source` das geschwärzte Bild; scheitert das Schwärzen (`face_redaction = failed`), entstehen keine Thumbnails (fail closed). Der Host lehnt eine andere Reihenfolge ab. Der Server liefert nur Thumbnail-Dateien (`404` statt Original oder Ersatzbild, `private`). Thumbnails sind AVIF (`oxideav-avif`), `format: jpeg` wählbar. (Seit 0.5.0.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
@@ -332,6 +332,8 @@ Die Qualitätsanforderungen konkretisieren die vier Qualitätsziele aus Abschnit
 | 1 Sicherheit und Isolation | Ein Gast belegt mehr als `max_memory_bytes` oder läuft länger als `timeout_ms`. | Der Aufruf endet mit einem Fehler, der die Grenze nennt. Das nächste Dokument läuft normal. | `wasm-component-runtime` AC-4, `crates/host/tests/component_runtime_test.rs` |
 | 2 Korrektheit der Daten | Ein HTTP-Abruf scheitert: Server nicht erreichbar, HTTP 404 oder 500. | Das Feld bleibt leer. Es gibt eine Warnung mit der Ursache, und nichts landet im Cache. | `honest-http-get` AC-3, `crates/host/tests/http_get_test.rs` |
 | 1 Sicherheit und Isolation | Ein Foto mit Gesichtern durchläuft die Pipeline mit `face-detection` und `privacy-redact`. | Die Gesichter werden erkannt und in der geschwärzten Kopie unkenntlich gemacht; die Pixel innerhalb der Rahmen ändern sich. | `face-detection-yunet` AC-5, `crates/host/tests/face_yunet_test.rs` |
+| 1 Sicherheit und Isolation | Ein Foto mit Gesichtern wird in der Oberfläche oder über die API angezeigt; einmal gelingt das Schwärzen, einmal scheitert es. | Alle Vorschauen zeigen die Gesichter geschwärzt. Scheitert das Schwärzen, gibt es keine Vorschau (fail closed), und der Server liefert `404` statt des Originals. | `redacted-avif-thumbnails` AC-1, AC-3, AC-5, `crates/host/tests/redacted_thumbnails_test.rs` (seit 0.5.0) |
+| 1 Sicherheit und Isolation | Ein Foto mit Gesichtern liegt als HEIC, AVIF oder WebP vor. | `image-convert` wandelt es in ein Arbeitsbild; die Gesichter werden erkannt und geschwärzt wie bei JPEG. | `image-convert` AC-8, `crates/host/tests/image_convert_test.rs` (seit 0.5.0) |
 | 2 Korrektheit der Daten | Ein Modell findet nichts, oder seine Datei fehlt (`ai-tagging`). | Ohne Treffer bleibt die Liste leer (kein erfundenes Schlagwort); ohne gültige Modelldatei bleibt `ai` leer, mit Warnung. | `ai-tagging-clip` AC-3/AC-4, `crates/host/tests/clip_test.rs` |
 | 3 Erweiterbarkeit | Ein neues Plugin implementiert `Plugin` und ruft `export_plugin!` auf. | Der Host lädt die Komponente aus `plugin_dir`, ohne selbst neu gebaut zu werden. | `wasm-component-runtime` AC-1/AC-2, `crates/host/tests/component_runtime_test.rs` |
 | 4 Nachvollziehbarkeit | Ein Plugin warnt während `process`. | Die Warnung steht mit dem Plugin-Namen auf stderr. stdout enthält nur das Dokument-JSON. | `wasm-geo-host` AC-10, `crates/host/tests/logging_test.rs` |
@@ -372,13 +374,13 @@ Die Punkte 7 und 8 sind mit 0.3.0 hinzugekommen; ihre Einordnung am Ende hat der
 
 Die Punkte 9–11 sind mit 0.4.0 hinzugekommen; ihre Einordnung am Ende hat der Maintainer am 2026-11-27 bestätigt.
 
-12. **Junge Bild-Decoder** (Ziel 1 und 2, unveröffentlicht): `heic-rs` und `oxideav-avif` sind erst seit Herbst 2026 verfügbar und wenig verbreitet. Fehler in seltenen Varianten (10-Bit-HEIC, Alpha, Kachel-AVIF) sind wahrscheinlich. Gemindert durch feste Versionen, die Sandbox mit eigenen Grenzen (1 GB, 30 s) und Tests mit Testbildern (Quelle: ADR 0011, `crates/host/tests/image_convert_test.rs`).
-13. **Ungeschwärztes Arbeitsbild im Cache** (Ziel 1, unveröffentlicht; die Thumbnails sind seit ADR 0012 geschwärzt): `cache/working` enthält je umgewandeltem Foto eine ungeschwärzte JPEG-Kopie ohne EXIF/GPS. Sie ist so schutzbedürftig wie das Original und wird beim Löschen von Fotos nicht entfernt (Quelle: ADR 0011, PRD `image-convert`, *Nicht-Ziele*).
+12. **Junge Bild-Decoder** (Ziel 1 und 2, neu in 0.5.0): `heic-rs` und `oxideav-avif` sind erst seit Herbst 2026 verfügbar und wenig verbreitet. Fehler in seltenen Varianten (10-Bit-HEIC, Alpha, Kachel-AVIF) sind wahrscheinlich. Gemindert durch feste Versionen, die Sandbox mit eigenen Grenzen (1 GB, 30 s) und Tests mit Testbildern (Quelle: ADR 0011, `crates/host/tests/image_convert_test.rs`).
+13. **Ungeschwärztes Arbeitsbild im Cache** (Ziel 1, neu in 0.5.0; die Thumbnails sind seit ADR 0012 geschwärzt): `cache/working` enthält je umgewandeltem Foto eine ungeschwärzte JPEG-Kopie ohne EXIF/GPS. Sie ist so schutzbedürftig wie das Original und wird beim Löschen von Fotos nicht entfernt (Quelle: ADR 0011, PRD `image-convert`, *Nicht-Ziele*).
 
-14. **Laufzeit der AVIF-Thumbnails** (unveröffentlicht): AVIF kostet im Gast ≈ 2,2 s je Foto für 128/512/1024 px, 2048 px ≈ 9,4 s; die Profile enden deshalb bei 1024 px, `format: jpeg` bleibt als Ausweg (Quelle: ADR 0012).
-15. **Ungeschwärzte Thumbnails aus älteren Läufen** (Ziel 1, unveröffentlicht): Dokumente vor ADR 0012 behalten ihre JPEG-Thumbnails aus dem Original, bis sie neu verarbeitet werden (Quelle: PRD `redacted-avif-thumbnails`, *Nicht-Ziele*).
+14. **Laufzeit der AVIF-Thumbnails** (neu in 0.5.0): AVIF kostet im Gast ≈ 2,2 s je Foto für 128/512/1024 px, 2048 px ≈ 9,4 s; die Profile enden deshalb bei 1024 px, `format: jpeg` bleibt als Ausweg (Quelle: ADR 0012).
+15. **Ungeschwärzte Thumbnails aus älteren Läufen** (Ziel 1, neu in 0.5.0): Dokumente vor ADR 0012 behalten ihre JPEG-Thumbnails aus dem Original, bis sie neu verarbeitet werden (Quelle: PRD `redacted-avif-thumbnails`, *Nicht-Ziele*).
 
-Die Punkte 12 und 13 sind mit dem Arbeitsbild hinzugekommen, die Punkte 14 und 15 mit ADR 0012; ihre Einordnung ist noch vom Maintainer zu bestätigen.
+Die Punkte 12–15 sind mit 0.5.0 hinzugekommen (12 und 13 mit dem Arbeitsbild, 14 und 15 mit ADR 0012); ihre Einordnung am Ende hat der Maintainer am 2026-11-28 bestätigt.
 
 # Glossar {#section-glossary}
 

@@ -9,7 +9,7 @@ The `countryflag` plugin turns an ISO-3166-1 alpha-2 country code into an Englis
 | Plugin name (`config.yaml`) | `countryflag` |
 | Crate | `flagme-plugin-countryflag` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_countryflag.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-countryflag`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.4.0` |
+| Version | `0.5.0` |
 | Reads | `doc.location.country_code` |
 | Writes | `doc.country` (`CountryInfo`) |
 | Capabilities | none (`[]`) |

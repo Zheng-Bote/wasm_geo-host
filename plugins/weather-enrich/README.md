@@ -9,7 +9,7 @@ The `weather-enrich` plugin adds the historical weather at the place and hour a 
 | Plugin name (`config.yaml`) | `weather-enrich` |
 | Crate | `flagme-plugin-weather-enrich` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_weather_enrich.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-weather-enrich`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.4.0` |
+| Version | `0.5.0` |
 | Reads | `doc.location.latitude/longitude`, `doc.timeline.taken_at` |
 | Writes | `doc.weather` (`WeatherInfo`) |
 | Capabilities | `http`, `kv` |

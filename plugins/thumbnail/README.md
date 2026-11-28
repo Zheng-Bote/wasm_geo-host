@@ -9,7 +9,7 @@ The `thumbnail` plugin creates three cached preview variants (`small`, `medium`,
 | Plugin name (`config.yaml`) | `thumbnail` |
 | Crate | `flagme-plugin-thumbnail` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_thumbnail.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-thumbnail`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.4.0` |
+| Version | `0.5.0` |
 | Reads | `flagme_sdk::display_source(doc)`: the redacted image (`doc.privacy.redacted_image_path`) if `doc.privacy.face_redaction` is `applied`; nothing if it is `failed`; otherwise the working image (`doc.working_image.path`, else `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)). The cache key comes from `doc.file.path`. |
 | Writes | `doc.thumbnails` (`Vec<ThumbnailEntry>`, replaces existing entries); files under `output_dir` (default `cache/thumbnails/`) |
 | Capabilities | `filesystem` |
