@@ -119,7 +119,23 @@ impl Plugin for DuplicatePlugin {
         };
 
         let sha256 = self.compute_sha256(&bytes);
-        let phash = compute_dhash(&bytes);
+        // SHA-256 over the original file; dHash over the working image if set (ADR 0011).
+        let source = flagme_sdk::pixel_source(&doc).to_string();
+        let pixel_bytes = if source == doc.file.path {
+            None
+        } else {
+            match ctx.capabilities.fs_read(&source) {
+                Ok(b) => Some(b),
+                Err(e) => {
+                    ctx.capabilities.log(
+                        "warn",
+                        &format!("duplicate: cannot read working image '{}': {}; using the original", source, e),
+                    );
+                    None
+                }
+            }
+        };
+        let phash = compute_dhash(pixel_bytes.as_deref().unwrap_or(&bytes));
         if phash.is_none() {
             ctx.capabilities.log(
                 "info",

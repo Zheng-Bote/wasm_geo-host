@@ -211,11 +211,11 @@ fn test_ac7_large_image_within_default_limits() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// face-detection-yunet AC-8: face-detection is enabled in config.yaml and config.mac-studio.yaml without the experimental note; a process run with config.yaml no longer warns "no face detection result"
+// face-detection-yunet AC-8: face-detection is enabled in config.yaml and config_mac-studio_32GB.yaml without the experimental note; a process run with config.yaml no longer warns "no face detection result"
 #[test]
 fn test_ac8_enabled_in_shipped_configs() {
     let root = common::repo_root();
-    for name in ["config.yaml", "config.mac-studio.yaml"] {
+    for name in ["config.yaml", "config_mac-studio_32GB.yaml"] {
         let cfg = AppConfig::load_from_file(root.join(name)).unwrap();
         assert!(cfg.plugins["face-detection"].enabled, "{}", name);
         let text = std::fs::read_to_string(root.join(name)).unwrap();

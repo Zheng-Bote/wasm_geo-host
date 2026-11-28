@@ -10,6 +10,12 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
+/// Path of the image a pixel-processing plugin reads (ADR 0011): the working image written by
+/// `image-convert` if set, otherwise the original file.
+pub fn pixel_source(doc: &UnifiedDocument) -> &str {
+    doc.working_image.as_ref().map_or(doc.file.path.as_str(), |w| w.path.as_str())
+}
+
 #[derive(Debug)]
 pub enum PluginError {
     Serialization(serde_json::Error),

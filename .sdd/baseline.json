@@ -1,4 +1,125 @@
 {
   "version": 1,
-  "entries": []
+  "entries": [
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "ff38abc81fa14eaa86e49ab5c41e895958d518840d01e1d58420a083cea58337",
+      "ordinal": 0,
+      "line": 98
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "2a0caba9965795f65ddee8a9bcfde5a6bbdde770db44d58f621b6568858bb9b2",
+      "ordinal": 1,
+      "line": 129
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "d51be67203f1a26fc390d20713fe54007639286e9fda12d33bdd62ce6841455a",
+      "ordinal": 2,
+      "line": 130
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "189424e541b8be275480d6a7faf57185ba000b6cc512f614ba81b88aba6c04fc",
+      "ordinal": 3,
+      "line": 131
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "540be44198836a4a7b861e0f62651d83b9f942a1edfbd400288b64abd9bfff45",
+      "ordinal": 4,
+      "line": 132
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "642bc3072433da616061749ff76c744b14254e65b16e549b32f52be0288eb51d",
+      "ordinal": 5,
+      "line": 133
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "fc024e5cc23d9060d077486bfac97b0e4f89c21b7e3d9f140bc68df36214c747",
+      "ordinal": 6,
+      "line": 134
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "989f5f11fb62274733b3abfb70c70c49a21584ec8a3568a6e41dcfb0238e2e63",
+      "ordinal": 7,
+      "line": 135
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "ba2e6acf35556f68b50fdae0f6b6f89b4d535b30907b3e7f5616e2daa1f7a4ff",
+      "ordinal": 8,
+      "line": 136
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "20b3623fbf829d360c304822a18ed304d264932ecff69b4db64bc06144ad611f",
+      "ordinal": 9,
+      "line": 137
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "17bf4d94531093c83055b6bfbcb5fa0bdc6da29e162c95f44d6df94899be751d",
+      "ordinal": 10,
+      "line": 138
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "cf46f27293c33ac6139965e52d900856e4b6015a50759ef88e65fbd280c7f675",
+      "ordinal": 11,
+      "line": 140
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "f4d384a1cfd8ad47d8684610fac3bdf08b499b63c53c643711ec81ea625995cc",
+      "ordinal": 12,
+      "line": 141
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "7b06050579bd0525d89fb299fd7db570df40518efae28ba22f0883ef52c19b73",
+      "ordinal": 13,
+      "line": 142
+    },
+    {
+      "gate": "pre-merge",
+      "rule_id": "SDD-022",
+      "path": "docs/prd/image-convert.md",
+      "content_hash": "9e22cc29e2ba0c40cd5863375074dc97dffe98749ed18cce467708598dbbb35f",
+      "ordinal": 14,
+      "line": 143
+    }
+  ]
 }

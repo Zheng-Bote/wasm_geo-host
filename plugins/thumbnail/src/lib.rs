@@ -153,20 +153,22 @@ impl Plugin for ThumbnailPlugin {
     }
 
     fn process(&self, mut doc: UnifiedDocument, ctx: &PluginContext) -> PluginResult<UnifiedDocument> {
+        // Cache key from the original path; pixels from the working image if set (ADR 0011).
         let path = doc.file.path.clone();
+        let source = flagme_sdk::pixel_source(&doc).to_string();
         let warn = |msg: String| ctx.capabilities.log("warn", &format!("thumbnail: {}", msg));
 
-        let bytes = match ctx.capabilities.fs_read(&path) {
+        let bytes = match ctx.capabilities.fs_read(&source) {
             Ok(bytes) => bytes,
             Err(e) => {
-                warn(format!("cannot read '{}': {}; no thumbnails", path, e));
+                warn(format!("cannot read '{}': {}; no thumbnails", source, e));
                 return Ok(doc);
             }
         };
         let img = match decode_oriented(&bytes) {
             Ok(img) => img,
             Err(e) => {
-                warn(format!("cannot decode '{}': {}; no thumbnails", path, e));
+                warn(format!("cannot decode '{}': {}; no thumbnails", source, e));
                 return Ok(doc);
             }
         };

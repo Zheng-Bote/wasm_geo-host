@@ -302,8 +302,10 @@ impl Plugin for PrivacyRedactPlugin {
             if let Some(faces_info) = doc.faces.as_ref().filter(|f| !f.faces.is_empty()) {
                 let safe_id = doc.id.replace('/', "_");
                 let out_path = format!("{}/{}.redacted.jpg", active_settings.output_dir, safe_id);
+                // Working image if set (ADR 0011): the face boxes refer to it.
+                let source = flagme_sdk::pixel_source(&doc).to_string();
                 match self.write_redacted_image(
-                    &doc.file.path,
+                    &source,
                     &out_path,
                     &faces_info.faces,
                     &active_settings,

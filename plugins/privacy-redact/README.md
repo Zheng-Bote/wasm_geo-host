@@ -10,7 +10,7 @@ The `privacy-redact` plugin sanitizes personal data (GDPR / DSGVO) before media 
 | Crate | `flagme-plugin-privacy-redact` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_privacy_redact.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-privacy-redact`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.4.0` |
-| Reads | `doc.file.path`, `doc.faces`, `doc.location`, `doc.metadata.raw_tags` |
+| Reads | the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)), `doc.faces`, `doc.location`, `doc.metadata.raw_tags` |
 | Writes | `doc.privacy`; modifies `doc.location.latitude/longitude` and `doc.metadata.raw_tags` |
 | Capabilities | `filesystem` |
 | Configurable via `settings` | **Yes** (8 parameters, see §2) |
@@ -87,13 +87,13 @@ The plugin uses the shared SDK rules (`flagme_sdk::settings`):
 
 ### 2.5 Profiles Shipped with the Repository
 
-| Key | `config.yaml` | `config.docker.yaml` | `config.mac-studio.yaml` |
+| Key | `config.yaml` | `config_2cores_4GB.yaml`, `config_cpu_8GB.yaml` | `config_mac-studio_32GB.yaml`, `config_mac-studio_64GB.yaml` |
 | :--- | :--- | :--- | :--- |
 | `style` | *(default `pixelate`)* | `pixelate` | `blackout` |
 | `block_size` | *(default `16`)* | `16` | *(default)* |
 | `blur_sigma` | *(default)* | *(default)* | `24.0` (no effect with `blackout`) |
 | `fuzz_gps` | *(default `true`)* | `true` | `true` |
-| `gps_decimal_places` | *(default `2`)* | `2` | `3` |
+| `gps_decimal_places` | *(default `2`)* | `2` | `4` |
 | `strip_serials` | *(default `true`)* | `true` | `true` |
 
 ---
@@ -116,7 +116,7 @@ If an upstream stage is missing, the respective step is skipped (no coordinates 
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(doc.file.path)`, `fs_write(<output_dir>/…)` | No redacted image is created; a warning is logged and no `redacted_…` rule is recorded. GPS fuzzing and serial stripping still work. |
+| `filesystem` | `fs_read(pixel_source(doc))`, `fs_write(<output_dir>/…)` | No redacted image is created; a warning is logged and no `redacted_…` rule is recorded. GPS fuzzing and serial stripping still work. |
 
 ---
 

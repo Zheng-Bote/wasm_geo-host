@@ -4,6 +4,7 @@ use flagme_plugin_ai_tagging::{AiTaggingPlugin, AiTaggingSettings, VisionModel};
 use flagme_plugin_countryflag::CountryFlagSettings;
 use flagme_plugin_duplicate::{DuplicatePlugin, DuplicateSettings, PHASH_INDEX_KEY};
 use flagme_plugin_face_detection::{FaceDetectionPlugin, FaceDetectionSettings, FaceDetector};
+use flagme_plugin_image_convert::ImageConvertSettings;
 use flagme_plugin_metadata::{MetadataPlugin, MetadataSettings};
 use flagme_plugin_ocr_text::{OcrEngine, OcrSettings, OcrTextPlugin};
 use flagme_plugin_privacy_redact::{PrivacyRedactPlugin, PrivacySettings};
@@ -898,6 +899,7 @@ fn parse_warnings(plugin: &str, settings: &HashMap<String, String>) -> Vec<Strin
     let caps = RecordingCaps::default();
     match plugin {
         "metadata" => drop(MetadataSettings::parse(&Default::default(), settings, &caps)),
+        "image-convert" => drop(ImageConvertSettings::parse(&Default::default(), settings, &caps)),
         "reversegeo" => drop(ReverseGeoSettings::parse(&Default::default(), settings, &caps)),
         "countryflag" => drop(CountryFlagSettings::parse(&Default::default(), settings, &caps)),
         "thumbnail" => drop(ThumbnailSettings::parse(&Default::default(), settings, &caps)),
@@ -916,7 +918,13 @@ fn parse_warnings(plugin: &str, settings: &HashMap<String, String>) -> Vec<Strin
 // plugin-settings AC-11: the shipped profiles contain only evaluated keys and load without warnings
 #[test]
 fn profiles_have_no_unknown_keys() {
-    for profile in ["config.yaml", "config.docker.yaml", "config.mac-studio.yaml"] {
+    for profile in [
+        "config.yaml",
+        "config_2cores_4GB.yaml",
+        "config_cpu_8GB.yaml",
+        "config_mac-studio_32GB.yaml",
+        "config_mac-studio_64GB.yaml",
+    ] {
         let cfg = AppConfig::load_from_file(repo_root().join(profile)).unwrap();
         for (name, pcfg) in &cfg.plugins {
             let w = parse_warnings(name, &pcfg.settings);

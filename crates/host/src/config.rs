@@ -101,6 +101,20 @@ impl Default for AppConfig {
             },
         );
         plugins.insert(
+            "image-convert".to_string(),
+            PluginConfig {
+                // working image for all formats (ADR 0011)
+                enabled: true,
+                path: None,
+                capabilities: vec!["filesystem".to_string()],
+                settings: HashMap::new(),
+                resource_limits: HashMap::from([
+                    ("max_memory_bytes".to_string(), serde_json::Value::from(1_073_741_824u64)),
+                    ("timeout_ms".to_string(), serde_json::Value::from(30_000u64)),
+                ]),
+            },
+        );
+        plugins.insert(
             "reversegeo".to_string(),
             PluginConfig {
                 enabled: true,
@@ -215,6 +229,7 @@ impl Default for AppConfig {
             resource_limits: ResourceLimits::default(),
             pipeline: vec![
                 "metadata".to_string(),
+                "image-convert".to_string(),
                 "reversegeo".to_string(),
                 "countryflag".to_string(),
                 "thumbnail".to_string(),

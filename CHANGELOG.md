@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+- **WIT `wasmgeohost:media@0.3.0`**: the document record gained `working-image`. The host loads only components built against 0.3.0; rebuild all plugins (`make components`).
+- **Configuration profiles renamed and extended**: `config.docker.yaml` is now `config_2cores_4GB.yaml` (2 cores, 4 GB RAM; maintained again, all plugins enabled, `plugin_dir` as in `config.yaml`), `config.mac-studio.yaml` is now `config_mac-studio_32GB.yaml`. New profiles `config_cpu_8GB.yaml` (CPU-only, 8 GB RAM) and `config_mac-studio_64GB.yaml` (Mac Studio M5 Max, 64 GB). Each profile names the recommended `watch --workers`. Update your `--config` paths.
+- **Face and text boxes of rotated JPEGs** now refer to the upright working image (EXIF orientation applied) instead of the stored pixels. Results of earlier runs for such photos no longer match and need processing again.
+
+### Added
+- **Working image for all input formats** ([ADR 0011](docs/adr/0011-working-image-pure-rust-decoders.md)): the new plugin `image-convert` runs right after `metadata` and sets `doc.working_image`. It decodes JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF (`heic-rs` 0.1.5) and AVIF (`oxideav-avif` 0.0.18, 8 and 10 bit) in pure Rust inside its sandbox, applies the EXIF orientation or the HEIF container transforms (`irot`, `imir`, `clap`), lays transparency on white and writes a baseline JPEG (quality 95) with the source's ICC profile but without EXIF, GPS or XMP to `cache/working/<sha256>.working.jpg`. Complete JPEGs without rotation are used as they are. Settings `output_dir`, `quality`, `max_pixels` (default 50 MP); own limits 1 GB / 30 s (`config_mac-studio_32GB.yaml`: 4 GB / 120 s, `config_mac-studio_64GB.yaml`: 6 GB / 120 s, both 100 MP).
+- `thumbnail`, `duplicate` (dHash), `ai-tagging`, `ocr-text`, `face-detection` and `privacy-redact` read the working image (`flagme_sdk::pixel_source`), so HEIC, AVIF, WebP, TIFF and BMP photos now get face detection and redaction, OCR, tags, thumbnails and a perceptual hash. `metadata` and the SHA-256 of `duplicate` keep reading the original file.
+- The watcher accepts `.bmp` and `.heif` and skips `*.working.jpg`.
+
 ## [0.4.0] - 2026-11-27
 
 ### Breaking

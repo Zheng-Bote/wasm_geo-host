@@ -625,6 +625,8 @@ impl Storage {
         Some(UnifiedDocument {
             id: id.to_string(),
             file,
+            // Not stored in `media.db` (PRD image-convert, non-goals).
+            working_image: None,
             metadata,
             location,
             country,

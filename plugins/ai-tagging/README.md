@@ -18,7 +18,7 @@ The model (89 MB) is a **file**, not embedded: `make models` downloads it into `
 | Version | `0.4.0` |
 | Model | `models/clip-vit-b32-vision-int8.onnx` (88,648,877 bytes, SHA-256 `0ab0c1b3…bd93`), from `Xenova/clip-vit-base-patch32` revision `6b7c5237…`, MIT; downloaded by `make models` |
 | Labels | `labels/labels.txt` → `labels/labels.bin` (embedded, 278 × 512 text embeddings, built by `make labels`) |
-| Reads | the model file at `model_path`; image bytes of `doc.file.path` (JPEG, PNG) |
+| Reads | the model file at `model_path`; image bytes of the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)); JPEG, PNG |
 | Writes | `doc.ai` (`AiInfo`: `tags`, `embedding`; `description` empty) |
 | Capabilities | `filesystem` |
 | Configurable via `settings` | **Yes** (4 effective parameters, see §2.2) |
@@ -54,7 +54,7 @@ plugins:
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `enabled` | bool | `true` in `config.yaml`, `config.mac-studio.yaml` and `AppConfig::default()` | `false` → stage is skipped. |
+| `enabled` | bool | `true` in every shipped profile (`config*.yaml`) and `AppConfig::default()` | `false` → stage is skipped. |
 | `capabilities` | list | `[filesystem]` | See §4. |
 | `resource_limits` | map | 512 MB, 30 s | The guest needs ≈ 160–192 MB for a 9 MP photo; 512 MB leaves room for larger photos. |
 | `settings` | map | `{}` | See §2.2. |
@@ -100,7 +100,7 @@ No dependencies on other plugins. The host stores the embedding (`photo_embeddin
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(model_path)`, `fs_read(doc.file.path)` | Warning `ai-tagging: CLIP model unavailable …`; `doc.ai` stays `None`. |
+| `filesystem` | `fs_read(model_path)`, `fs_read(pixel_source(doc))` | Warning `ai-tagging: CLIP model unavailable …`; `doc.ai` stays `None`. |
 
 ---
 

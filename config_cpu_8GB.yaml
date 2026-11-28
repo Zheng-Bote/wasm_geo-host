@@ -1,4 +1,8 @@
-# config.mac-studio.yaml - High-Performance Profile for Apple Silicon (Mac Studio M-Series, 32GB+ Unified RAM)
+# config_cpu_8GB.yaml - CPU-only workstations and servers with 8 GB RAM (x86-64 or ARM, 4-8 cores).
+#
+# Limits apply per plugin sandbox; each watcher worker runs one plugin at a time, so the peak is
+# about workers x largest limit plus ~0.5 GB for the host. Run `flagme-host watch` with
+# `--workers 4` (up to 4 x 1 GB for image-convert).
 database_path: 'media.db'
 # Wasm components of the plugins (ADR 0003): cargo build --release --target wasm32-wasip2 --lib --features component
 plugin_dir: 'target/wasm32-wasip2/release'
@@ -7,11 +11,12 @@ component_cache: true
 component_cache_dir: 'cache/components'
 
 resource_limits:
-  max_memory_bytes: 4294967296 # 4 GB per plugin sandbox
-  timeout_ms: 60000 # 60s timeout for ultra-high-resolution files
+  max_memory_bytes: 268435456 # 256 MB per plugin sandbox
+  timeout_ms: 15000
 
 pipeline:
   - metadata
+  - image-convert
   - reversegeo
   - countryflag
   - thumbnail
@@ -27,6 +32,16 @@ plugins:
   metadata:
     enabled: true
     capabilities: ['filesystem']
+  image-convert:
+    # working image for all formats (ADR 0011); the pixel plugins read it
+    enabled: true
+    capabilities: ['filesystem']
+    # 1 GB covers 48 MP HEIC; larger files are rejected before decoding
+    resource_limits:
+      max_memory_bytes: 1073741824
+      timeout_ms: 45000
+    settings:
+      max_pixels: '50000000'
   reversegeo:
     enabled: true
     capabilities: ['http', 'kv']
@@ -38,22 +53,16 @@ plugins:
   thumbnail:
     enabled: true
     capabilities: ['filesystem']
-    # Optional per-plugin limits; they replace the global resource_limits, missing fields inherit them.
-    # resource_limits:
-    #   max_memory_bytes: 8589934592 # 8 GB for 2048 px variants of 100+ MP files
-    #   timeout_ms: 120000
     settings:
-      quality: '95'
-      variants: '128,256,512,1024,2048'
+      quality: '90'
+      variants: '128,256,512,1024'
   ai-tagging:
     # built-in CLIP ViT-B/32 model file, see `make models` (ADR 0010)
     enabled: true
     capabilities: ['filesystem']
     resource_limits:
       max_memory_bytes: 536870912
-      timeout_ms: 30000
-    settings:
-      embedding_dim: '512'
+      timeout_ms: 45000
   duplicate:
     enabled: true
     capabilities: ['filesystem', 'kv']
@@ -70,7 +79,7 @@ plugins:
     enabled: true
     capabilities: ['filesystem']
     resource_limits:
-      timeout_ms: 30000
+      timeout_ms: 45000
   face-detection:
     # built-in YuNet detector (ADR 0009); privacy-redact uses its boxes
     enabled: true
@@ -81,8 +90,8 @@ plugins:
     enabled: true
     capabilities: ['filesystem']
     settings:
-      style: 'blackout'
-      blur_sigma: '24.0'
+      style: 'pixelate'
+      block_size: '16'
       fuzz_gps: 'true'
-      gps_decimal_places: '4'
+      gps_decimal_places: '2'
       strip_serials: 'true'

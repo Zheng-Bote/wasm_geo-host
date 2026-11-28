@@ -23,6 +23,7 @@ Die Plugins in Release 0.4.0 und ihre Aufgaben (Quelle: `README.md:127-137`):
 | Plugin | Aufgabe |
 |---|---|
 | `metadata` | EXIF, IPTC, XMP |
+| `image-convert` | Arbeitsbild: JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF und AVIF als aufrechtes JPEG für alle Bild-Plugins, Decoder in reinem Rust im Gast (ADR 0011, unveröffentlicht) |
 | `reversegeo` | Ortsnamen offline (eingebettetes GeoNames-Ortsverzeichnis, seit 0.3.0) und online |
 | `countryflag` | ISO-3166-Daten |
 | `thumbnail` | Vorschaubilder |
@@ -137,7 +138,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    Host["crates/host (flagme-host)"] -->|"lädt, ruft über WIT"| Plugins["plugins/* (11 Wasm-Komponenten)"]
+    Host["crates/host (flagme-host)"] -->|"lädt, ruft über WIT"| Plugins["plugins/* (12 Wasm-Komponenten)"]
     Host --> Models["crates/models (UnifiedDocument)"]
     Host --> SDK["crates/sdk (flagme-sdk)"]
     Plugins --> SDK
@@ -151,7 +152,7 @@ flowchart TB
 | `crates/host` | CLI, Konfiguration, Komponenten-Runtime, Capabilities, Pipeline, Speicher, Watcher, Web-Server | `crates/host/src/lib.rs` |
 | `crates/sdk` | `Plugin`-Trait, `HostCapabilities`, `PluginContext`, Settings-Leser, Komponenten-Adapter (`export_plugin!`) | `crates/sdk/src/lib.rs`, `crates/sdk/src/component.rs:77` |
 | `crates/models` | `UnifiedDocument` und Unterstrukturen (Serde) | `crates/models/src/lib.rs` |
-| `wit/` | Paket `wasmgeohost:media@0.2.0`: Interfaces `types`, `host-capabilities`, Welt `media-plugin` | `wit/media-plugin.wit:1`, `:5`, `:172`, `:193` |
+| `wit/` | Paket `wasmgeohost:media@0.3.0` (bis 0.4.0: `@0.2.0`): Interfaces `types`, `host-capabilities`, Welt `media-plugin` | `wit/media-plugin.wit:1`, `:5`, `:172`, `:193` |
 | `plugins/*` | je ein Verarbeitungsschritt; hängt nur vom SDK ab | `constitution.md:13`, `README.md:127-137` |
 
 ## Ebene 2 {#_level_2}
@@ -297,7 +298,7 @@ offen: keine weiteren Infrastrukturelemente belegt.
 
   Quelle: `wit/media-plugin.wit:5`, `docs/archive/prd/wasm-geo-host.md:61`.
 - **Keine erfundenen Daten:** Fehlt eine Engine, eine Quelle oder eine Antwort, bleibt das Feld leer und es gibt eine Warnung. `http_get` meldet Fehler, statt Antworten zu erfinden (Quelle: ADR 0002, `docs/archive/prd/honest-http-get.md`).
-- **Versionierung:** Alle Crates teilen die Workspace-Version. Plugins melden sie über `CARGO_PKG_VERSION`. Der WIT-Vertrag hat eine eigene Version (`@0.2.0`) (Quelle: `CHANGELOG.md` 0.2.0, `wit/media-plugin.wit:1`).
+- **Versionierung:** Alle Crates teilen die Workspace-Version. Plugins melden sie über `CARGO_PKG_VERSION`. Der WIT-Vertrag hat eine eigene Version (`@0.3.0` seit dem Arbeitsbild, ADR 0011; vorher `@0.2.0`) (Quelle: `CHANGELOG.md`, `wit/media-plugin.wit:1`).
 - **Test-Nachweis:** Jeder Test nennt sein Akzeptanzkriterium. Die Host-Tests laufen gegen die gebauten Komponenten (Quelle: `constitution.md:26`, `crates/host/tests/common/mod.rs`).
 
 # Architekturentscheidungen {#section-design-decisions}
@@ -314,6 +315,7 @@ offen: keine weiteren Infrastrukturelemente belegt.
 | [0008](adr/0008-short-region-names.md) | Ersetzt 0006 und übernimmt dessen Regeln. Regionsnamen (englisch und lokal) nehmen die GeoNames-Kurzform, wenn sie im bisherigen Namen als ganze Wortfolge steht (Salzburg statt State of Salzburg); sonst bleibt der Name (State of Berlin). Kreise bleiben unverändert. (Seit 0.3.0.) |
 | [0009](adr/0009-plugin-inference-rten.md) | Echte Engines laufen mit `rten` im Gast; Modelle mit freier Lizenz liegen mit Quelle im Repository und werden bis 16 MB eingebettet; Komponenten mit Wasm-SIMD. `face-detection` nutzt YuNet, `ocr-text` PaddleOCR PP-OCRv5. (Seit 0.4.0.) |
 | [0010](adr/0010-ai-tagging-clip.md) | `ai-tagging` nutzt den Bildteil von CLIP ViT-B/32 (int8, MIT) als Modelldatei über `make models` (Ausnahme von der 16-MB-Grenze aus 0009), Schlagwörter aus fester Liste ohne Personenmerkmale, keine Bildbeschreibung. (Seit 0.4.0.) |
+| [0011](adr/0011-working-image-pure-rust-decoders.md) | `image-convert` schreibt direkt nach `metadata` ein aufrechtes JPEG-Arbeitsbild (ohne EXIF/GPS, mit ICC), das alle Bild-Plugins über `pixel_source` lesen; fertige JPEGs ohne Drehung werden nicht neu kodiert. Decoder: `image`, `heic-rs` (=0.1.5), `oxideav-avif` (=0.0.18), alle in reinem Rust im Gast. WIT `@0.3.0`. (Unveröffentlicht.) |
 
 # Qualitätsanforderungen {#section-quality-scenarios}
 
@@ -352,7 +354,7 @@ Die Reihenfolge hat der Maintainer am 2026-11-26 bestätigt. Höchste Priorität
 3. **KV-Speicher nur im Arbeitsspeicher:** Der Cache für Ortsnamen und Wetter geht mit dem Prozess verloren. Nach einem Neustart fragt der Host die externen Dienste deshalb erneut ab. Seit 0.3.0 löst `reversegeo` die meisten Orte offline auf, das trifft also vor allem `weather-enrich` (Quelle: `crates/host/src/runtime.rs`).
 4. **Globale Ressourcengrenzen — behoben in 0.3.0:** Jedes Plugin kann eigene Grenzen bekommen (`plugins.<name>.resource_limits`); ohne Eintrag gilt die globale Grenze (Quelle: `docs/archive/prd/plugin-resource-limits.md`).
 5. **Startzeit — behoben in 0.3.0, mit Restrisiko:** Der Komponenten-Cache (ADR 0004) erspart ab dem zweiten Start das Kompilieren. Ein Prozess desselben Benutzers kann aber Code über den Cache-Ordner einschleusen (Quelle: ADR 0004, *Konsequenzen*; `docs/archive/prd/component-cache.md`).
-6. **Veraltete Archivtexte:** Die archivierte Tech Spec `wasm-geo-host` nennt noch `sqlx`-Migrationen und ältere WIT-Namen (Quelle: `docs/archive/design/wasm-geo-host.md:29`, `:53`, `:57-60`). Umgesetzt sind die `sqlite3`-CLI mit `migrations/20261125000000_init.sql` und WIT `wasmgeohost:media@0.2.0`.
+6. **Veraltete Archivtexte:** Die archivierte Tech Spec `wasm-geo-host` nennt noch `sqlx`-Migrationen und ältere WIT-Namen (Quelle: `docs/archive/design/wasm-geo-host.md:29`, `:53`, `:57-60`). Umgesetzt sind die `sqlite3`-CLI mit `migrations/20261125000000_init.sql` und WIT `wasmgeohost:media@0.3.0`.
 7. **Ortszuordnung nach Punkten** (Ziel 2, neu in 0.3.0):
    - `reversegeo` nimmt den nächsten GeoNames-Ort, nicht die Gemeinde, in der der Punkt liegt.
    - In Grenznähe kann der Ort im Nachbarland liegen (Trastevere → Vatican City); manche Stadtteile führt GeoNames als eigene Orte (Královské Vinohrady).
@@ -368,6 +370,11 @@ Die Punkte 7 und 8 sind mit 0.3.0 hinzugekommen; ihre Einordnung am Ende hat der
 11. **Einsatzhinweis der CLIP-Modellkarte** (neu in 0.4.0): OpenAI rät vom produktiven Einsatz ohne gründlich getestete, feste Begriffsliste ab und warnt vor Verzerrungen bei Personen. Gemindert durch die feste Liste ohne Personenmerkmale und den rein lokalen Einsatz (Quelle: ADR 0010, `plugins/ai-tagging/README.md` §8).
 
 Die Punkte 9–11 sind mit 0.4.0 hinzugekommen; ihre Einordnung am Ende hat der Maintainer am 2026-11-27 bestätigt.
+
+12. **Junge Bild-Decoder** (Ziel 1 und 2, unveröffentlicht): `heic-rs` und `oxideav-avif` sind erst seit Herbst 2026 verfügbar und wenig verbreitet. Fehler in seltenen Varianten (10-Bit-HEIC, Alpha, Kachel-AVIF) sind wahrscheinlich. Gemindert durch feste Versionen, die Sandbox mit eigenen Grenzen (1 GB, 30 s) und Tests mit Testbildern (Quelle: ADR 0011, `crates/host/tests/image_convert_test.rs`).
+13. **Ungeschwärztes Arbeitsbild im Cache** (Ziel 1, unveröffentlicht): `cache/working` enthält je umgewandeltem Foto eine ungeschwärzte JPEG-Kopie ohne EXIF/GPS. Sie ist so schutzbedürftig wie das Original und wird beim Löschen von Fotos nicht entfernt (Quelle: ADR 0011, PRD `image-convert`, *Nicht-Ziele*).
+
+Die Punkte 12 und 13 sind mit dem Arbeitsbild hinzugekommen; ihre Einordnung ist noch vom Maintainer zu bestätigen.
 
 # Glossar {#section-glossary}
 

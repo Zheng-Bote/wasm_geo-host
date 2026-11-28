@@ -7,6 +7,9 @@ use std::collections::HashMap;
 pub struct UnifiedDocument {
     pub id: String,
     pub file: FileInfo,
+    /// Image the pixel plugins read (ADR 0011); `None` until `image-convert` has run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_image: Option<WorkingImage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<MetadataInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -38,6 +41,7 @@ impl UnifiedDocument {
         Self {
             id: id.into(),
             file,
+            working_image: None,
             metadata: None,
             location: None,
             country: None,
@@ -62,6 +66,19 @@ pub struct FileInfo {
     pub mime_type: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+}
+
+/// Working image of a document (ADR 0011): an oriented baseline JPEG written by
+/// `image-convert`, or the original file when it is a complete JPEG without rotation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WorkingImage {
+    pub path: String,
+    /// Detected source format: `jpeg`, `png`, `tiff`, `bmp`, `webp`, `heic` or `avif`.
+    pub source_format: String,
+    pub width: u32,
+    pub height: u32,
+    /// `false` when `path` is the original file.
+    pub converted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

@@ -288,19 +288,19 @@ fn test_ac5_engine_settings_not_supported() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// no-synthetic-output AC-6: shipped configs and the built-in default disable ai-tagging; face-detection and ocr-text have real engines since ADR 0009 and are enabled (config.docker.yaml is not maintained)
+// no-synthetic-output AC-6: shipped configs and the built-in default disable ai-tagging; face-detection and ocr-text have real engines since ADR 0009 and are enabled (all shipped profiles)
 #[test]
 fn test_ac6_shipped_configs_disable_experimental_plugins() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
     let mut configs = vec![("AppConfig::default()".to_string(), AppConfig::default())];
-    for name in ["config.yaml", "config.docker.yaml", "config.mac-studio.yaml"] {
+    for name in common::PROFILES {
         configs.push((name.to_string(), AppConfig::load_from_file(root.join(name)).expect(name)));
     }
     for (name, cfg) in configs {
         for plugin in ["ocr-text", "ai-tagging", "face-detection"] {
             let p = cfg.plugins.get(plugin).unwrap_or_else(|| panic!("{}: {} missing", name, plugin));
-            // All three have real engines since ADR 0009/0010 and are enabled (Docker is not maintained).
-            assert!(p.enabled || name == "config.docker.yaml", "{}: {} must be enabled (ADR 0009/0010)", name, plugin);
+            // All three have real engines since ADR 0009/0010 and are enabled in every shipped profile.
+            assert!(p.enabled, "{}: {} must be enabled (ADR 0009/0010)", name, plugin);
             for key in ["model", "model_tier", "tier", "engine", "device"] {
                 assert!(!p.settings.contains_key(key), "{}: {} still sets '{}'", name, plugin, key);
             }

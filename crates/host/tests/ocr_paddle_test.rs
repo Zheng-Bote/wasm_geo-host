@@ -163,12 +163,12 @@ fn test_ac8_embedded_models_and_attribution() {
     }
 }
 
-// ocr-text-paddle AC-9: ocr-text is enabled in config.yaml, config.mac-studio.yaml and AppConfig::default() with timeout_ms 30000 per plugin and no experimental note; a generated 4000 x 3000 image runs through the host within these limits
+// ocr-text-paddle AC-9: ocr-text is enabled in config.yaml, config_mac-studio_32GB.yaml and AppConfig::default() with timeout_ms 30000 per plugin and no experimental note; a generated 4000 x 3000 image runs through the host within these limits
 #[test]
 fn test_ac9_enabled_with_limits_and_large_image() {
     let root = common::repo_root();
     let mut configs = vec![AppConfig::default()];
-    for name in ["config.yaml", "config.mac-studio.yaml"] {
+    for name in ["config.yaml", "config_mac-studio_32GB.yaml"] {
         configs.push(AppConfig::load_from_file(root.join(name)).unwrap());
         let text = std::fs::read_to_string(root.join(name)).unwrap();
         let section = text.split("ocr-text:").nth(1).unwrap().split("face-detection:").next().unwrap();
