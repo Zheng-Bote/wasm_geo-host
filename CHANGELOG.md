@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`watch` reports the initial scan** (#71): once all files that existed at start are processed, one line `[watcher] Initial scan of "<dir>": <n> files: <p> processed, <d> already ingested (skipped), <i> ignored (hidden/unsupported), <f> failed; watching for new files (Ctrl+C to stop)` says what happened and that the daemon keeps watching.
+- **`watch --once`**: processes the existing files, prints the summary (ending in `done`) and exits with code `0`, or `1` if any file failed. No filesystem watcher is started.
+
+### Changed
+- **Skipped duplicates are visible**: `[watcher] Skipped '<name>': already ingested as <id> (not organized)` on stdout at the default log level; such files stay in the source directory. Failures get a `[watcher] Failed '<name>': …` line; ignored files (hidden, `._*`, derived, `cache/`, unsupported) are counted and listed with `RUST_LOG=info`.
+- Rust API: `process_single_file` returns `IngestOutcome`, `DirectoryWatcher::run` returns `WatchReport`, `WatcherConfig` has the field `once`, `Storage::document_id_for_sha256` is new.
+
 ## [0.5.0] - 2026-11-28
 
 ### Breaking

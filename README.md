@@ -280,7 +280,7 @@ plugins:
 | `config_mac-studio_32GB.yaml` (formerly `config.mac-studio.yaml`) | Apple Silicon, 32 GB unified memory | 4 GB, 60 s | 4 GB, 120 s, up to 100 MP | 6 | Thumbnails up to 1024 px, AVIF quality 80; `privacy-redact` blackout, GPS to 4 decimals |
 | `config_mac-studio_64GB.yaml` (new) | Mac Studio M5 Max, 64 GB unified memory | 4 GB, 60 s | 6 GB, 120 s, up to 100 MP | 8 | Thumbnails up to 1024 px, AVIF quality 80; 8 tags; up to 500 OCR lines |
 
-Limits apply per plugin sandbox and are upper bounds, not reservations. Each watcher worker runs one plugin at a time, so the peak memory is about *workers × largest limit* plus ≈ 0.5 GB for the host. The worker count is set only with `flagme-host watch --workers <N>`; every profile names its recommendation in its header comment. The smaller profiles use longer timeouts because inference and AVIF encoding on few cores are slower. All profiles write AVIF thumbnails of at most 1024 px: a 2048 px AVIF takes ≈ 9 s per photo ([ADR 0012](docs/adr/0012-redacted-avif-thumbnails.md)). The values of `config_2cores_4GB.yaml`, `config_cpu_8GB.yaml` and `config_mac-studio_64GB.yaml` are derived from the measurements in ADR 0011 and `docs/design/image-convert.md`, not measured on that hardware.
+Limits apply per plugin sandbox and are upper bounds, not reservations. Each watcher worker runs one plugin at a time, so the peak memory is about *workers × largest limit* plus ≈ 0.5 GB for the host. The worker count is set only with `flagme-host watch --workers <N>`; every profile names its recommendation in its header comment. The smaller profiles use longer timeouts because inference and AVIF encoding on few cores are slower. All profiles write AVIF thumbnails of at most 1024 px: a 2048 px AVIF takes ≈ 9 s per photo ([ADR 0012](docs/adr/0012-redacted-avif-thumbnails.md)). The values of `config_2cores_4GB.yaml`, `config_cpu_8GB.yaml` and `config_mac-studio_64GB.yaml` are derived from the measurements in ADR 0011 and [`docs/archive/design/image-convert.md`](docs/archive/design/image-convert.md), not measured on that hardware.
 
 ```bash
 cargo run -p flagme-host -- process /media/photo.heic --config config_cpu_8GB.yaml
@@ -348,6 +348,24 @@ cargo run -p flagme-host -- watch /media/import/ \
 ```
 
 `{year}`/`{month}` come from the capture time (`timeline.taken_at`). Photos without a capture time go to `Unknown_Year/00/…` (missing location: `Unknown_Country`/`Unknown_City`); the import time is never used as capture time.
+
+**What you see.** Each file gets one line on **stdout**; log messages (`RUST_LOG`, default `warn`) go to stderr:
+
+```text
+[watcher] Processed 'IMG_0412.heic' -> id=doc_3f0c9a1e77b2 (Munich)
+[watcher] Skipped 'IMG_0399.jpg': already ingested as doc_a32fabb4eb92 (not organized)
+[watcher] Failed 'broken.jpg': <reason>
+[watcher] Initial scan of "/media/import/": 44 files: 1 processed, 21 already ingested (skipped), 22 ignored (hidden/unsupported), 0 failed; watching for new files (Ctrl+C to stop)
+```
+
+- **Summary:** once all files that existed at start are processed, exactly one `Initial scan of …` line counts them; the daemon then keeps watching for new files.
+- **Duplicates:** a file whose SHA-256 is already in `media.db` is not processed again and **stays where it is** (it is not organized); its line names the stored document.
+- **Ignored files:** hidden files, macOS AppleDouble files (`._*`), derived files (`*.redacted.jpg`, `*.working.jpg`), anything below `cache/` and unsupported extensions are only counted; `RUST_LOG=info` lists each one.
+- **Batch import with `--once`:** processes the existing files, prints the summary (ending in `done`) and exits without watching. The exit code is `0` if no file failed and `1` otherwise, so scripts and cron jobs can check it:
+
+```bash
+flagme-host watch /media/import/ --target-dir /media/library/ --config config.yaml --once || echo "some files failed"
+```
 
 ---
 

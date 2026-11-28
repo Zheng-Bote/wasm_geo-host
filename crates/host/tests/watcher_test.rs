@@ -1,7 +1,7 @@
 mod common;
 
 use chrono::{TimeZone, Utc};
-use flagme_host::{AppConfig, DirectoryWatcher, MediaOrganizer, Pipeline, PluginRuntime, Storage, WatcherConfig, process_single_file};
+use flagme_host::{AppConfig, DirectoryWatcher, IngestOutcome, MediaOrganizer, Pipeline, PluginRuntime, Storage, WatcherConfig, process_single_file};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -35,6 +35,7 @@ fn test_directory_watcher_ac1_lifecycle() {
             organize_pattern: "{year}/{month}/{country}/{city}".to_string(),
             copy_only: false,
             workers: 2,
+            once: false,
         };
 
         let watcher = Arc::new(DirectoryWatcher::new(watcher_config, pipeline, storage));
@@ -78,6 +79,7 @@ fn test_directory_watcher_ac2_concurrent_worker_pipeline_execution() {
             organize_pattern: "{year}/{month}/{country}/{city}".to_string(),
             copy_only: false,
             workers: 4,
+            once: false,
         };
 
         // Create 3 dummy media files
@@ -101,7 +103,7 @@ fn test_directory_watcher_ac2_concurrent_worker_pipeline_execution() {
 
         for h in handles {
             let res = h.await.unwrap().expect("Processing should succeed");
-            assert!(res.is_some(), "Document should be produced and persisted");
+            assert!(matches!(res, IngestOutcome::Processed(_)), "Document should be produced and persisted: {:?}", res);
         }
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -129,6 +131,7 @@ fn test_directory_watcher_ac3_duplicate_detection_skips_ingestion() {
             organize_pattern: "{year}/{month}/{country}/{city}".to_string(),
             copy_only: false,
             workers: 1,
+            once: false,
         };
 
         let sample_file = temp_dir.join("duplicate_test.jpg");
@@ -138,13 +141,18 @@ fn test_directory_watcher_ac3_duplicate_detection_skips_ingestion() {
         let first_result = process_single_file(&sample_file, &pipeline, &storage, &watcher_config)
             .await
             .expect("First ingest should run");
-        assert!(first_result.is_some(), "First file should be ingested");
+        let IngestOutcome::Processed(first) = first_result else {
+            panic!("First file should be ingested: {:?}", first_result);
+        };
 
-        // Second ingestion with exact same file / hash must return Ok(None) -> skipped
+        // Second ingestion with exact same file / hash is skipped and names the stored document
         let second_result = process_single_file(&sample_file, &pipeline, &storage, &watcher_config)
             .await
             .expect("Second ingest should run without error");
-        assert!(second_result.is_none(), "Duplicate file ingestion should be skipped");
+        match second_result {
+            IngestOutcome::AlreadyIngested { id } => assert_eq!(id, first.id, "duplicate names the stored document"),
+            other => panic!("Duplicate file ingestion should be skipped: {:?}", other),
+        }
 
         let _ = fs::remove_dir_all(&temp_dir);
     });

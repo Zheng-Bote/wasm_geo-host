@@ -667,40 +667,34 @@ impl Storage {
 
     /// Checks if a file with the given SHA-256 hash has already been stored.
     pub fn has_sha256(&self, sha256_hash: &str) -> bool {
+        self.document_id_for_sha256(sha256_hash).is_some()
+    }
+
+    /// ID of the stored document whose file has the given SHA-256 hash, if any.
+    pub fn document_id_for_sha256(&self, sha256_hash: &str) -> Option<String> {
         if sha256_hash.is_empty() {
-            return false;
+            return None;
         }
 
         // Check in-memory photos cache first
         {
             let photos = self.photos.lock().unwrap();
-            for file in photos.values() {
-                if file.sha256.as_deref() == Some(sha256_hash) {
-                    return true;
-                }
+            if let Some((id, _)) = photos.iter().find(|(_, file)| file.sha256.as_deref() == Some(sha256_hash)) {
+                return Some(id.clone());
             }
         }
 
         // Query disk SQLite database
         let sql = format!(
-            "SELECT count(*) FROM photos WHERE sha256 = '{}';",
+            "SELECT id FROM photos WHERE sha256 = '{}' LIMIT 1;",
             escape_sql(sha256_hash)
         );
-
-        if let Ok(output) = Command::new("sqlite3")
-            .arg(&self.db_path)
-            .arg(&sql)
-            .output()
-        {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if let Ok(count) = stdout.trim().parse::<i64>() {
-                    return count > 0;
-                }
-            }
+        let output = Command::new("sqlite3").arg(&self.db_path).arg(&sql).output().ok()?;
+        if !output.status.success() {
+            return None;
         }
-
-        false
+        let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        (!id.is_empty()).then_some(id)
     }
 
     /// Queries the FTS5 full-text search index and returns ranked results.
