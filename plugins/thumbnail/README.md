@@ -10,7 +10,7 @@ The `thumbnail` plugin creates three cached preview variants (`small`, `medium`,
 | Crate | `flagme-plugin-thumbnail` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_thumbnail.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-thumbnail`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.4.0` |
-| Reads | `doc.file.path` |
+| Reads | the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)); the cache key comes from `doc.file.path` |
 | Writes | `doc.thumbnails` (`Vec<ThumbnailEntry>`, replaces existing entries); files under `output_dir` (default `cache/thumbnails/`) |
 | Capabilities | `filesystem` |
 | Configurable via `settings` | **Yes** (4 parameters, see §2.2) |
@@ -71,7 +71,7 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 | File name | `<cache_key>_<size>.jpg` | e.g. `aad58983bf531312_128.jpg` |
 | `cache_key` | `DefaultHasher(path, size)` as 16 hex digits | Changes if the file is moved/renamed, **not** if its content changes. |
 | Output format | JPEG | |
-| Supported input | JPEG, PNG, WebP, TIFF, GIF — detected from the content, not the extension | HEIC/AVIF and other formats: warning, no thumbnails. |
+| Supported input | JPEG, PNG, WebP, TIFF, GIF — detected from the content, not the extension; with `image-convert` also HEIC, AVIF and BMP via the JPEG working image | Other formats: warning, no thumbnails. |
 
 ### 2.4 Size Labels
 
@@ -103,7 +103,7 @@ Failures produce a `warn` log entry and no entry — never a placeholder:
 
 ## 3. Pipeline Position
 
-No dependencies on other plugins. Only `doc.file.path` is used.
+No dependencies on other plugins. It reads `doc.working_image` if a previous stage set it, otherwise `doc.file.path`.
 
 ---
 
@@ -160,6 +160,6 @@ SELECT photo_id, size_label, width, height, file_path, cache_key FROM thumbnails
 
 ## 7. Limitations & Implementation Notes
 
-- **No HEIC/AVIF.** These formats need decoders outside pure Rust; such photos get no thumbnails (warning). The former `sips` path (macOS only, outside the capability model) was removed ([#40](https://github.com/Zheng-Bote/wasm_geo-host/issues/40), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
+- **HEIC/AVIF only via `image-convert`.** The plugin does not decode them itself; with `image-convert` in the pipeline it scales their JPEG working image ([ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)). The former `sips` path (macOS only, outside the capability model) was removed ([#40](https://github.com/Zheng-Bote/wasm_geo-host/issues/40), [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)).
 - Thumbnails are regenerated on every run (no reuse of existing files).
 - `DefaultHasher` is not guaranteed to be stable across Rust versions; cache keys can change after a toolchain update.

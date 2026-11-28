@@ -124,28 +124,30 @@ impl Plugin for OcrTextPlugin {
             }
             return Ok(doc);
         };
-        let bytes = match ctx.capabilities.fs_read(&doc.file.path) {
+        // Working image if set (ADR 0011), otherwise the original file.
+        let source = flagme_sdk::pixel_source(&doc).to_string();
+        let bytes = match ctx.capabilities.fs_read(&source) {
             Ok(bytes) => bytes,
             Err(e) => {
-                warn(format!("cannot read '{}': {}", doc.file.path, e));
+                warn(format!("cannot read '{}': {}", source, e));
                 return Ok(doc);
             }
         };
         ctx.capabilities.log(
             "info",
-            &format!("Running OCR engine '{}' on '{}'", engine.name(), doc.file.path),
+            &format!("Running OCR engine '{}' on '{}'", engine.name(), source),
         );
         match engine.recognize_limited(&bytes, settings.max_regions as usize) {
             Ok((info, truncated)) => {
                 if let Some(found) = truncated {
                     warn(format!(
                         "'{}': {} text lines found, read the {} most confident (max_regions)",
-                        doc.file.path, found, settings.max_regions
+                        source, found, settings.max_regions
                     ));
                 }
                 doc.ocr = Some(filter_by_confidence(info, settings.min_confidence));
             }
-            Err(e) => warn(format!("engine '{}' failed on '{}': {}", engine.name(), doc.file.path, e)),
+            Err(e) => warn(format!("engine '{}' failed on '{}': {}", engine.name(), source, e)),
         }
         Ok(doc)
     }

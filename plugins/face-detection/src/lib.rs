@@ -94,16 +94,18 @@ impl Plugin for FaceDetectionPlugin {
             }
             return Ok(doc);
         };
-        let bytes = match ctx.capabilities.fs_read(&doc.file.path) {
+        // Working image if set (ADR 0011), otherwise the original file.
+        let source = flagme_sdk::pixel_source(&doc).to_string();
+        let bytes = match ctx.capabilities.fs_read(&source) {
             Ok(bytes) => bytes,
             Err(e) => {
-                warn(format!("cannot read '{}': {}", doc.file.path, e));
+                warn(format!("cannot read '{}': {}", source, e));
                 return Ok(doc);
             }
         };
         ctx.capabilities.log(
             "info",
-            &format!("Running face detector '{}' on '{}'", detector.model_name(), doc.file.path),
+            &format!("Running face detector '{}' on '{}'", detector.model_name(), source),
         );
         match detector.detect(&bytes) {
             Ok(mut faces) => {
@@ -115,7 +117,7 @@ impl Plugin for FaceDetectionPlugin {
                     detection_model: detector.model_name().to_string(),
                 });
             }
-            Err(e) => warn(format!("detector '{}' failed on '{}': {}", detector.model_name(), doc.file.path, e)),
+            Err(e) => warn(format!("detector '{}' failed on '{}': {}", detector.model_name(), source, e)),
         }
         Ok(doc)
     }

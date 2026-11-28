@@ -13,7 +13,7 @@ The engine receives only the image bytes, never the file name or path ([ADR 0002
 | Component | `flagme_plugin_ocr_text.wasm`, built with `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ocr-text` (Wasm SIMD via `.cargo/config.toml`); loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.4.0` |
 | Models | `PP-OCRv5_mobile_det` (4.8 MB) and `latin_PP-OCRv5_mobile_rec` (8.0 MB, 836 characters), Apache-2.0, embedded (`models/`, see [`models/SOURCE.md`](models/SOURCE.md)) |
-| Reads | image bytes of `doc.file.path` (JPEG, PNG) |
+| Reads | image bytes of the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)); JPEG, PNG |
 | Writes | `doc.ocr` (`OcrInfo`) |
 | Capabilities | `filesystem` |
 | Configurable via `settings` | **Yes** (2 effective parameters, see §2.2) |
@@ -48,7 +48,7 @@ plugins:
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `enabled` | bool | `true` in `config.yaml`, `config.mac-studio.yaml` and `AppConfig::default()` | `false` → stage is skipped. |
+| `enabled` | bool | `true` in every shipped profile (`config*.yaml`) and `AppConfig::default()` | `false` → stage is skipped. |
 | `capabilities` | list | `[filesystem]` | See §4. |
 | `resource_limits` | map | `timeout_ms: 30000` | Own time limit; a text-heavy photo takes a few seconds (§2.4). |
 | `settings` | map | `{}` | See §2.2. |
@@ -95,7 +95,7 @@ No dependencies on other plugins. Its text is indexed by the host (`photos_fts`)
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(doc.file.path)` | Warning `ocr-text: cannot read …`; `doc.ocr` stays `None`. |
+| `filesystem` | `fs_read(pixel_source(doc))` | Warning `ocr-text: cannot read …`; `doc.ocr` stays `None`. |
 
 ---
 

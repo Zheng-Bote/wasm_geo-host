@@ -15,6 +15,15 @@ use image::{Rgb, RgbImage};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
+/// Shipped configuration profiles in the repository root.
+pub const PROFILES: [&str; 5] = [
+    "config.yaml",
+    "config_2cores_4GB.yaml",
+    "config_cpu_8GB.yaml",
+    "config_mac-studio_32GB.yaml",
+    "config_mac-studio_64GB.yaml",
+];
+
 /// Workspace root.
 pub fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
@@ -75,6 +84,9 @@ pub struct LogCaps {
     pub http_body: Option<String>,
     pub http_urls: Mutex<Vec<String>>,
     pub deny_write: bool,
+    /// Paths passed to `fs_read` / `fs_write`, in call order.
+    pub reads: Mutex<Vec<String>>,
+    pub writes: Mutex<Vec<String>>,
 }
 
 impl LogCaps {
@@ -91,9 +103,11 @@ impl LogCaps {
 
 impl HostCapabilities for LogCaps {
     fn fs_read(&self, path: &str) -> PluginResult<Vec<u8>> {
+        self.reads.lock().unwrap().push(path.to_string());
         std::fs::read(path).map_err(|e| PluginError::Io(e.to_string()))
     }
     fn fs_write(&self, path: &str, data: &[u8]) -> PluginResult<()> {
+        self.writes.lock().unwrap().push(path.to_string());
         if self.deny_write {
             return Err(PluginError::CapabilityDenied("filesystem write".to_string()));
         }

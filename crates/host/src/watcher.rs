@@ -346,6 +346,7 @@ pub async fn process_single_file(
             mime_type: detect_mime_type(file_path),
             sha256: Some(sha256_hex.clone()),
         },
+        working_image: None,
         metadata: None,
         location: None,
         country: None,
@@ -388,9 +389,13 @@ pub async fn process_single_file(
     Ok(Some(processed_doc))
 }
 
-fn is_supported_media_file(path: &Path) -> bool {
+/// `true` for image files the watcher ingests; derived files (`.redacted.jpg`, `.working.jpg`,
+/// anything below a `cache` directory) and hidden files are skipped.
+pub fn is_supported_media_file(path: &Path) -> bool {
     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-        if file_name.starts_with('.') || file_name.starts_with("._") || file_name.ends_with(".redacted.jpg") {
+        if file_name.starts_with('.') || file_name.starts_with("._") || file_name.ends_with(".redacted.jpg")
+            || file_name.ends_with(".working.jpg")
+        {
             return false;
         }
     }
@@ -408,11 +413,12 @@ fn is_supported_media_file(path: &Path) -> bool {
 
     matches!(
         ext.as_str(),
-        "jpg" | "jpeg" | "png" | "webp" | "tiff" | "tif" | "heic" | "avif"
+        "jpg" | "jpeg" | "png" | "webp" | "tiff" | "tif" | "bmp" | "heic" | "heif" | "avif"
     )
 }
 
-fn detect_mime_type(path: &Path) -> String {
+/// MIME type from the file extension.
+pub fn detect_mime_type(path: &Path) -> String {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -424,7 +430,9 @@ fn detect_mime_type(path: &Path) -> String {
         "png" => "image/png".to_string(),
         "webp" => "image/webp".to_string(),
         "tiff" | "tif" => "image/tiff".to_string(),
+        "bmp" => "image/bmp".to_string(),
         "heic" => "image/heic".to_string(),
+        "heif" => "image/heif".to_string(),
         "avif" => "image/avif".to_string(),
         _ => "application/octet-stream".to_string(),
     }

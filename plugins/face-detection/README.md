@@ -13,7 +13,7 @@ The detector receives only the image bytes, never the file name or path ([ADR 00
 | Component | `flagme_plugin_face_detection.wasm`, built with `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-face-detection` (Wasm SIMD via `.cargo/config.toml`); loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.4.0` |
 | Model | YuNet 2023mar, 232,589 bytes, MIT, embedded (`models/`, see [`models/SOURCE.md`](models/SOURCE.md)) |
-| Reads | image bytes of `doc.file.path` (JPEG, PNG) |
+| Reads | image bytes of the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)); JPEG, PNG |
 | Writes | `doc.faces` (`FacesInfo`, `detection_model = "yunet-2023mar"`) |
 | Capabilities | `filesystem` |
 | Configurable via `settings` | **Yes** (1 effective parameter, see §2.2) |
@@ -46,7 +46,7 @@ plugins:
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `enabled` | bool | `true` in `config.yaml`, `config.mac-studio.yaml` and `AppConfig::default()` | `false` → stage is skipped; `privacy-redact` then warns that no face result exists. |
+| `enabled` | bool | `true` in every shipped profile (`config*.yaml`) and `AppConfig::default()` | `false` → stage is skipped; `privacy-redact` then warns that no face result exists. |
 | `capabilities` | list | `[filesystem]` | See §4. |
 | `settings` | map | `{}` | See §2.2. |
 
@@ -90,7 +90,7 @@ Model loading takes ≈ 2.5 ms per call (a fresh instance per document). A 4000 
 
 | Capability | Used for | Without the grant |
 | :--- | :--- | :--- |
-| `filesystem` | `fs_read(doc.file.path)` | Warning `face-detection: cannot read …`; `doc.faces` stays `None`. |
+| `filesystem` | `fs_read(pixel_source(doc))` | Warning `face-detection: cannot read …`; `doc.faces` stays `None`. |
 
 ---
 
@@ -156,7 +156,7 @@ SELECT id, name, representative_face_id FROM persons;
 
 - **Small faces**: the model works on a 640 × 640 input. Very small faces in large group photos (a few dozen pixels in the original) can be missed; tiling or a larger input would be a later extension.
 - **No person recognition**: no face embeddings, no `person_id` (separate future feature).
-- **Formats**: JPEG and PNG only; HEIC/AVIF give `None` with a warning. A JPEG counts as complete only if an end-of-image marker follows its scan data; the decoder would otherwise fill a cut-off file with grey.
+- **Formats**: the plugin itself decodes JPEG and PNG only. With `image-convert` in the pipeline every format arrives as a JPEG working image; without it HEIC/AVIF give `None` with a warning. Boxes refer to the image read, i.e. the upright working image for rotated photos. A JPEG counts as complete only if an end-of-image marker follows its scan data; the decoder would otherwise fill a cut-off file with grey.
 - **EXIF orientation is not applied** (see §2.3).
 - **Face IDs only need to be unique per photo.** The host stores each face under the row key `<photo_id>/<face.id>` in the `faces` table and deletes a photo's old face rows before inserting the new ones ([#24](https://github.com/Zheng-Bote/wasm_geo-host/issues/24)).
 - Databases filled by versions before 0.2.0 may still contain synthetic faces until the photos are processed again.

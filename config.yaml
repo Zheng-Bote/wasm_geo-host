@@ -11,6 +11,7 @@ resource_limits:
 
 pipeline:
   - metadata
+  - image-convert
   - reversegeo
   - countryflag
   - thumbnail
@@ -27,6 +28,15 @@ plugins:
     enabled: true
     capabilities:
       - filesystem
+
+  image-convert:
+  # working image for all formats (ADR 0011); the pixel plugins read it
+    enabled: true
+    capabilities:
+      - filesystem
+    resource_limits:
+      max_memory_bytes: 1073741824
+      timeout_ms: 30000
 
   reversegeo:
     enabled: true

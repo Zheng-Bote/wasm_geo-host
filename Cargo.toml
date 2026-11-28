@@ -5,6 +5,7 @@ members = [
     "crates/sdk",
     "crates/host",
     "plugins/metadata",
+    "plugins/image-convert",
     "plugins/reversegeo",
     "plugins/countryflag",
     "plugins/thumbnail",
@@ -54,4 +55,18 @@ opt-level = 3
 [profile.dev.package.rten-tensor]
 opt-level = 3
 [profile.dev.package.rten-base]
+opt-level = 3
+
+# Image decoders of image-convert (ADR 0011): optimise them also in dev/test builds, like rten.
+[profile.dev.package.heic-rs]
+opt-level = 3
+[profile.dev.package.oxideav-avif]
+opt-level = 3
+[profile.dev.package.oxideav-av1]
+opt-level = 3
+[profile.dev.package.oxideav-core]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
 opt-level = 3

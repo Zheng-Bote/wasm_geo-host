@@ -1,0 +1,24 @@
+[package]
+name = "flagme-plugin-image-convert"
+version = "0.4.0"
+edition = "2021"
+description = "Working image plugin for WASM Geo Host: converts every input format to an oriented JPEG (ADR 0011)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "flagme-plugin-image-convert"
+path = "src/main.rs"
+
+[features]
+# Export the `media-plugin` component (ADR 0003); build with `--lib --features component`.
+component = []
+
+[dependencies]
+flagme-sdk = { path = "../../crates/sdk" }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff", "bmp", "webp"] }
+# Pure-Rust HEIC/HEIF and AVIF decoders, pinned to the versions tested in ADR 0011.
+heic-rs = { version = "=0.1.5", default-features = false, features = ["std"] }
+oxideav-avif = { version = "=0.0.18", default-features = false, features = ["registry"] }
+sha2 = "0.10"

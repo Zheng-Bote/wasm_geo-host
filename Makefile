@@ -20,7 +20,7 @@ VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' crates/host/Cargo.toml | 
 OS      := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 ARCH    := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
-PLUGINS := metadata reversegeo countryflag thumbnail ai-tagging duplicate timeline \
+PLUGINS := metadata image-convert reversegeo countryflag thumbnail ai-tagging duplicate timeline \
            weather-enrich ocr-text face-detection privacy-redact
 PKG_FLAGS := $(foreach p,$(PLUGINS),-p flagme-plugin-$(p))
 
@@ -131,7 +131,7 @@ dist: ## Assemble dist/v<version> and the packages with SHA256SUMS
 	cp $(NATIVE_DIR)/flagme-host $(NATIVE_CLIS) $(STAGE)/$(COMPLETE)/bin/
 	cp $(COMPONENTS) $(STAGE)/$(COMPLETE)/plugins/
 	cp $(WASM_CLIS) $(STAGE)/$(COMPLETE)/wasm-cli/
-	for c in config.yaml config.mac-studio.yaml; do \
+	for c in config.yaml config_2cores_4GB.yaml config_cpu_8GB.yaml config_mac-studio_32GB.yaml config_mac-studio_64GB.yaml; do \
 	  sed -E 's|^plugin_dir:.*|plugin_dir: "plugins" # relative to the working directory|' $$c > $(STAGE)/$(COMPLETE)/$$c; \
 	done
 	cp $(DOCS) $(STAGE)/$(COMPLETE)/

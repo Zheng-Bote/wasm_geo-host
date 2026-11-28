@@ -1,0 +1,103 @@
+# config_mac-studio_32GB.yaml - Apple Silicon workstations with 32 GB unified memory (Mac Studio M-series).
+#
+# Limits apply per plugin sandbox; each watcher worker runs one plugin at a time, so the peak is
+# about workers x largest limit plus ~0.5 GB for the host. Run `flagme-host watch` with
+# `--workers 6` (6 x 4 GB stays below 32 GB). Supports 100 MP files and 2048 px thumbnails.
+database_path: 'media.db'
+# Wasm components of the plugins (ADR 0003): cargo build --release --target wasm32-wasip2 --lib --features component
+plugin_dir: 'target/wasm32-wasip2/release'
+# Cache for compiled components (ADR 0004): later starts skip compilation; the directory must be writable only by the host user.
+component_cache: true
+component_cache_dir: 'cache/components'
+
+resource_limits:
+  max_memory_bytes: 4294967296 # 4 GB per plugin sandbox
+  timeout_ms: 60000 # 60s timeout for ultra-high-resolution files
+
+pipeline:
+  - metadata
+  - image-convert
+  - reversegeo
+  - countryflag
+  - thumbnail
+  - ai-tagging
+  - duplicate
+  - timeline
+  - weather-enrich
+  - ocr-text
+  - face-detection
+  - privacy-redact
+
+plugins:
+  metadata:
+    enabled: true
+    capabilities: ['filesystem']
+  image-convert:
+    # working image for all formats (ADR 0011); the pixel plugins read it
+    enabled: true
+    capabilities: ['filesystem']
+    # 100+ MP files: larger limits than the default (1 GB, 30 s, max_pixels 50 MP)
+    resource_limits:
+      max_memory_bytes: 4294967296
+      timeout_ms: 120000
+    settings:
+      max_pixels: '100000000'
+  reversegeo:
+    enabled: true
+    capabilities: ['http', 'kv']
+    settings:
+      offline_cache: 'true'
+  countryflag:
+    enabled: true
+    capabilities: []
+  thumbnail:
+    enabled: true
+    capabilities: ['filesystem']
+    # Optional per-plugin limits; they replace the global resource_limits, missing fields inherit them.
+    # resource_limits:
+    #   max_memory_bytes: 8589934592 # 8 GB for 2048 px variants of 100+ MP files
+    #   timeout_ms: 120000
+    settings:
+      quality: '95'
+      variants: '128,256,512,1024,2048'
+  ai-tagging:
+    # built-in CLIP ViT-B/32 model file, see `make models` (ADR 0010)
+    enabled: true
+    capabilities: ['filesystem']
+    resource_limits:
+      max_memory_bytes: 536870912
+      timeout_ms: 30000
+    settings:
+      embedding_dim: '512'
+  duplicate:
+    enabled: true
+    capabilities: ['filesystem', 'kv']
+    settings:
+      phash_threshold: '8'
+  timeline:
+    enabled: true
+    capabilities: ['filesystem']
+  weather-enrich:
+    enabled: true
+    capabilities: ['http', 'kv']
+  ocr-text:
+    # built-in PaddleOCR PP-OCRv5 engine for Latin script (ADR 0009)
+    enabled: true
+    capabilities: ['filesystem']
+    resource_limits:
+      timeout_ms: 30000
+  face-detection:
+    # built-in YuNet detector (ADR 0009); privacy-redact uses its boxes
+    enabled: true
+    capabilities: ['filesystem']
+    settings:
+      min_confidence: '0.80'
+  privacy-redact:
+    enabled: true
+    capabilities: ['filesystem']
+    settings:
+      style: 'blackout'
+      blur_sigma: '24.0'
+      fuzz_gps: 'true'
+      gps_decimal_places: '4'
+      strip_serials: 'true'

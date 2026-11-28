@@ -390,6 +390,13 @@ fn document_to_wit(d: m::UnifiedDocument) -> w::Document {
             mime_type: d.file.mime_type,
             sha256: d.file.sha256,
         },
+        working_image: d.working_image.map(|x| w::WorkingImage {
+            path: x.path,
+            source_format: x.source_format,
+            width: x.width,
+            height: x.height,
+            converted: x.converted,
+        }),
         metadata: d.metadata.map(|x| w::MetadataInfo {
             camera_make: x.camera_make,
             camera_model: x.camera_model,
@@ -524,6 +531,13 @@ fn document_from_wit(d: w::Document) -> PluginResult<m::UnifiedDocument> {
             mime_type: d.file.mime_type,
             sha256: d.file.sha256,
         },
+        working_image: d.working_image.map(|x| m::WorkingImage {
+            path: x.path,
+            source_format: x.source_format,
+            width: x.width,
+            height: x.height,
+            converted: x.converted,
+        }),
         metadata: d.metadata.map(|x| m::MetadataInfo {
             camera_make: x.camera_make,
             camera_model: x.camera_model,

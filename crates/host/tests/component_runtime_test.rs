@@ -100,7 +100,7 @@ fn test_ac1_all_plugins_are_components() {
         cfg.enabled = true;
     }
     let names = common::plugin_names();
-    assert_eq!(names.len(), 11);
+    assert_eq!(names.len(), 12);
     config.pipeline = names.clone();
     let rt = PluginRuntime::new(config.clone()).expect("all components load");
     let mut loaded = rt.registered_plugin_names();

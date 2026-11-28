@@ -1,4 +1,4 @@
-package wasmgeohost:media@0.2.0;
+package wasmgeohost:media@0.3.0;
 
 /// Mirror of `UnifiedDocument` (`crates/models`). Every field of the models crate has a
 /// counterpart here; `crates/host` and `crates/sdk` convert losslessly (ADR 0003).
@@ -10,6 +10,17 @@ interface types {
         io(string),
         processing-failed(string),
         config(string),
+    }
+
+    /// Image the pixel plugins read (ADR 0011): oriented baseline JPEG, or the original JPEG.
+    record working-image {
+        path: string,
+        /// jpeg, png, tiff, bmp, webp, heic or avif
+        source-format: string,
+        width: u32,
+        height: u32,
+        /// false: `path` is the original file (complete JPEG without rotation)
+        converted: bool,
     }
 
     record file-info {
@@ -152,6 +163,7 @@ interface types {
     record document {
         id: string,
         file: file-info,
+        working-image: option<working-image>,
         metadata: option<metadata-info>,
         location: option<location-info>,
         country: option<country-info>,

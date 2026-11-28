@@ -162,16 +162,18 @@ impl Plugin for AiTaggingPlugin {
             Engine::Injected(m) => (*m, settings.embedding_dim),
             Engine::Clip(m, _) => (m.as_ref(), clip::EMBEDDING_DIM),
         };
-        let bytes = match ctx.capabilities.fs_read(&doc.file.path) {
+        // Working image if set (ADR 0011), otherwise the original file.
+        let source = flagme_sdk::pixel_source(&doc).to_string();
+        let bytes = match ctx.capabilities.fs_read(&source) {
             Ok(bytes) => bytes,
             Err(e) => {
-                warn(format!("cannot read '{}': {}", doc.file.path, e));
+                warn(format!("cannot read '{}': {}", source, e));
                 return Ok(doc);
             }
         };
         ctx.capabilities.log(
             "info",
-            &format!("Running vision model '{}' on '{}'", model.model_name(), doc.file.path),
+            &format!("Running vision model '{}' on '{}'", model.model_name(), source),
         );
         let result = match &engine {
             Engine::Injected(m) => m.analyze(&bytes, dim),
@@ -184,7 +186,7 @@ impl Plugin for AiTaggingPlugin {
                         Ok(normalized) => info.embedding = Some(normalized),
                         Err(reason) => warn(format!(
                             "embedding of '{}' from '{}' dropped: {}",
-                            doc.file.path,
+                            source,
                             model.model_name(),
                             reason
                         )),
@@ -192,7 +194,7 @@ impl Plugin for AiTaggingPlugin {
                 }
                 doc.ai = Some(info);
             }
-            Err(e) => warn(format!("model '{}' failed on '{}': {}", model.model_name(), doc.file.path, e)),
+            Err(e) => warn(format!("model '{}' failed on '{}': {}", model.model_name(), source, e)),
         }
         Ok(doc)
     }

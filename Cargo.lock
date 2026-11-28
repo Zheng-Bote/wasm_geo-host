@@ -916,6 +916,7 @@ dependencies = [
  "flagme-plugin-countryflag",
  "flagme-plugin-duplicate",
  "flagme-plugin-face-detection",
+ "flagme-plugin-image-convert",
  "flagme-plugin-metadata",
  "flagme-plugin-ocr-text",
  "flagme-plugin-privacy-redact",
@@ -979,6 +980,17 @@ dependencies = [
  "image",
  "rten",
  "rten-tensor",
+]
+
+[[package]]
+name = "flagme-plugin-image-convert"
+version = "0.4.0"
+dependencies = [
+ "flagme-sdk",
+ "heic-rs",
+ "image",
+ "oxideav-avif",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -1278,6 +1290,12 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "heic-rs"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d49b15a89afa2dcb507a217880eb20df21aeadf04af40366a969f9b505a0c648"
 
 [[package]]
 name = "hermit-abi"
@@ -2081,6 +2099,43 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
+name = "oxideav-av1"
+version = "0.1.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "166904a6f5742c4eec359f32ff0fe4c269bbc54f4424291567827f483071b8de"
+dependencies = [
+ "oxideav-core",
+]
+
+[[package]]
+name = "oxideav-avif"
+version = "0.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcaf60ff8283c30fc9e84e462fc9a9e016f5f4e4f1ab1817a15cebf2885b1cee"
+dependencies = [
+ "oxideav-av1",
+ "oxideav-core",
+ "oxideav-heif",
+]
+
+[[package]]
+name = "oxideav-core"
+version = "0.1.43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce90bfbe978dfc46d0c98d137b7c4566ac8eaae8c9209585eb53a8aedb0ef53c"
+dependencies = [
+ "bytemuck",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "oxideav-heif"
+version = "0.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71512adf3a5d85ecf09e3af36c3ee5c012178e26753bbfd77a2f2cd9e38bd2c9"
 
 [[package]]
 name = "paste"

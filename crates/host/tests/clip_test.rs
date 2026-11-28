@@ -273,12 +273,12 @@ fn test_ac8_component_matches_within_limits() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// ai-tagging-clip AC-9: ai-tagging is enabled in config.yaml, config.mac-studio.yaml and AppConfig::default() with 512 MB / 30 s and no experimental note; embedding_dim other than 512 warns and 512 is used
+// ai-tagging-clip AC-9: ai-tagging is enabled in config.yaml, config_mac-studio_32GB.yaml and AppConfig::default() with 512 MB / 30 s and no experimental note; embedding_dim other than 512 warns and 512 is used
 #[test]
 fn test_ac9_enabled_with_limits() {
     let root = common::repo_root();
     let mut configs = vec![AppConfig::default()];
-    for name in ["config.yaml", "config.mac-studio.yaml"] {
+    for name in ["config.yaml", "config_mac-studio_32GB.yaml"] {
         configs.push(AppConfig::load_from_file(root.join(name)).unwrap());
         let text = std::fs::read_to_string(root.join(name)).unwrap();
         let section = text.split("ai-tagging:").nth(1).unwrap().split("duplicate:").next().unwrap();

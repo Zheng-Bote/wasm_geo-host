@@ -16,16 +16,14 @@
 
 - [Architecture (C4 Model)](#architecture-c4-model)
 - [Pipeline Execution Workflow](#pipeline-execution-workflow)
-- [Included Plugins (11 WASI Plugins)](#included-plugins-11-wasi-plugins)
+- [Included Plugins (12 WASI Plugins)](#included-plugins-12-wasi-plugins)
 - [Setup & Prerequisites](#setup-prerequisites)
   - [macOS](#macos)
   - [Linux (Ubuntu / Debian / RHEL)](#linux-ubuntu-debian-rhel)
 - [Build & Test](#build-test)
 - [Usage & CLI Commands](#usage-cli-commands)
   - [1. Configure Capabilities and Pipeline (`config.yaml`)](#1-configure-capabilities-and-pipeline-configyaml)
-  - [2. Hardware & Environment Profiles (Docker vs. Mac Studio 32GB)](#2-hardware-environment-profiles-docker-vs-mac-studio-32gb)
-    - [A. Docker / Container Profile (`config.docker.yaml`)](#a-docker-container-profile-configdockeryaml)
-    - [B. Mac Studio M-Series / High-End Workstation Profile (`config.mac-studio.yaml`)](#b-mac-studio-m-series-high-end-workstation-profile-configmac-studioyaml)
+  - [2. Hardware Profiles](#2-hardware-profiles)
   - [3. Single Media Processing (`flagme-host process`)](#3-single-media-processing-flagme-host-process)
   - [3b. Streaming Mode (`flagme-host stream`)](#3b-streaming-mode-flagme-host-stream)
   - [4. Full-Text Search FTS5 (`flagme-host search`)](#4-full-text-search-fts5-flagme-host-search)
@@ -120,14 +118,15 @@ flowchart LR
 
 ---
 
-## Included Plugins (11 WASI Plugins)
+## Included Plugins (12 WASI Plugins)
 
 | Plugin | Capability Requirements | Description |
 | :--- | :--- | :--- |
 | **`metadata`** | `filesystem` | Lossless extraction of EXIF, IPTC, and XMP tags; preserves all vendor metadata in `raw_tags`. |
+| **`image-convert`** | `filesystem` | Turns JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF and AVIF into one upright JPEG working image (EXIF orientation or HEIF `irot`/`imir` applied, ICC profile kept, no EXIF/GPS) with the pure-Rust decoders `image`, `heic-rs` and `oxideav-avif`. All pixel plugins read it ([ADR 0011](docs/adr/0011-working-image-pure-rust-decoders.md)). |
 | **`reversegeo`** | `http`, `kv` | Resolves lat/lon coordinates to country, region, county, and city via an embedded offline GeoNames gazetteer (162k places, CC BY 4.0) and an optional online OSM/Nominatim fallback. |
 | **`countryflag`** | _(none)_ | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g. 🇩🇪), continents, and regions. |
-| **`thumbnail`** | `filesystem` | Scales JPEG, PNG, WebP, TIFF and GIF to 128px, 512px and 1024px variants in pure Rust (aspect ratio and EXIF orientation kept). HEIC/AVIF are not supported yet. |
+| **`thumbnail`** | `filesystem` | Scales the working image (all formats of `image-convert`; without it JPEG, PNG, WebP, TIFF and GIF) to 128px, 512px and 1024px variants in pure Rust (aspect ratio and EXIF orientation kept). |
 | **`ai-tagging`** | `filesystem` | Image embeddings and tags from a fixed list with OpenAI CLIP ViT-B/32 (int8, MIT) via `rten` in the sandbox; the model file comes from `make models` ([ADR 0010](docs/adr/0010-ai-tagging-clip.md)). Powers `flagme-host similar`. |
 | **`duplicate`** | `filesystem`, `kv` | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to detect duplicates. |
 | **`timeline`** | `filesystem` | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime). |
@@ -267,26 +266,23 @@ plugins:
 
 ---
 
-### 2. Hardware & Environment Profiles (Docker vs. Mac Studio 32GB)
+### 2. Hardware Profiles
 
-The platform includes production-ready configuration profiles tailored for different hardware tiers:
+`config.yaml` is the default. Four more profiles are tuned to the hardware; all of them enable every plugin, including `image-convert` ([ADR 0011](docs/adr/0011-working-image-pure-rust-decoders.md)).
 
-#### A. Docker / Container Profile (`config.docker.yaml`)
-Designed for CPU-constrained container environments (e.g. 512 MB – 2 GB RAM limit per container).
-- **AI tagging, OCR, face detection**: disabled (experimental, no engine built in — [ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md)).
-- **Memory Limit**: 512 MB per sandbox instance.
+| Profile | Hardware | Global limit per sandbox | `image-convert` | Recommended `watch --workers` | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `config.yaml` | default | 256 MB, 10 s | 1 GB, 30 s, up to 50 MP | 4 (default) | Thumbnails 128/512/1024 px |
+| `config_2cores_4GB.yaml` (formerly `config.docker.yaml`) | 2 CPU cores, 4 GB RAM (small VM, mini PC, NAS) | 256 MB, 20 s | 1 GB, 60 s, up to 50 MP | 1 (2 for photos up to 24 MP) | Longer timeouts (OCR, CLIP 60 s); thumbnails 128/512/1024 px at quality 80 |
+| `config_cpu_8GB.yaml` (new) | CPU-only, 4–8 cores, 8 GB RAM (x86-64 or ARM) | 256 MB, 15 s | 1 GB, 45 s, up to 50 MP | 4 | OCR and CLIP 45 s; thumbnails 128/256/512/1024 px |
+| `config_mac-studio_32GB.yaml` (formerly `config.mac-studio.yaml`) | Apple Silicon, 32 GB unified memory | 4 GB, 60 s | 4 GB, 120 s, up to 100 MP | 6 | 2048 px thumbnails; `privacy-redact` blackout, GPS to 4 decimals |
+| `config_mac-studio_64GB.yaml` (new) | Mac Studio M5 Max, 64 GB unified memory | 4 GB, 60 s | 6 GB, 120 s, up to 100 MP | 8 | 2048 px thumbnails with own 6 GB limit; 8 tags; up to 500 OCR lines |
 
-```bash
-cargo run -p flagme-host -- process /media/photo.jpg --config config.docker.yaml
-```
-
-#### B. Mac Studio M-Series / High-End Workstation Profile (`config.mac-studio.yaml`)
-Designed for Apple Silicon workstations with 32 GB+ Unified Memory (leveraging Metal / MPS acceleration where available).
-- **AI tagging, OCR, face detection**: disabled (experimental, no engine built in — [ADR 0002](docs/adr/0002-plugins-without-engine-no-output.md)).
-- **Memory Limit**: 4 GB per sandbox instance; supports 2048px high-fidelity thumbnail generation.
+Limits apply per plugin sandbox and are upper bounds, not reservations. Each watcher worker runs one plugin at a time, so the peak memory is about *workers × largest limit* plus ≈ 0.5 GB for the host. The worker count is set only with `flagme-host watch --workers <N>`; every profile names its recommendation in its header comment. The smaller profiles use longer timeouts because inference on few cores is slower. The values of `config_2cores_4GB.yaml`, `config_cpu_8GB.yaml` and `config_mac-studio_64GB.yaml` are derived from the measurements in ADR 0011 and `docs/design/image-convert.md`, not measured on that hardware.
 
 ```bash
-cargo run -p flagme-host -- process /media/photo.jpg --config config.mac-studio.yaml
+cargo run -p flagme-host -- process /media/photo.heic --config config_cpu_8GB.yaml
+cargo run -p flagme-host -- watch /media/inbox --config config_mac-studio_64GB.yaml --workers 8
 ```
 
 ---

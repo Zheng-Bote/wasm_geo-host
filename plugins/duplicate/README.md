@@ -10,7 +10,7 @@ The `duplicate` plugin finds exact copies (SHA-256) and visually similar images 
 | Crate | `flagme-plugin-duplicate` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_duplicate.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-duplicate`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
 | Version | `0.4.0` |
-| Reads | `doc.id`, `doc.file.path` (file bytes) |
+| Reads | `doc.id`, `doc.file.path` (file bytes for the SHA-256), the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)) for the dHash |
 | Writes | `doc.duplicate` (`DuplicateInfo`), `doc.file.sha256` |
 | Capabilities | `filesystem`, `kv` |
 | Configurable via `settings` | **Yes** (1 parameter, see §2.2) |
@@ -64,7 +64,7 @@ All values are strings and follow the shared SDK rules (`flagme_sdk::settings`):
 | Parameter | Value | Effect |
 | :--- | :--- | :--- |
 | dHash grid | 9 columns × 8 rows of the decoded grayscale image (Triangle filter) | 64 bits; bit `row·8+col` set if a pixel is brighter than its right neighbour |
-| Undecodable image (e.g. HEIC/AVIF) | `phash = None` | SHA-256 matching still works; no perceptual matching, `info` log entry |
+| Undecodable image (e.g. HEIC/AVIF without `image-convert`) | `phash = None` | SHA-256 matching still works; no perceptual matching, `info` log entry |
 | Unreadable file | no hashes at all | `doc.duplicate` and `doc.file.sha256` stay unchanged, `warn` log entry |
 | KV keys | `sha256:<64 hex>`, `phash:<16 hex>` | value = `doc.id` of the first photo |
 | KV index (`phash_threshold > 0`) | `phash:index`, one line `<16 hex> <doc.id>` per photo | ≈ 34 bytes per photo |
@@ -130,6 +130,6 @@ SELECT phash, group_concat(photo_id) FROM duplicates WHERE phash <> '' GROUP BY 
 ## 7. Limitations & Implementation Notes
 
 - **Linear index:** with `phash_threshold > 0` every new photo is compared with all entries of `phash:index`; the effort grows linearly with the library.
-- **No perceptual hash for HEIC/AVIF:** these formats need decoders outside pure Rust ([#40](https://github.com/Zheng-Bote/wasm_geo-host/issues/40)).
+- **Perceptual hash for HEIC/AVIF only via `image-convert`:** the dHash is computed over the JPEG working image ([ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)).
 - **The KV index lives in memory** of the host process; after a restart, earlier photos are no longer known as duplicates (the SQL query in §6.3 still works).
 - Only the **first** photo per hash is remembered; later copies point to it, not to each other.

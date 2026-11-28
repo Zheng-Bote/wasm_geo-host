@@ -76,3 +76,14 @@ plugins:
 ```
 
 Plugins access system resources **only** through `ctx.capabilities` (constitution *Security* 1–2): `fs_read`, `fs_write`, `fs_modified` (`filesystem`), `http_get` (`http`), `kv_get`/`kv_set` (`kv`), `secret_get`, `log`. Never use `std::fs`, `std::process` or external programs in a plugin; `crates/host/tests/capability_io_test.rs` checks this for every plugin under `plugins/*/src`. If a capability is denied, leave the affected field empty and log a warning ([ADR 0002](adr/0002-plugins-without-engine-no-output.md)).
+
+### 4. Read pixels from the working image
+
+A plugin that processes pixels reads the **working image**, not `doc.file.path` ([ADR 0011](adr/0011-working-image-pure-rust-decoders.md)):
+
+```rust
+let source = flagme_sdk::pixel_source(&doc); // working_image.path if set, otherwise file.path
+let bytes = ctx.capabilities.fs_read(source)?;
+```
+
+`image-convert` runs right after `metadata` and turns JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF and AVIF into an upright baseline JPEG (orientation applied, ICC profile kept, no EXIF or GPS). A pixel plugin therefore only needs to decode JPEG; boxes and coordinates it writes refer to the working image. Without a working image (plugin disabled or conversion failed) `pixel_source` returns the original file, and the plugin handles only the formats it decodes itself. File-related values stay with the original: `metadata` reads EXIF and `duplicate` hashes the file bytes from `doc.file.path`.

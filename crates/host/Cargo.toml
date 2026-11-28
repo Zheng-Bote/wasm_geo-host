@@ -36,6 +36,7 @@ rustix = { version = "1", features = ["process"] }
 [dev-dependencies]
 # Plugin crates only for tests of the plugin logic; the host loads plugins as Wasm components (ADR 0003).
 flagme-plugin-metadata = { path = "../../plugins/metadata" }
+flagme-plugin-image-convert = { path = "../../plugins/image-convert" }
 flagme-plugin-reversegeo = { path = "../../plugins/reversegeo" }
 flagme-plugin-countryflag = { path = "../../plugins/countryflag" }
 flagme-plugin-thumbnail = { path = "../../plugins/thumbnail" }
