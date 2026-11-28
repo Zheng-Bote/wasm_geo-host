@@ -40,3 +40,10 @@ Runtime requirements on the host system: the `sqlite3` command-line tool (storag
    ```bash
    flagme-host process /path/to/photo.jpg --config config.yaml
    ```
+
+9. **Importing and Watching Directories (`flagme-host watch`)**:
+   - **Daemon:** `flagme-host watch <DIR> --target-dir <LIBRARY> --config config.yaml --workers <N>` processes the existing files, prints one summary line `[watcher] Initial scan of "<DIR>": <n> files: <p> processed, <d> already ingested (skipped), <i> ignored (hidden/unsupported), <f> failed; watching for new files (Ctrl+C to stop)` and then waits for new files. Run it under a service manager (systemd, launchd) that restarts it.
+   - **Batch import:** add `--once` for cron jobs or one-off imports. It processes the existing files, prints the summary ending in `done` and exits. **Exit code** `0` means no file failed, `1` means at least one failed; each failure has a `[watcher] Failed '<name>': …` line.
+   - **Output:** per-file lines and the summary go to stdout, logs to stderr. Redirect them separately, e.g. `>> watch.log 2>> watch.err`.
+   - **Duplicates:** files whose SHA-256 is already in `media.db` are reported as `already ingested as <id>` and **stay in the source directory** (they are not organized). Remove or archive them yourself.
+   - **Ignored files** (hidden, `._*`, `*.redacted.jpg`, `*.working.jpg`, `cache/`, unsupported extensions) are counted in the summary; `RUST_LOG=info` lists them.

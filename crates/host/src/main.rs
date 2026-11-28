@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
 
     if is_watch {
         if args.len() < 3 {
-            eprintln!("Usage: flagme-host watch <DIR> [--target-dir <DIR>] [--config <CONFIG>] [--workers <N>] [--organize-by <PATTERN>] [--copy]");
+            eprintln!("Usage: flagme-host watch <DIR> [--target-dir <DIR>] [--config <CONFIG>] [--workers <N>] [--organize-by <PATTERN>] [--copy] [--once]");
             std::process::exit(1);
         }
         let watch_dir = std::path::PathBuf::from(&args[2]);
@@ -106,6 +106,8 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|| "{year}/{month}/{country}/{city}".to_string());
 
         let copy_only = args.iter().any(|arg| arg == "--copy");
+        // Process the existing files once, print the summary and exit (issue #71).
+        let once = args.iter().any(|arg| arg == "--once");
 
         let config = if Path::new(config_path).exists() {
             AppConfig::load_from_file(config_path)?
@@ -126,11 +128,19 @@ async fn main() -> anyhow::Result<()> {
             organize_pattern,
             copy_only,
             workers,
+            once,
         };
 
         let watcher = DirectoryWatcher::new(watcher_config, pipeline, storage);
-        println!("Starting flagme-host watch daemon on {:?} (workers: {})", args[2], workers);
-        watcher.run().await?;
+        if once {
+            println!("Importing {:?} once (workers: {})", args[2], workers);
+        } else {
+            println!("Starting flagme-host watch daemon on {:?} (workers: {})", args[2], workers);
+        }
+        let report = watcher.run().await?;
+        if once && report.failed > 0 {
+            std::process::exit(1);
+        }
         return Ok(());
     }
 

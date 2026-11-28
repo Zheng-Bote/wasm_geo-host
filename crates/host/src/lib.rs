@@ -12,5 +12,5 @@ pub use config::AppConfig;
 pub use pipeline::Pipeline;
 pub use runtime::PluginRuntime;
 pub use storage::Storage;
-pub use watcher::{DirectoryWatcher, MediaOrganizer, WatcherConfig, process_single_file};
+pub use watcher::{DirectoryWatcher, IngestOutcome, MediaOrganizer, WatchReport, WatcherConfig, process_single_file};
 pub use server::{build_router, run_server, ServerState};

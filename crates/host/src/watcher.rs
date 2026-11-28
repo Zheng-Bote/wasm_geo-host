@@ -38,6 +38,8 @@ pub struct WatcherConfig {
     pub organize_pattern: String,
     pub copy_only: bool,
     pub workers: usize,
+    /// Process the existing files once and return instead of watching (`watch --once`).
+    pub once: bool,
 }
 
 impl Default for WatcherConfig {
@@ -48,6 +50,7 @@ impl Default for WatcherConfig {
             organize_pattern: "{year}/{month}/{country}/{city}".to_string(),
             copy_only: false,
             workers: 4,
+            once: false,
         }
     }
 }
@@ -135,6 +138,48 @@ fn sanitize_path_segment(segment: &str) -> String {
         .collect()
 }
 
+/// Result of ingesting one file (issue #71).
+#[derive(Debug, Clone)]
+pub enum IngestOutcome {
+    /// Run through the pipeline (and organized, if a target directory is set).
+    Processed(Box<UnifiedDocument>),
+    /// A file with the same SHA-256 is already stored; this file was left where it is.
+    AlreadyIngested { id: String },
+    /// Another worker is processing a file with the same content right now.
+    InProgress,
+    /// The file vanished between scan and processing, or it is empty.
+    Gone,
+}
+
+/// Counts of the initial scan, returned by [`DirectoryWatcher::run`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WatchReport {
+    pub found: usize,
+    pub processed: usize,
+    pub already: usize,
+    pub ignored: usize,
+    pub failed: usize,
+}
+
+/// Files below the watch directory, split into ingestible and ignored ones.
+struct ScanResult {
+    files: Vec<PathBuf>,
+    ignored: Vec<PathBuf>,
+}
+
+/// A queued file; `initial` marks files of the initial scan.
+struct Job {
+    path: PathBuf,
+    initial: bool,
+}
+
+/// Progress of the initial scan, shared by the workers.
+struct ScanTally {
+    report: WatchReport,
+    remaining: usize,
+    summary_printed: bool,
+}
+
 /// Directory Watcher and concurrent batch ingestion orchestrator.
 pub struct DirectoryWatcher {
     config: WatcherConfig,
@@ -161,19 +206,23 @@ impl DirectoryWatcher {
         self.running.load(Ordering::SeqCst)
     }
 
-    /// Starts watching the configured directory and dispatches events to the worker pool.
-    pub async fn run(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::channel::<PathBuf>(1024);
+    /// Processes the existing files once, prints one summary line when they are done and, unless
+    /// `once` is set, keeps watching for new files until [`Self::stop`]. Returns the counts of the
+    /// initial scan.
+    pub async fn run(&self) -> anyhow::Result<WatchReport> {
+        let (tx, rx) = mpsc::channel::<Job>(1024);
         let rx = Arc::new(tokio::sync::Mutex::new(rx));
-        let tx_sync = tx.clone();
-        let target_dir_filter = self.config.target_dir.clone();
 
-        // 1. Setup notify event watcher (AC-1)
-        let mut watcher = RecommendedWatcher::new(
-            move |res: notify::Result<Event>| {
-                if let Ok(event) = res {
-                    match event.kind {
-                        EventKind::Create(_) | EventKind::Modify(_) => {
+        // 1. Filesystem watcher for new files (not with `once`).
+        let _watcher = if self.config.once {
+            None
+        } else {
+            let tx_sync = tx.clone();
+            let target_dir_filter = self.config.target_dir.clone();
+            let mut watcher = RecommendedWatcher::new(
+                move |res: notify::Result<Event>| {
+                    if let Ok(event) = res {
+                        if let EventKind::Create(_) | EventKind::Modify(_) = event.kind {
                             for path in event.paths {
                                 if let Some(ref target) = target_dir_filter {
                                     if path.starts_with(target) {
@@ -181,64 +230,61 @@ impl DirectoryWatcher {
                                     }
                                 }
                                 if is_supported_media_file(&path) {
-                                    let _ = tx_sync.blocking_send(path);
+                                    let _ = tx_sync.blocking_send(Job { path, initial: false });
                                 }
                             }
                         }
-                        _ => {}
                     }
-                }
+                },
+                Config::default(),
+            )?;
+            // A missing directory is an error when watching (only `once` reports 0 files).
+            watcher.watch(&self.config.watch_dir, RecursiveMode::Recursive)?;
+            tracing::info!(dir = ?self.config.watch_dir, "Started directory watcher");
+            Some(watcher)
+        };
+
+        // 2. Initial scan, counted before any file is processed.
+        let scan = self.scan_existing_files();
+        let tally = Arc::new(Mutex::new(ScanTally {
+            report: WatchReport {
+                found: scan.files.len() + scan.ignored.len(),
+                ignored: scan.ignored.len(),
+                ..Default::default()
             },
-            Config::default(),
-        )?;
+            remaining: scan.files.len(),
+            summary_printed: false,
+        }));
+        if scan.files.is_empty() {
+            self.print_summary(&tally);
+        }
 
-        watcher.watch(&self.config.watch_dir, RecursiveMode::Recursive)?;
-        tracing::info!(dir = ?self.config.watch_dir, "Started directory watcher");
-
-        // 2. Also scan existing files in directory initially
-        self.scan_existing_files(&tx).await?;
-
-        // 3. Worker task pool (AC-2)
+        // 3. Worker task pool (directory-watcher AC-2).
         let num_workers = self.config.workers.max(1);
         let mut worker_handles = Vec::with_capacity(num_workers);
-
         for worker_id in 0..num_workers {
             let rx = rx.clone();
             let pipeline = self.pipeline.clone();
             let storage = self.storage.clone();
             let config = self.config.clone();
             let running = self.running.clone();
+            let tally = tally.clone();
+            let watch_dir = self.config.watch_dir.clone();
 
             let handle = tokio::spawn(async move {
                 tracing::debug!(worker_id, "Worker started");
                 while running.load(Ordering::SeqCst) {
-                    let maybe_path = {
+                    let job = {
                         let mut locked_rx = rx.lock().await;
                         match tokio::time::timeout(Duration::from_millis(200), locked_rx.recv()).await {
-                            Ok(Some(p)) => Some(p),
-                            Ok(None) => break, // Channel closed
-                            Err(_) => None,    // Timeout check
+                            Ok(Some(job)) => Some(job),
+                            Ok(None) => break, // channel closed and empty (`once`)
+                            Err(_) => None,    // timeout, check `running`
                         }
                     };
-
-                    if let Some(path) = maybe_path {
-                        match process_single_file(&path, &pipeline, &storage, &config).await {
-                            Ok(Some(doc)) => {
-                                println!(
-                                    "[watcher] Processed '{}' -> id={} ({})",
-                                    doc.file.filename,
-                                    doc.id,
-                                    doc.location
-                                        .as_ref()
-                                        .and_then(|l| l.city.as_deref())
-                                        .unwrap_or("no-gps")
-                                );
-                            }
-                            Ok(None) => {}
-                            Err(e) => {
-                                tracing::error!(path = ?path, error = %e, "Failed to ingest media file");
-                            }
-                        }
+                    if let Some(job) = job {
+                        let result = process_single_file(&job.path, &pipeline, &storage, &config).await;
+                        report_result(&job, &result, &tally, &watch_dir, config.once);
                     }
                 }
                 tracing::debug!(worker_id, "Worker stopped");
@@ -246,24 +292,41 @@ impl DirectoryWatcher {
             worker_handles.push(handle);
         }
 
-        // 4. Wait while running
-        while self.running.load(Ordering::SeqCst) {
-            tokio::time::sleep(Duration::from_millis(200)).await;
+        for path in scan.files {
+            let _ = tx.send(Job { path, initial: true }).await;
         }
 
-        // Cleanup
-        drop(tx);
-        for handle in worker_handles {
-            let _ = handle.await;
+        if self.config.once {
+            // Workers end when the queue is empty and closed.
+            drop(tx);
+            for handle in worker_handles {
+                let _ = handle.await;
+            }
+        } else {
+            while self.running.load(Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            drop(tx);
+            for handle in worker_handles {
+                let _ = handle.await;
+            }
         }
 
-        Ok(())
+        let report = tally.lock().unwrap().report;
+        Ok(report)
     }
 
-    /// Scans pre-existing media files in the watch directory upon startup.
-    async fn scan_existing_files(&self, tx: &mpsc::Sender<PathBuf>) -> anyhow::Result<()> {
+    fn print_summary(&self, tally: &Arc<Mutex<ScanTally>>) {
+        let mut t = tally.lock().unwrap();
+        print_summary_line(&mut t, &self.config.watch_dir, self.config.once);
+    }
+
+    /// Lists the files below the watch directory (without the target directory).
+    fn scan_existing_files(&self) -> ScanResult {
+        let mut result = ScanResult { files: Vec::new(), ignored: Vec::new() };
         if !self.config.watch_dir.exists() {
-            return Ok(());
+            tracing::warn!(dir = ?self.config.watch_dir, "Watch directory does not exist; nothing to scan");
+            return result;
         }
 
         let mut dirs = vec![self.config.watch_dir.clone()];
@@ -279,13 +342,76 @@ impl DirectoryWatcher {
                     if path.is_dir() {
                         dirs.push(path);
                     } else if is_supported_media_file(&path) {
-                        let _ = tx.send(path).await;
+                        result.files.push(path);
+                    } else {
+                        tracing::info!(path = ?path, "Ignoring file (hidden, derived or unsupported)");
+                        result.ignored.push(path);
                     }
                 }
             }
         }
-        Ok(())
+        result.files.sort();
+        result
     }
+}
+
+/// Prints the line of one file and counts it if it belongs to the initial scan.
+fn report_result(
+    job: &Job,
+    result: &anyhow::Result<IngestOutcome>,
+    tally: &Arc<Mutex<ScanTally>>,
+    watch_dir: &Path,
+    once: bool,
+) {
+    let name = job
+        .path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| job.path.to_string_lossy().to_string());
+    match result {
+        Ok(IngestOutcome::Processed(doc)) => println!(
+            "[watcher] Processed '{}' -> id={} ({})",
+            doc.file.filename,
+            doc.id,
+            doc.location.as_ref().and_then(|l| l.city.as_deref()).unwrap_or("no-gps")
+        ),
+        Ok(IngestOutcome::AlreadyIngested { id }) => {
+            println!("[watcher] Skipped '{}': already ingested as {} (not organized)", name, id)
+        }
+        Ok(IngestOutcome::InProgress) => println!("[watcher] Skipped '{}': same content is being processed", name),
+        Ok(IngestOutcome::Gone) => println!("[watcher] Skipped '{}': file vanished or is empty", name),
+        Err(e) => {
+            tracing::error!(path = ?job.path, error = %e, "Failed to ingest media file");
+            println!("[watcher] Failed '{}': {}", name, e);
+        }
+    }
+    if !job.initial {
+        return;
+    }
+    let mut t = tally.lock().unwrap();
+    match result {
+        Ok(IngestOutcome::Processed(_)) => t.report.processed += 1,
+        Ok(_) => t.report.already += 1,
+        Err(_) => t.report.failed += 1,
+    }
+    t.remaining = t.remaining.saturating_sub(1);
+    if t.remaining == 0 {
+        print_summary_line(&mut t, watch_dir, once);
+    }
+}
+
+/// Prints the summary of the initial scan exactly once.
+fn print_summary_line(t: &mut ScanTally, watch_dir: &Path, once: bool) {
+    if t.summary_printed {
+        return;
+    }
+    t.summary_printed = true;
+    let r = t.report;
+    let tail = if once { "done" } else { "watching for new files (Ctrl+C to stop)" };
+    println!(
+        "[watcher] Initial scan of {:?}: {} files: {} processed, {} already ingested (skipped), {} ignored (hidden/unsupported), {} failed; {}",
+        watch_dir, r.found, r.processed, r.already, r.ignored, r.failed, tail
+    );
 }
 
 /// Ingests a single media file through deduplication, pipeline execution, and file organization.
@@ -294,15 +420,15 @@ pub async fn process_single_file(
     pipeline: &Arc<Pipeline>,
     storage: &Arc<Storage>,
     config: &WatcherConfig,
-) -> anyhow::Result<Option<UnifiedDocument>> {
+) -> anyhow::Result<IngestOutcome> {
     if !file_path.exists() || !file_path.is_file() {
-        return Ok(None);
+        return Ok(IngestOutcome::Gone);
     }
 
     // Read bytes & compute SHA-256
     let bytes = fs::read(file_path)?;
     if bytes.is_empty() {
-        return Ok(None);
+        return Ok(IngestOutcome::Gone);
     }
 
     let mut hasher = Sha256::new();
@@ -313,7 +439,7 @@ pub async fn process_single_file(
     {
         let mut in_flight = in_flight_set().lock().unwrap();
         if in_flight.contains(&sha256_hex) {
-            return Ok(None);
+            return Ok(IngestOutcome::InProgress);
         }
         in_flight.insert(sha256_hex.clone());
     }
@@ -321,14 +447,15 @@ pub async fn process_single_file(
         sha256: sha256_hex.clone(),
     };
 
-    // AC-3: Deduplication check against SQLite database
-    if storage.has_sha256(&sha256_hex) {
+    // directory-watcher AC-3: deduplication against the database
+    if let Some(id) = storage.document_id_for_sha256(&sha256_hex) {
         tracing::info!(
             path = ?file_path,
             sha256 = %sha256_hex,
+            id = %id,
             "Skipping duplicate file: already ingested"
         );
-        return Ok(None);
+        return Ok(IngestOutcome::AlreadyIngested { id });
     }
 
     let filename = file_path
@@ -361,14 +488,14 @@ pub async fn process_single_file(
         custom: std::collections::HashMap::new(),
     };
 
-    // AC-2: Execute pipeline
+    // directory-watcher AC-2: execute the pipeline
     let mut processed_doc = pipeline.process(doc)?;
     if processed_doc.file.sha256.as_deref() != Some(&sha256_hex) {
         processed_doc.file.sha256 = Some(sha256_hex);
         let _ = storage.save_document(&processed_doc);
     }
 
-    // AC-4: Organize processed file into target directory if configured
+    // directory-watcher AC-4: organize the processed file into the target directory
     if let Some(target_dir) = &config.target_dir {
         let new_path = MediaOrganizer::organize(
             file_path,
@@ -386,7 +513,7 @@ pub async fn process_single_file(
         );
     }
 
-    Ok(Some(processed_doc))
+    Ok(IngestOutcome::Processed(Box::new(processed_doc)))
 }
 
 /// `true` for image files the watcher ingests; derived files (`.redacted.jpg`, `.working.jpg`,
