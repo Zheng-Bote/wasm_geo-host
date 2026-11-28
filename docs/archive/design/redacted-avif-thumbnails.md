@@ -1,6 +1,6 @@
 ---
 feature: redacted-avif-thumbnails
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/thumbnail/**
@@ -20,11 +20,12 @@ touches:
   - docs/arc42.md
   - docs/pipeline_host_supervisor.md
   - docs/plugin-development-guide.md
+release: 0.5.0
 ---
 
 # Tech Spec — Geschwärzte Thumbnails als AVIF (`redacted-avif-thumbnails`)
 
-Setzt das PRD `docs/prd/redacted-avif-thumbnails.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage sind [ADR 0012](../adr/0012-redacted-avif-thumbnails.md) und [ADR 0011](../adr/0011-working-image-pure-rust-decoders.md).
+Setzt das PRD `docs/prd/redacted-avif-thumbnails.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage sind [ADR 0012](../../adr/0012-redacted-avif-thumbnails.md) und [ADR 0011](../../adr/0011-working-image-pure-rust-decoders.md).
 
 ## Architektur
 

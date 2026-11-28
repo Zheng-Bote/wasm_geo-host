@@ -1,6 +1,6 @@
 ---
 feature: image-convert
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/image-convert/**
@@ -25,6 +25,7 @@ touches:
   - docs/arc42.md
   - docs/pipeline_host_supervisor.md
   - docs/plugin-development-guide.md
+release: 0.5.0
 ---
 
 # PRD — Arbeitsbild für alle Eingabeformate (`image-convert`)
@@ -41,7 +42,7 @@ Ein HEIC-Foto vom Smartphone wird deshalb weder auf Gesichter geprüft noch gesc
 
 ## Ziel
 
-Jedes unterstützte Eingabeformat wird einmal in ein richtig gedrehtes JPEG-Arbeitsbild gewandelt ([ADR 0011](../adr/0011-working-image-pure-rust-decoders.md)). Alle Bild-Plugins lesen dieses Arbeitsbild. Gesichtserkennung und Schwärzung funktionieren damit für JPEG/JPG, PNG, TIFF, BMP, WebP, HEIC/HEIF und AVIF.
+Jedes unterstützte Eingabeformat wird einmal in ein richtig gedrehtes JPEG-Arbeitsbild gewandelt ([ADR 0011](../../adr/0011-working-image-pure-rust-decoders.md)). Alle Bild-Plugins lesen dieses Arbeitsbild. Gesichtserkennung und Schwärzung funktionieren damit für JPEG/JPG, PNG, TIFF, BMP, WebP, HEIC/HEIF und AVIF.
 
 Den Prototyp vom 2026-11-28 mit Messwerten zeigt ADR 0011. Kurz: Ein Foto mit 12 MP braucht in Wasm 0,5–0,8 s, ein Foto mit 48 MP mehr als 512 MB Speicher.
 

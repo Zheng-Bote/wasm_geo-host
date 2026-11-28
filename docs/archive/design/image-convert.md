@@ -1,6 +1,6 @@
 ---
 feature: image-convert
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/image-convert/**
@@ -25,11 +25,12 @@ touches:
   - docs/arc42.md
   - docs/pipeline_host_supervisor.md
   - docs/plugin-development-guide.md
+release: 0.5.0
 ---
 
 # Tech Spec — Arbeitsbild für alle Eingabeformate (`image-convert`)
 
-Setzt das PRD `docs/prd/image-convert.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0011](../adr/0011-working-image-pure-rust-decoders.md).
+Setzt das PRD `docs/prd/image-convert.md` um. Die Verfassung hat Vorrang; diese Tech Spec darf sie präzisieren, nie lockern. Grundlage ist [ADR 0011](../../adr/0011-working-image-pure-rust-decoders.md).
 
 ## Architektur
 

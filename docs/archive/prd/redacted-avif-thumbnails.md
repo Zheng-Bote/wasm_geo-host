@@ -1,6 +1,6 @@
 ---
 feature: redacted-avif-thumbnails
-status: accepted
+status: archived
 archive-after:
 touches:
   - plugins/thumbnail/**
@@ -19,6 +19,7 @@ touches:
   - docs/arc42.md
   - docs/pipeline_host_supervisor.md
   - docs/plugin-development-guide.md
+release: 0.5.0
 ---
 
 # PRD — Geschwärzte Thumbnails als AVIF (`redacted-avif-thumbnails`)
@@ -35,7 +36,7 @@ Mit dem Standard `redact_faces: true` bleiben Gesichter so überall sichtbar. Au
 
 ## Ziel
 
-Thumbnails entstehen nur aus geschwärzten Bildern, wenn Schwärzen verlangt ist, und als AVIF ([ADR 0012](../adr/0012-redacted-avif-thumbnails.md)). Scheitert das Schwärzen, gibt es keine Thumbnails (fail closed). Der Server liefert nur Thumbnail-Dateien aus.
+Thumbnails entstehen nur aus geschwärzten Bildern, wenn Schwärzen verlangt ist, und als AVIF ([ADR 0012](../../adr/0012-redacted-avif-thumbnails.md)). Scheitert das Schwärzen, gibt es keine Thumbnails (fail closed). Der Server liefert nur Thumbnail-Dateien aus.
 
 Die Messwerte vom 2026-11-28 zeigt ADR 0012. Kurz: AVIF q70 ist etwa halb so groß wie JPEG q75 und kostet für 128/512/1024 px ≈ 2,2 s je Foto im Gast.
 

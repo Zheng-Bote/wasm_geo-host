@@ -11,7 +11,7 @@ The engine receives only the image bytes, never the file name or path ([ADR 0002
 | Plugin name (`config.yaml`) | `ocr-text` |
 | Crate | `flagme-plugin-ocr-text` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_ocr_text.wasm`, built with `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ocr-text` (Wasm SIMD via `.cargo/config.toml`); loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.4.0` |
+| Version | `0.5.0` |
 | Models | `PP-OCRv5_mobile_det` (4.8 MB) and `latin_PP-OCRv5_mobile_rec` (8.0 MB, 836 characters), Apache-2.0, embedded (`models/`, see [`models/SOURCE.md`](models/SOURCE.md)) |
 | Reads | image bytes of the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)); JPEG, PNG |
 | Writes | `doc.ocr` (`OcrInfo`) |

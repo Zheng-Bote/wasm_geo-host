@@ -9,7 +9,7 @@ The `privacy-redact` plugin sanitizes personal data (GDPR / DSGVO) before media 
 | Plugin name (`config.yaml`) | `privacy-redact` |
 | Crate | `flagme-plugin-privacy-redact` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_privacy_redact.wasm` — `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-privacy-redact`; loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.4.0` |
+| Version | `0.5.0` |
 | Reads | the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)), `doc.faces`, `doc.location`, `doc.metadata.raw_tags` |
 | Writes | `doc.privacy`; modifies `doc.location.latitude/longitude` and `doc.metadata.raw_tags` |
 | Capabilities | `filesystem` |

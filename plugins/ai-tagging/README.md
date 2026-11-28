@@ -15,7 +15,7 @@ The model (89 MB) is a **file**, not embedded: `make models` downloads it into `
 | Plugin name (`config.yaml`) | `ai-tagging` |
 | Crate | `flagme-plugin-ai-tagging` (`cdylib` + `rlib` + `[[bin]]`) |
 | Component | `flagme_plugin_ai_tagging.wasm`, built with `cargo build --release --target wasm32-wasip2 --lib --features component -p flagme-plugin-ai-tagging` (Wasm SIMD via `.cargo/config.toml`); loaded by `flagme-host` from `plugin_dir` ([ADR 0003](../../docs/adr/0003-wasm-component-execution.md)) |
-| Version | `0.4.0` |
+| Version | `0.5.0` |
 | Model | `models/clip-vit-b32-vision-int8.onnx` (88,648,877 bytes, SHA-256 `0ab0c1b3…bd93`), from `Xenova/clip-vit-base-patch32` revision `6b7c5237…`, MIT; downloaded by `make models` |
 | Labels | `labels/labels.txt` → `labels/labels.bin` (embedded, 278 × 512 text embeddings, built by `make labels`) |
 | Reads | the model file at `model_path`; image bytes of the working image (`flagme_sdk::pixel_source`: `doc.working_image.path` from `image-convert`, otherwise `doc.file.path`; [ADR 0011](../../docs/adr/0011-working-image-pure-rust-decoders.md)); JPEG, PNG |
