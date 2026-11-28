@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Breaking
+- **Thumbnails only from redacted images** ([ADR 0012](docs/adr/0012-redacted-avif-thumbnails.md), #76): `thumbnail` now runs **after** `privacy-redact` at the end of the pipeline. While `privacy-redact` is enabled with `redact_faces` on, the host **rejects a configuration** in which `thumbnail` comes before `privacy-redact` or `face-detection` is missing, disabled or comes after it. Custom pipelines must be reordered.
+- **Fail closed**: if redaction is required but fails (no face result, unreadable image, write error), the photo gets no thumbnails and a warning.
+- **Thumbnail endpoint**: `GET /api/photos/:id/thumbnail/:size` answers `404` without a thumbnail file; it no longer serves the original image or a built-in 1×1 placeholder. `Cache-Control` is now `private, max-age=86400`.
+- **Thumbnails are AVIF** by default (`<key>_<size>.avif`, about half the size of JPEG; ≈ 2.2 s more per photo for 128/512/1024 px in the sandbox). `format: jpeg` keeps JPEG. Existing JPEG thumbnails, made from unredacted images, stay until a photo is processed again.
+- **`privacy-redact` `output_dir`** defaults to `cache/thumbnails` (was `cache/redacted`).
 - **WIT `wasmgeohost:media@0.3.0`**: the document record gained `working-image`. The host loads only components built against 0.3.0; rebuild all plugins (`make components`).
 - **Configuration profiles renamed and extended**: `config.docker.yaml` is now `config_2cores_4GB.yaml` (2 cores, 4 GB RAM; maintained again, all plugins enabled, `plugin_dir` as in `config.yaml`), `config.mac-studio.yaml` is now `config_mac-studio_32GB.yaml`. New profiles `config_cpu_8GB.yaml` (CPU-only, 8 GB RAM) and `config_mac-studio_64GB.yaml` (Mac Studio M5 Max, 64 GB). Each profile names the recommended `watch --workers`. Update your `--config` paths.
 - **Face and text boxes of rotated JPEGs** now refer to the upright working image (EXIF orientation applied) instead of the stored pixels. Results of earlier runs for such photos no longer match and need processing again.
@@ -16,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Working image for all input formats** ([ADR 0011](docs/adr/0011-working-image-pure-rust-decoders.md)): the new plugin `image-convert` runs right after `metadata` and sets `doc.working_image`. It decodes JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF (`heic-rs` 0.1.5) and AVIF (`oxideav-avif` 0.0.18, 8 and 10 bit) in pure Rust inside its sandbox, applies the EXIF orientation or the HEIF container transforms (`irot`, `imir`, `clap`), lays transparency on white and writes a baseline JPEG (quality 95) with the source's ICC profile but without EXIF, GPS or XMP to `cache/working/<sha256>.working.jpg`. Complete JPEGs without rotation are used as they are. Settings `output_dir`, `quality`, `max_pixels` (default 50 MP); own limits 1 GB / 30 s (`config_mac-studio_32GB.yaml`: 4 GB / 120 s, `config_mac-studio_64GB.yaml`: 6 GB / 120 s, both 100 MP).
 - `thumbnail`, `duplicate` (dHash), `ai-tagging`, `ocr-text`, `face-detection` and `privacy-redact` read the working image (`flagme_sdk::pixel_source`), so HEIC, AVIF, WebP, TIFF and BMP photos now get face detection and redaction, OCR, tags, thumbnails and a perceptual hash. `metadata` and the SHA-256 of `duplicate` keep reading the original file.
 - The watcher accepts `.bmp` and `.heif` and skips `*.working.jpg`.
+- `PrivacyInfo.face_redaction` (`applied`, `no_faces`, `disabled`, `failed`; WIT `enum face-redaction`) records the result of face redaction; `flagme_sdk::display_source` picks the image a display plugin may use. The web UI shows it and a placeholder when a thumbnail is missing.
+- `thumbnail` settings `format` (`avif`, `jpeg`) and format-specific `quality` defaults (AVIF 70, JPEG 75). The shipped profiles write AVIF of at most 1024 px.
 
 ## [0.4.0] - 2026-11-27
 

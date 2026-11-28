@@ -13,19 +13,6 @@ use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use wasm_geo_models::UnifiedDocument;
 
-/// Minimal valid 1x1 JPEG image bytes if neither thumbnail nor original file exists on disk.
-const FALLBACK_JPEG_1X1: &[u8] = &[
-    0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01,
-    0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x1F, 0x00, 0x00, 0x01, 0x05, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
-    0x07, 0x08, 0x09, 0x0A, 0x0B, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0xD2,
-    0xCF, 0x20, 0xFF, 0xD9,
-];
-
 #[derive(RustEmbed)]
 #[folder = "ui/"]
 pub struct WebAssets;
@@ -153,7 +140,19 @@ async fn get_photo_detail(
         .ok_or(StatusCode::NOT_FOUND)
 }
 
-/// GET /api/photos/:id/thumbnail/:size: Serves thumbnail bytes with HTTP caching headers.
+/// MIME type of a thumbnail file from its extension.
+fn thumbnail_content_type(path: &str) -> &'static str {
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with(".avif") {
+        "image/avif"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+/// GET /api/photos/:id/thumbnail/:size: Serves a thumbnail file; `404` if there is none (ADR 0012).
 async fn get_photo_thumbnail(
     State(state): State<ServerState>,
     Path((id, size)): Path<(String, String)>,
@@ -164,29 +163,19 @@ async fn get_photo_thumbnail(
         .thumbnails
         .iter()
         .find(|t| t.size_label.eq_ignore_ascii_case(&size))
-        .or_else(|| doc.thumbnails.first());
+        .or_else(|| doc.thumbnails.first())
+        .ok_or(StatusCode::NOT_FOUND)?;
+    // Only derived thumbnail files are served, never the original or a placeholder (ADR 0012).
+    let bytes = std::fs::read(&thumb.path).map_err(|_| StatusCode::NOT_FOUND)?;
+    let content_type = thumbnail_content_type(&thumb.path);
 
-    let (bytes, cache_key) = if let Some(t) = thumb {
-        if let Ok(b) = std::fs::read(&t.path) {
-            (b, t.cache_key.clone())
-        } else if let Ok(orig) = std::fs::read(&doc.file.path) {
-            (orig, t.cache_key.clone())
-        } else {
-            return Err(StatusCode::NOT_FOUND);
-        }
-    } else if let Ok(orig) = std::fs::read(&doc.file.path) {
-        (orig, doc.id.clone())
-    } else {
-        (FALLBACK_JPEG_1X1.to_vec(), doc.id.clone())
-    };
-
-    let etag = format!("\"{}\"", cache_key);
+    let etag = format!("\"{}\"", thumb.cache_key);
 
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/jpeg"));
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     headers.insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=86400"),
+        HeaderValue::from_static("private, max-age=86400"),
     );
     if let Ok(val) = HeaderValue::from_str(&etag) {
         headers.insert(header::ETAG, val);

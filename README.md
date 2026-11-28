@@ -103,17 +103,18 @@ Every media file is passed as a `UnifiedDocument` through the configured plugin 
 ```mermaid
 flowchart LR
     photo["Input Photo"] --> meta["1. metadata\n(EXIF, IPTC, XMP)"]
-    meta --> geo["2. reversegeo\n(Coordinates to City)"]
-    geo --> flag["3. countryflag\n(ISO Code to Flag Emoji)"]
-    flag --> thumb["4. thumbnail\n(128px, 512px, 1024px)"]
-    thumb --> ai["5. ai-tagging\n(CLIP)"]
+    meta --> conv["2. image-convert\n(Working Image JPEG)"]
+    conv --> geo["3. reversegeo\n(Coordinates to City)"]
+    geo --> flag["4. countryflag\n(ISO Code to Flag Emoji)"]
+    flag --> ai["5. ai-tagging\n(CLIP)"]
     ai --> dup["6. duplicate\n(SHA256 & pHash Indexing)"]
     dup --> time["7. timeline\n(Timestamp Resolution)"]
     time --> weather["8. weather-enrich\n(Open-Meteo Historical)"]
     weather --> ocr["9. ocr-text\n(PP-OCRv5)"]
     ocr --> face["10. face-detection\n(YuNet)"]
     face --> privacy["11. privacy-redact\n(Pixelate / Blur / GPS Fuzz)"]
-    privacy --> db[("12. SQLite Persistence\n(FTS5 & Vector Embeddings)")]
+    privacy --> thumb["12. thumbnail\n(AVIF from the redacted image)"]
+    thumb --> db[("SQLite Persistence\n(FTS5 & Vector Embeddings)")]
 ```
 
 ---
@@ -126,7 +127,7 @@ flowchart LR
 | **`image-convert`** | `filesystem` | Turns JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF and AVIF into one upright JPEG working image (EXIF orientation or HEIF `irot`/`imir` applied, ICC profile kept, no EXIF/GPS) with the pure-Rust decoders `image`, `heic-rs` and `oxideav-avif`. All pixel plugins read it ([ADR 0011](docs/adr/0011-working-image-pure-rust-decoders.md)). |
 | **`reversegeo`** | `http`, `kv` | Resolves lat/lon coordinates to country, region, county, and city via an embedded offline GeoNames gazetteer (162k places, CC BY 4.0) and an optional online OSM/Nominatim fallback. |
 | **`countryflag`** | _(none)_ | Completely offline ISO-3166 database returning localized country names, Unicode flag emojis (e.g. 🇩🇪), continents, and regions. |
-| **`thumbnail`** | `filesystem` | Scales the working image (all formats of `image-convert`; without it JPEG, PNG, WebP, TIFF and GIF) to 128px, 512px and 1024px variants in pure Rust (aspect ratio and EXIF orientation kept). |
+| **`thumbnail`** | `filesystem` | Runs last and writes **AVIF** previews (128px, 512px, 1024px; `format: jpeg` optional) in pure Rust. With redacted faces it scales the redacted image; if redaction was required but failed it writes none (fail closed, [ADR 0012](docs/adr/0012-redacted-avif-thumbnails.md)). |
 | **`ai-tagging`** | `filesystem` | Image embeddings and tags from a fixed list with OpenAI CLIP ViT-B/32 (int8, MIT) via `rten` in the sandbox; the model file comes from `make models` ([ADR 0010](docs/adr/0010-ai-tagging-clip.md)). Powers `flagme-host similar`. |
 | **`duplicate`** | `filesystem`, `kv` | Generates cryptographic SHA256 and perceptual difference hashes (`phash`) to detect duplicates. |
 | **`timeline`** | `filesystem` | Resolves and normalizes conflicting timestamps (EXIF original vs. XMP authoring vs. filesystem modtime). |
@@ -180,7 +181,7 @@ Compile all plugins to WebAssembly Components (`wasm32-wasip2`, `media-plugin` w
 
 ```bash
 cargo build --release --target wasm32-wasip2 --lib --features component \
-  -p flagme-plugin-metadata -p flagme-plugin-reversegeo -p flagme-plugin-countryflag \
+  -p flagme-plugin-metadata -p flagme-plugin-image-convert -p flagme-plugin-reversegeo -p flagme-plugin-countryflag \
   -p flagme-plugin-thumbnail -p flagme-plugin-ai-tagging -p flagme-plugin-duplicate \
   -p flagme-plugin-timeline -p flagme-plugin-weather-enrich -p flagme-plugin-ocr-text \
   -p flagme-plugin-face-detection -p flagme-plugin-privacy-redact
@@ -214,9 +215,9 @@ resource_limits:
 
 pipeline:
   - metadata
+  - image-convert
   - reversegeo
   - countryflag
-  - thumbnail
   - ai-tagging
   - duplicate
   - timeline
@@ -224,6 +225,7 @@ pipeline:
   - ocr-text
   - face-detection
   - privacy-redact
+  - thumbnail # after privacy-redact; the host rejects another order while redact_faces is on (ADR 0012)
 
 plugins:
   metadata:
@@ -273,12 +275,12 @@ plugins:
 | Profile | Hardware | Global limit per sandbox | `image-convert` | Recommended `watch --workers` | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `config.yaml` | default | 256 MB, 10 s | 1 GB, 30 s, up to 50 MP | 4 (default) | Thumbnails 128/512/1024 px |
-| `config_2cores_4GB.yaml` (formerly `config.docker.yaml`) | 2 CPU cores, 4 GB RAM (small VM, mini PC, NAS) | 256 MB, 20 s | 1 GB, 60 s, up to 50 MP | 1 (2 for photos up to 24 MP) | Longer timeouts (OCR, CLIP 60 s); thumbnails 128/512/1024 px at quality 80 |
-| `config_cpu_8GB.yaml` (new) | CPU-only, 4–8 cores, 8 GB RAM (x86-64 or ARM) | 256 MB, 15 s | 1 GB, 45 s, up to 50 MP | 4 | OCR and CLIP 45 s; thumbnails 128/256/512/1024 px |
-| `config_mac-studio_32GB.yaml` (formerly `config.mac-studio.yaml`) | Apple Silicon, 32 GB unified memory | 4 GB, 60 s | 4 GB, 120 s, up to 100 MP | 6 | 2048 px thumbnails; `privacy-redact` blackout, GPS to 4 decimals |
-| `config_mac-studio_64GB.yaml` (new) | Mac Studio M5 Max, 64 GB unified memory | 4 GB, 60 s | 6 GB, 120 s, up to 100 MP | 8 | 2048 px thumbnails with own 6 GB limit; 8 tags; up to 500 OCR lines |
+| `config_2cores_4GB.yaml` (formerly `config.docker.yaml`) | 2 CPU cores, 4 GB RAM (small VM, mini PC, NAS) | 256 MB, 20 s | 1 GB, 60 s, up to 50 MP | 1 (2 for photos up to 24 MP) | Longer timeouts (OCR, CLIP, AVIF thumbnails 60 s); thumbnails 128/512/1024 px, AVIF quality 60 |
+| `config_cpu_8GB.yaml` (new) | CPU-only, 4–8 cores, 8 GB RAM (x86-64 or ARM) | 256 MB, 15 s | 1 GB, 45 s, up to 50 MP | 4 | OCR and CLIP 45 s, thumbnails 30 s; 128/256/512/1024 px, AVIF quality 70 |
+| `config_mac-studio_32GB.yaml` (formerly `config.mac-studio.yaml`) | Apple Silicon, 32 GB unified memory | 4 GB, 60 s | 4 GB, 120 s, up to 100 MP | 6 | Thumbnails up to 1024 px, AVIF quality 80; `privacy-redact` blackout, GPS to 4 decimals |
+| `config_mac-studio_64GB.yaml` (new) | Mac Studio M5 Max, 64 GB unified memory | 4 GB, 60 s | 6 GB, 120 s, up to 100 MP | 8 | Thumbnails up to 1024 px, AVIF quality 80; 8 tags; up to 500 OCR lines |
 
-Limits apply per plugin sandbox and are upper bounds, not reservations. Each watcher worker runs one plugin at a time, so the peak memory is about *workers × largest limit* plus ≈ 0.5 GB for the host. The worker count is set only with `flagme-host watch --workers <N>`; every profile names its recommendation in its header comment. The smaller profiles use longer timeouts because inference on few cores is slower. The values of `config_2cores_4GB.yaml`, `config_cpu_8GB.yaml` and `config_mac-studio_64GB.yaml` are derived from the measurements in ADR 0011 and `docs/design/image-convert.md`, not measured on that hardware.
+Limits apply per plugin sandbox and are upper bounds, not reservations. Each watcher worker runs one plugin at a time, so the peak memory is about *workers × largest limit* plus ≈ 0.5 GB for the host. The worker count is set only with `flagme-host watch --workers <N>`; every profile names its recommendation in its header comment. The smaller profiles use longer timeouts because inference and AVIF encoding on few cores are slower. All profiles write AVIF thumbnails of at most 1024 px: a 2048 px AVIF takes ≈ 9 s per photo ([ADR 0012](docs/adr/0012-redacted-avif-thumbnails.md)). The values of `config_2cores_4GB.yaml`, `config_cpu_8GB.yaml` and `config_mac-studio_64GB.yaml` are derived from the measurements in ADR 0011 and `docs/design/image-convert.md`, not measured on that hardware.
 
 ```bash
 cargo run -p flagme-host -- process /media/photo.heic --config config_cpu_8GB.yaml
@@ -362,7 +364,7 @@ Open your browser at `http://localhost:8080` to view the media dashboard.
 #### REST & GeoJSON Endpoints:
 - `GET /api/photos?page=1&limit=50`: Paginated list of unified media documents.
 - `GET /api/photos/:id`: Detailed `UnifiedDocument` JSON payload.
-- `GET /api/photos/:id/thumbnail/:size`: Cached thumbnail image stream with HTTP `ETag` and `Cache-Control`.
+- `GET /api/photos/:id/thumbnail/:size`: Thumbnail file (`image/avif` or `image/jpeg`) with `ETag` and `Cache-Control: private, max-age=86400`. Without a thumbnail file it answers `404`; it never serves the original or a placeholder ([ADR 0012](docs/adr/0012-redacted-avif-thumbnails.md)).
 - `GET /api/map/markers`: GeoJSON `FeatureCollection` containing all geotagged photos with GPS Point coordinates and metadata.
 - `GET /api/search?q=:query`: FTS5 full-text search API.
 

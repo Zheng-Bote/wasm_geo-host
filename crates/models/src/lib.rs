@@ -229,6 +229,20 @@ pub struct FaceLandmarks {
     pub mouth_right: (f32, f32),
 }
 
+/// Result of the face redaction step of `privacy-redact` (ADR 0012).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FaceRedaction {
+    /// Faces found and redacted; `redacted_image_path` is the redacted full-size image.
+    Applied,
+    /// Face result present but empty.
+    NoFaces,
+    /// `redact_faces: false`.
+    Disabled,
+    /// Redaction was required but could not be done; no image may be shown.
+    Failed,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct PrivacyInfo {
     pub is_redacted: bool,
@@ -239,6 +253,9 @@ pub struct PrivacyInfo {
     pub redacted_image_path: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub applied_rules: Vec<String>,
+    /// `None`: unknown (documents of earlier runs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub face_redaction: Option<FaceRedaction>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

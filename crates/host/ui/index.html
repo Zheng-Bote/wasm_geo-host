@@ -200,12 +200,12 @@
         const weather = doc.weather ? `${doc.weather.icon_emoji} ${doc.weather.condition}, ${doc.weather.temperature}°C (Humidity: ${doc.weather.humidity_percent || 0}%)` : 'None';
         const ocr = doc.ocr && doc.ocr.combined_text ? doc.ocr.combined_text : 'No text detected';
         const faces = doc.faces && doc.faces.faces ? `${doc.faces.faces.length} face(s) [${doc.faces.detection_model}]` : '0';
-        const privacy = doc.privacy ? `Redacted: ${doc.privacy.is_redacted} | Rules: ${(doc.privacy.applied_rules || []).join(', ') || 'none'}` : 'None';
+        const privacy = doc.privacy ? `Redacted: ${doc.privacy.is_redacted} | Faces: ${doc.privacy.face_redaction || 'unknown'} | Rules: ${(doc.privacy.applied_rules || []).join(', ') || 'none'}` : 'None';
 
         document.getElementById('modalBody').innerHTML = `
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="bg-gray-950 rounded p-2 flex items-center justify-center">
-              <img src="/api/photos/${doc.id}/thumbnail/large" class="max-h-72 object-contain rounded" />
+              <img src="/api/photos/${doc.id}/thumbnail/large" class="max-h-72 object-contain rounded" onerror="this.outerHTML='<div class=\\'text-5xl text-gray-600\\'>📷</div>'" />
             </div>
             <div class="space-y-2 text-xs">
               <div><span class="text-gray-400">File Path:</span> <code class="text-gray-200">${doc.file.path}</code></div>

@@ -505,6 +505,7 @@ fn document_to_wit(d: m::UnifiedDocument) -> w::Document {
             original_gps_fuzzed: x.original_gps_fuzzed,
             redacted_image_path: x.redacted_image_path,
             applied_rules: x.applied_rules,
+            face_redaction: x.face_redaction.map(face_redaction_to_wit),
         }),
         custom_json: serde_json::to_string(&d.custom).unwrap_or_else(|_| "{}".to_string()),
     }
@@ -641,7 +642,26 @@ fn document_from_wit(d: w::Document) -> PluginResult<m::UnifiedDocument> {
             original_gps_fuzzed: x.original_gps_fuzzed,
             redacted_image_path: x.redacted_image_path,
             applied_rules: x.applied_rules,
+            face_redaction: x.face_redaction.map(face_redaction_from_wit),
         }),
         custom,
     })
+}
+
+fn face_redaction_to_wit(f: m::FaceRedaction) -> w::FaceRedaction {
+    match f {
+        m::FaceRedaction::Applied => w::FaceRedaction::Applied,
+        m::FaceRedaction::NoFaces => w::FaceRedaction::NoFaces,
+        m::FaceRedaction::Disabled => w::FaceRedaction::Disabled,
+        m::FaceRedaction::Failed => w::FaceRedaction::Failed,
+    }
+}
+
+fn face_redaction_from_wit(f: w::FaceRedaction) -> m::FaceRedaction {
+    match f {
+        w::FaceRedaction::Applied => m::FaceRedaction::Applied,
+        w::FaceRedaction::NoFaces => m::FaceRedaction::NoFaces,
+        w::FaceRedaction::Disabled => m::FaceRedaction::Disabled,
+        w::FaceRedaction::Failed => m::FaceRedaction::Failed,
+    }
 }

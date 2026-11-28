@@ -23,13 +23,14 @@ fn write_config(dir: &Path) -> PathBuf {
         })
         .collect::<Vec<_>>()
         .join("\n")
-        // These tests need a deterministic plugin warning: without face-detection, privacy-redact
-        // reports the missing face result.
+        // These tests need a deterministic plugin warning: without the filesystem grant, thumbnail
+        // reports that it cannot read the image. (Disabling face-detection is no longer possible
+        // while privacy-redact redacts faces, ADR 0012.)
         .replace(
-            "  face-detection:\n  # built-in YuNet detector (ADR 0009); privacy-redact uses its boxes\n    enabled: true",
-            "  face-detection:\n    enabled: false",
+            "  thumbnail:\n  # AVIF from the redacted image if faces were redacted; none if redaction failed (ADR 0012)\n    enabled: true\n    capabilities:\n      - filesystem",
+            "  thumbnail:\n    enabled: true\n    capabilities: []",
         );
-    assert!(config.contains("  face-detection:\n    enabled: false"), "config.yaml layout changed");
+    assert!(config.contains("  thumbnail:\n    enabled: true\n    capabilities: []"), "config.yaml layout changed");
     let path = dir.join("config.yaml");
     std::fs::write(&path, config).unwrap();
     path
@@ -57,9 +58,9 @@ fn test_ac10_plugin_warnings_on_stderr() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     let line = stderr
         .lines()
-        .find(|l| l.contains("privacy-redact: no face detection result"))
+        .find(|l| l.contains("thumbnail: cannot read"))
         .unwrap_or_else(|| panic!("warning missing on stderr:\n{}", stderr));
-    assert!(line.contains("WARN") && line.contains("plugin=privacy-redact"), "{}", line);
+    assert!(line.contains("WARN") && line.contains("plugin=thumbnail"), "{}", line);
 
     let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("stdout is pure JSON");
     assert_eq!(doc["file"]["path"], file.as_str());

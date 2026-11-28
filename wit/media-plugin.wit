@@ -151,6 +151,14 @@ interface types {
         detection-model: string,
     }
 
+    /// Result of the face redaction step of privacy-redact (ADR 0012).
+    enum face-redaction {
+        applied,
+        no-faces,
+        disabled,
+        failed,
+    }
+
     record privacy-info {
         is-redacted: bool,
         faces-redacted-count: u64,
@@ -158,6 +166,7 @@ interface types {
         original-gps-fuzzed: bool,
         redacted-image-path: option<string>,
         applied-rules: list<string>,
+        face-redaction: option<face-redaction>,
     }
 
     record document {

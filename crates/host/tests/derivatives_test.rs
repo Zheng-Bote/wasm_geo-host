@@ -195,8 +195,10 @@ fn rotated_jpeg(w: u32, h: u32) -> Vec<u8> {
 fn test_ac5_thumbnails_are_real_files() {
     let dir = temp_dir("deriv_ac5");
     let path = write_file(&dir, "photo.jpg", &rotated_jpeg(300, 200));
+    // JPEG explicitly: this criterion checks JPEG files; AVIF is the default since ADR 0012.
     let plugin = ThumbnailPlugin::with_settings(ThumbnailSettings {
         output_dir: dir.join("thumbs").to_string_lossy().to_string(),
+        format: flagme_plugin_thumbnail::ThumbnailFormat::Jpeg,
         ..Default::default()
     });
     let caps = Arc::new(LogCaps::default());

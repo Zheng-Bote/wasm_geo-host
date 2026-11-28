@@ -103,7 +103,7 @@ fn test_embedded_web_ui_ac2_rest_media_endpoints() {
         assert_eq!(res_thumb.status(), StatusCode::OK);
         assert_eq!(
             res_thumb.headers().get("cache-control").unwrap(),
-            "public, max-age=86400"
+            "private, max-age=86400"
         );
         assert_eq!(
             res_thumb.headers().get("etag").unwrap(),

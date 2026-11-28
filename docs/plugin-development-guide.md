@@ -87,3 +87,16 @@ let bytes = ctx.capabilities.fs_read(source)?;
 ```
 
 `image-convert` runs right after `metadata` and turns JPEG, PNG, TIFF, BMP, WebP, HEIC/HEIF and AVIF into an upright baseline JPEG (orientation applied, ICC profile kept, no EXIF or GPS). A pixel plugin therefore only needs to decode JPEG; boxes and coordinates it writes refer to the working image. Without a working image (plugin disabled or conversion failed) `pixel_source` returns the original file, and the plugin handles only the formats it decodes itself. File-related values stay with the original: `metadata` reads EXIF and `duplicate` hashes the file bytes from `doc.file.path`.
+
+### 5. Images for display come from `display_source` (fail closed)
+
+A plugin that writes images people will see (thumbnails, previews) must not use `pixel_source` directly, because the working image is **not redacted**. It uses `display_source` ([ADR 0012](adr/0012-redacted-avif-thumbnails.md)):
+
+```rust
+let Some(source) = flagme_sdk::display_source(&doc) else {
+    // privacy.face_redaction == failed: write nothing, warn (fail closed)
+    return Ok(doc);
+};
+```
+
+`display_source` returns the redacted image when `doc.privacy.face_redaction` is `applied`, `None` when it is `failed`, and the working image otherwise (`no_faces`, `disabled`, no `privacy`). Such a plugin runs after `privacy-redact`. The host rejects a pipeline that puts `thumbnail` before `privacy-redact` while `redact_faces` is on; a new display plugin must be added to that check (`AppConfig::validate_privacy_order`).

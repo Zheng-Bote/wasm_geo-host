@@ -45,7 +45,7 @@ plugins:
       fuzz_gps: "true"
       gps_decimal_places: "2"      # 0..6
       strip_serial_numbers: "true"
-      output_dir: "cache/redacted"
+      output_dir: "cache/thumbnails"
 ```
 
 All `settings` values are passed to the plugin as **strings** (`HashMap<String, String>`). Quoting is optional; the host strips `"` and `'`.
@@ -61,7 +61,7 @@ All `settings` values are passed to the plugin as **strings** (`HashMap<String, 
 | `fuzz_gps` *(`fuzz_gps_coordinates`)* | `fuzz_gps: bool` | bool | `true` | `true` / `false` | `true` → round `latitude`/`longitude` (only if both are present). Sets `original_gps_fuzzed = true` and adds rule `fuzzed_gps_precision_<d>_decimals`. |
 | `gps_decimal_places` | `gps_decimal_places: u32` | integer | `2` | `0`–`6` (values > 6 become 6) | Decimals kept: `round(coord × 10^d) / 10^d`. |
 | `strip_serial_numbers` *(`strip_serials`)* | `strip_serial_numbers: bool` | bool | `true` | `true` / `false` | `true` → remove serial-number keys from `raw_tags`. Adds rule `stripped_hardware_serial_numbers` only if at least one key was removed. |
-| `output_dir` | `output_dir: String` | path | `cache/redacted` | relative or absolute path without `..` | Target folder for `<output_dir>/<doc.id>.redacted.jpg` (`/` in `doc.id` is replaced by `_`). A trailing `/` is removed. |
+| `output_dir` | `output_dir: String` | path | `cache/thumbnails` (next to the thumbnails made from it, ADR 0012) | relative or absolute path without `..` | Target folder for `<output_dir>/<doc.id>.redacted.jpg` (`/` in `doc.id` is replaced by `_`). A trailing `/` is removed. |
 
 ### 2.3 Parsing Rules
 
@@ -107,8 +107,11 @@ The plugin uses the shared SDK rules (`flagme_sdk::settings`):
 3. **`weather-enrich`** → queries the weather with the exact coordinates.
 4. **`face-detection`** → fills `doc.faces`.
 5. **`privacy-redact`** → redacts, rounds and strips.
+6. **`thumbnail`** → runs **after** `privacy-redact` and scales the redacted image ([ADR 0012](../../docs/adr/0012-redacted-avif-thumbnails.md)).
 
-If an upstream stage is missing, the respective step is skipped (no coordinates → no fuzzing). If `redact_faces` is on but `doc.faces` is `None` (no face-detection result, e.g. because `face-detection` is disabled — the default, see [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)), the plugin logs `privacy-redact: no face detection result for '<path>'; faces NOT redacted` and records no face redaction. `doc.faces` with an empty list stays silent.
+While `privacy-redact` is enabled with `redact_faces` on, the host rejects a pipeline in which `face-detection` is missing, disabled or comes after `privacy-redact`, or in which `thumbnail` comes before it.
+
+If an upstream stage is missing, the respective step is skipped (no coordinates → no fuzzing). If `redact_faces` is on but `doc.faces` is `None` (no face-detection result, e.g. because `face-detection` is disabled — the default, see [ADR 0002](../../docs/adr/0002-plugins-without-engine-no-output.md)), the plugin logs `privacy-redact: no face detection result for '<path>'; faces NOT redacted` and sets `face_redaction = failed`; `thumbnail` then writes no thumbnails (fail closed). `doc.faces` with an empty list stays silent (`no_faces`).
 
 ---
 
@@ -130,8 +133,20 @@ pub struct PrivacyInfo {
     pub original_gps_fuzzed: bool,
     pub redacted_image_path: Option<String>,  // Some(..) only if the redacted copy was written
     pub applied_rules: Vec<String>,
+    pub face_redaction: Option<FaceRedaction>, // set on every run, see below (ADR 0012)
 }
 ```
+
+`face_redaction` tells the plugins that create images for display (`thumbnail`, via `flagme_sdk::display_source`) which pixels they may use:
+
+| Value | Case | Thumbnails from |
+| :--- | :--- | :--- |
+| `applied` | faces found, redacted image written (`redacted_image_path`) | the redacted image |
+| `no_faces` | face result present but empty | the working image |
+| `disabled` | `redact_faces: false` | the working image |
+| `failed` | `redact_faces` on, but no face result, image not readable/decodable or not writable | **none** (fail closed) |
+
+Documents of runs before ADR 0012 have no `face_redaction` (`None`); they are treated like `no_faces`.
 
 Possible `applied_rules` entries:
 
@@ -148,12 +163,13 @@ Possible `applied_rules` entries:
     "faces_redacted_count": 2,
     "license_plates_redacted_count": 0,
     "original_gps_fuzzed": true,
-    "redacted_image_path": "cache/redacted/950b7c3d7d46ad02.redacted.jpg",
+    "redacted_image_path": "cache/thumbnails/950b7c3d7d46ad02.redacted.jpg",
     "applied_rules": [
       "redacted_2_faces_via_pixelate",
       "fuzzed_gps_precision_2_decimals",
       "stripped_hardware_serial_numbers"
-    ]
+    ],
+    "face_redaction": "applied"
   }
 }
 ```

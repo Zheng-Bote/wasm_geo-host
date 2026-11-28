@@ -11,6 +11,7 @@
     "docs/adr/0008-short-region-names.md": "adde7d0003b705da2887a8e158e04a7671f07991b0a14c53d24a3ab26343da11",
     "docs/adr/0009-plugin-inference-rten.md": "3ccbe6b113eee73657f8870de99c4ab393651956f653133472bde4b33b05e5f9",
     "docs/adr/0010-ai-tagging-clip.md": "cb2818e733fcfa1635d034a2acaf649da986c4ef66b69dd5d5367cb50e4537bd",
-    "docs/adr/0011-working-image-pure-rust-decoders.md": "b9bea03f9717b4c3ce657e62eb0523405e81dc982ae04908f2a6d2c87790af0d"
+    "docs/adr/0011-working-image-pure-rust-decoders.md": "b9bea03f9717b4c3ce657e62eb0523405e81dc982ae04908f2a6d2c87790af0d",
+    "docs/adr/0012-redacted-avif-thumbnails.md": "00e9e2ca33a0d13d944ebfa91b41946a2dde0f2455df3d6e872eabf3b0889b49"
   }
 }

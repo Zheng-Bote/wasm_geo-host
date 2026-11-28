@@ -48,6 +48,8 @@ flagme-plugin-ocr-text = { path = "../../plugins/ocr-text" }
 flagme-plugin-face-detection = { path = "../../plugins/face-detection" }
 flagme-plugin-privacy-redact = { path = "../../plugins/privacy-redact" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# Decodes the AVIF thumbnails in the tests (ADR 0012).
+oxideav-avif = { version = "=0.0.18", default-features = false, features = ["registry"] }
 # Local TLS server with a self-signed certificate (http-client-rust AC-6).
 rcgen = "0.14"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

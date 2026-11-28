@@ -18,3 +18,5 @@ component = []
 [dependencies]
 flagme-sdk = { path = "../../crates/sdk" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "tiff", "gif"] }
+# AVIF thumbnails (ADR 0012), pinned like the decoder in image-convert (ADR 0011).
+oxideav-avif = { version = "=0.0.18", default-features = false, features = ["registry"] }

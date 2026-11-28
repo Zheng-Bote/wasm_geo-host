@@ -313,6 +313,7 @@ fn full_document() -> UnifiedDocument {
         original_gps_fuzzed: true,
         redacted_image_path: Some("/r/full.jpg".into()),
         applied_rules: vec!["fuzzed_gps_precision_2_decimals".into()],
+        face_redaction: Some(flagme_sdk::FaceRedaction::Applied),
     });
     d.custom.insert("mode".into(), json!("echo"));
     d.custom.insert("nested".into(), json!({"a": [1, 2.5, null, true], "b": {"c": "ü"}}));

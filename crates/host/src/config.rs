@@ -232,7 +232,6 @@ impl Default for AppConfig {
                 "image-convert".to_string(),
                 "reversegeo".to_string(),
                 "countryflag".to_string(),
-                "thumbnail".to_string(),
                 "ai-tagging".to_string(),
                 "duplicate".to_string(),
                 "timeline".to_string(),
@@ -240,6 +239,8 @@ impl Default for AppConfig {
                 "ocr-text".to_string(),
                 "face-detection".to_string(),
                 "privacy-redact".to_string(),
+                // after privacy-redact: thumbnails only from redacted images (ADR 0012)
+                "thumbnail".to_string(),
             ],
             plugins,
         }
@@ -247,6 +248,45 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// ADR 0012: while `privacy-redact` is enabled in the pipeline with `redact_faces` on (the
+    /// default), `face-detection` must be enabled and run before it, and an enabled `thumbnail`
+    /// must run after it; otherwise thumbnails would show unredacted faces.
+    pub fn validate_privacy_order(&self) -> Result<(), String> {
+        let enabled_at = |name: &str| -> Option<usize> {
+            let pos = self.pipeline.iter().position(|p| p == name)?;
+            self.plugins.get(name).filter(|c| c.enabled).map(|_| pos)
+        };
+        let Some(redact) = enabled_at("privacy-redact") else {
+            return Ok(());
+        };
+        let redact_faces = self.plugins["privacy-redact"]
+            .settings
+            .get("redact_faces")
+            .map_or(true, |v| flagme_sdk::settings::parse_bool(v).unwrap_or(true));
+        if !redact_faces {
+            return Ok(());
+        }
+        match enabled_at("face-detection") {
+            Some(face) if face < redact => {}
+            _ => {
+                return Err(
+                    "pipeline: face-detection must be enabled and run before privacy-redact while redact_faces is on (ADR 0012)"
+                        .to_string(),
+                )
+            }
+        }
+        if let Some(thumb) = enabled_at("thumbnail") {
+            if thumb < redact {
+                return Err(format!(
+                    "pipeline: thumbnail (position {}) must run after privacy-redact (position {}) while redact_faces is on, otherwise thumbnails show unredacted faces (ADR 0012)",
+                    thumb + 1,
+                    redact + 1
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Directory of the component cache, or `None` if `component_cache` is off.
     pub fn component_cache_dir(&self) -> Option<std::path::PathBuf> {
         self.component_cache.then(|| std::path::PathBuf::from(&self.component_cache_dir))
@@ -298,7 +338,14 @@ impl AppConfig {
         }
     }
 
+    /// Parses a JSON or YAML configuration and checks the pipeline order (ADR 0012).
     pub fn load_from_str(s: &str) -> anyhow::Result<Self> {
+        let cfg = Self::parse_str(s)?;
+        cfg.validate_privacy_order().map_err(anyhow::Error::msg)?;
+        Ok(cfg)
+    }
+
+    fn parse_str(s: &str) -> anyhow::Result<Self> {
         if let Ok(cfg) = serde_json::from_str::<AppConfig>(s) {
             return Ok(cfg);
         }
