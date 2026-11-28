@@ -6,10 +6,9 @@ use flagme_host::{AppConfig, Pipeline, PluginRuntime, Storage};
 use flagme_sdk::serde_json::{json, Value};
 use flagme_sdk::*;
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// Runtime with only the test probe (`tests/probe-plugin`) in the pipeline.
 fn probe_runtime(capabilities: &[&str], settings: &[(&str, &str)], limits: Option<(u64, u64)>) -> PluginRuntime {
@@ -349,6 +348,9 @@ fn test_ac7_stream_uses_embedded_runtime() {
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let mut v: Value = serde_json::from_slice(&out.stdout).unwrap();
         v["timeline"]["imported_at"] = Value::Null;
+        // `weather` comes from a live Open-Meteo request (2 s limit) and may succeed in one run
+        // and time out in the other; it is not part of this comparison (#79, like examples_test).
+        v.as_object_mut().unwrap().remove("weather");
         v
     };
     let args = |cmd: &'static str| [cmd, photo.as_str(), "--config", config.to_str().unwrap()].map(str::to_string);
@@ -384,37 +386,5 @@ fn test_ac8_cli_binary_stays_plain_command() {
     assert!(contains(&component, b"wasmgeohost:media/host-capabilities"));
 }
 
-/// Collects the formatted log output of `tracing` on the current thread.
-#[derive(Clone, Default)]
-struct Captured(Arc<Mutex<Vec<u8>>>);
-
-impl Write for Captured {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-// wasm-component-runtime AC-9: a settings warning appears once per plugin and message although every document gets a fresh instance
-#[test]
-fn test_ac9_settings_warning_once() {
-    let captured = Captured::default();
-    let writer = captured.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_writer(move || writer.clone())
-        .with_ansi(false)
-        .with_max_level(tracing::Level::WARN)
-        .finish();
-    let rt = probe_runtime(&[], &[("mode", "settings"), ("count", "many")], None);
-    tracing::subscriber::with_default(subscriber, || {
-        for i in 0..3 {
-            rt.execute_plugin("probe", doc(&format!("ac9-{}", i), "/none", &[])).unwrap();
-        }
-    });
-    let log = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
-    let warnings: Vec<&str> = log.lines().filter(|l| l.contains("settings[probe]") && l.contains("count")).collect();
-    assert_eq!(warnings.len(), 1, "{}", log);
-}
+// wasm-component-runtime AC-9 lives in its own test binary (`settings_warning_once_test.rs`): its
+// thread-local `tracing` subscriber raced with the parallel tests of this binary (#79).
