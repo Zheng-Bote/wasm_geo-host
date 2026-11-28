@@ -1,5 +1,5 @@
 use flagme_sdk::{
-    BoundingBox, DetectedFace, Plugin, PluginContext, PluginResult, PluginSettings, PrivacyInfo,
+    BoundingBox, DetectedFace, FaceRedaction, Plugin, PluginContext, PluginResult, PluginSettings, PrivacyInfo,
     SettingsCache, SettingsReader, UnifiedDocument,
 };
 use image::codecs::jpeg::JpegEncoder;
@@ -41,7 +41,8 @@ impl Default for PrivacySettings {
             fuzz_gps: true,
             gps_decimal_places: 2,
             strip_serial_numbers: true,
-            output_dir: "cache/redacted".to_string(),
+            // Next to the thumbnails made from it (ADR 0012).
+            output_dir: "cache/thumbnails".to_string(),
         }
     }
 }
@@ -287,6 +288,12 @@ impl Plugin for PrivacyRedactPlugin {
         let mut applied_rules = Vec::new();
         let mut faces_count = 0;
         let mut redacted_path = None;
+        // ADR 0012: every run states the face redaction result; thumbnails depend on it.
+        let mut face_redaction = if active_settings.redact_faces {
+            FaceRedaction::Failed
+        } else {
+            FaceRedaction::Disabled
+        };
 
         // 1. Visual Obfuscation (Faces)
         if active_settings.redact_faces && doc.faces.is_none() {
@@ -297,6 +304,9 @@ impl Plugin for PrivacyRedactPlugin {
                     doc.file.path
                 ),
             );
+        }
+        if active_settings.redact_faces && doc.faces.as_ref().is_some_and(|f| f.faces.is_empty()) {
+            face_redaction = FaceRedaction::NoFaces;
         }
         if active_settings.redact_faces {
             if let Some(faces_info) = doc.faces.as_ref().filter(|f| !f.faces.is_empty()) {
@@ -320,6 +330,7 @@ impl Plugin for PrivacyRedactPlugin {
                         applied_rules.push(format!("redacted_{}_faces_via_{}", processed, style_str));
                         faces_count = processed;
                         redacted_path = Some(out_path);
+                        face_redaction = FaceRedaction::Applied;
                     }
                     Err(reason) => ctx.capabilities.log(
                         "warn",
@@ -370,6 +381,7 @@ impl Plugin for PrivacyRedactPlugin {
             original_gps_fuzzed: gps_fuzzed,
             redacted_image_path: redacted_path,
             applied_rules,
+            face_redaction: Some(face_redaction),
         });
 
         Ok(doc)

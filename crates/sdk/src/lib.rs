@@ -16,6 +16,17 @@ pub fn pixel_source(doc: &UnifiedDocument) -> &str {
     doc.working_image.as_ref().map_or(doc.file.path.as_str(), |w| w.path.as_str())
 }
 
+/// Image a plugin may use for images that are shown, e.g. thumbnails (ADR 0012): the redacted
+/// image if faces were redacted, `None` if redaction was required but failed (fail closed),
+/// otherwise the working image ([`pixel_source`]).
+pub fn display_source(doc: &UnifiedDocument) -> Option<&str> {
+    match doc.privacy.as_ref().and_then(|p| p.face_redaction) {
+        Some(FaceRedaction::Applied) => doc.privacy.as_ref()?.redacted_image_path.as_deref(),
+        Some(FaceRedaction::Failed) => None,
+        _ => Some(pixel_source(doc)),
+    }
+}
+
 #[derive(Debug)]
 pub enum PluginError {
     Serialization(serde_json::Error),

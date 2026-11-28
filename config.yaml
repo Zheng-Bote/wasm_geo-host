@@ -14,7 +14,6 @@ pipeline:
   - image-convert
   - reversegeo
   - countryflag
-  - thumbnail
   - ai-tagging
   - duplicate
   - timeline
@@ -22,6 +21,8 @@ pipeline:
   - ocr-text
   - face-detection
   - privacy-redact
+  # after privacy-redact: thumbnails only from redacted images (ADR 0012)
+  - thumbnail
 
 plugins:
   metadata:
@@ -49,6 +50,7 @@ plugins:
     capabilities: []
 
   thumbnail:
+  # AVIF from the redacted image if faces were redacted; none if redaction failed (ADR 0012)
     enabled: true
     capabilities:
       - filesystem
@@ -56,6 +58,8 @@ plugins:
     # resource_limits:
     #   max_memory_bytes: 1073741824 # 1 GB for large images
     #   timeout_ms: 30000
+    settings:
+      format: 'avif'
 
   ai-tagging:
   # built-in CLIP ViT-B/32 model file, see `make models` (ADR 0010)

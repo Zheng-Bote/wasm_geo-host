@@ -3,7 +3,7 @@
 # Limits apply per plugin sandbox; each watcher worker runs one plugin at a time, so the peak is
 # about workers x largest limit plus ~0.5 GB for the host. Run `flagme-host watch` with
 # `--workers 8` (8 x 6 GB = 48 GB, room for the host and the system). Supports 100 MP files
-# (maximum of max_pixels) and 2048 px thumbnails of them.
+# (maximum of max_pixels); thumbnails up to 1024 px (AVIF).
 database_path: 'media.db'
 # Wasm components of the plugins (ADR 0003): cargo build --release --target wasm32-wasip2 --lib --features component
 plugin_dir: 'target/wasm32-wasip2/release'
@@ -20,7 +20,6 @@ pipeline:
   - image-convert
   - reversegeo
   - countryflag
-  - thumbnail
   - ai-tagging
   - duplicate
   - timeline
@@ -28,6 +27,8 @@ pipeline:
   - ocr-text
   - face-detection
   - privacy-redact
+  # after privacy-redact: thumbnails only from redacted images (ADR 0012)
+  - thumbnail
 
 plugins:
   metadata:
@@ -53,15 +54,14 @@ plugins:
     enabled: true
     capabilities: []
   thumbnail:
+    # AVIF from the redacted image if faces were redacted; none if redaction failed (ADR 0012).
+    # At most 1024 px: 2048 px AVIF takes ~9 s per photo.
     enabled: true
     capabilities: ['filesystem']
-    # 2048 px variants of 100 MP working images
-    resource_limits:
-      max_memory_bytes: 6442450944
-      timeout_ms: 120000
     settings:
-      quality: '95'
-      variants: '128,256,512,1024,2048'
+      format: 'avif'
+      quality: '80'
+      variants: '128,256,512,1024'
   ai-tagging:
     # built-in CLIP ViT-B/32 model file, see `make models` (ADR 0010)
     enabled: true

@@ -25,6 +25,7 @@ fn test_ac1_privacy_model_serialization() {
         original_gps_fuzzed: true,
         redacted_image_path: Some("/cache/redacted/image.jpg".to_string()),
         applied_rules: vec!["redacted_3_faces".to_string(), "fuzzed_gps".to_string()],
+        face_redaction: Some(flagme_sdk::FaceRedaction::Applied),
     };
 
     let serialized = serde_json::to_string(&privacy).expect("Serialization failed");
@@ -180,6 +181,7 @@ fn test_ac6_sqlite_privacy_persistence() {
         original_gps_fuzzed: true,
         redacted_image_path: Some("/cache/redacted/passersby.redacted.jpg".to_string()),
         applied_rules: vec!["redacted_2_faces_via_pixelate".to_string()],
+        face_redaction: Some(flagme_sdk::FaceRedaction::Applied),
     });
 
     storage.save_document(&doc).expect("Save document failed");

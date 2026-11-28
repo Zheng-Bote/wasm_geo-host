@@ -927,6 +927,7 @@ dependencies = [
  "flagme-sdk",
  "image",
  "notify",
+ "oxideav-avif",
  "rcgen",
  "rust-embed",
  "rustix",
@@ -1033,6 +1034,7 @@ version = "0.4.0"
 dependencies = [
  "flagme-sdk",
  "image",
+ "oxideav-avif",
 ]
 
 [[package]]

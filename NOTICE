@@ -24,7 +24,8 @@ Third-Party Components & Attributions:
   attributes for local photo sorting only (see plugins/ai-tagging/README.md, ADR 0010).
 - heic-rs (https://github.com/tbraun96/heic-rs), pure-Rust HEIC/HEIF decoder, MIT OR Apache-2.0,
   and oxideav-avif / oxideav-av1 / oxideav-core / oxideav-heif (https://github.com/OxideAV),
-  pure-Rust AVIF and AV1 decoder, MIT; compiled into the image-convert plugin (ADR 0011).
+  pure-Rust AVIF and AV1 decoder and encoder, MIT; compiled into the image-convert plugin
+  (decoding, ADR 0011) and the thumbnail plugin (AVIF thumbnails, ADR 0012).
 - rten inference engine (https://github.com/robertknight/rten) (MIT / Apache-2.0)
 - OpenStreetMap / Nominatim (ODbL / Attribution)
 - Wasmtime & Bytecode Alliance Component Model tooling (Apache-2.0 WITH LLVM-exception / MIT)

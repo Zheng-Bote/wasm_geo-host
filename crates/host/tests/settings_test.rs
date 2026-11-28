@@ -749,7 +749,7 @@ fn defaults_match_previous_behaviour() {
     assert_eq!(OcrSettings::default().min_confidence, 0.5);
     assert_eq!(FaceDetectionSettings::default().min_confidence, 0.0);
     let p = PrivacySettings::default();
-    assert_eq!((p.block_size, p.gps_decimal_places, p.output_dir.as_str()), (16, 2, "cache/redacted"));
+    assert_eq!((p.block_size, p.gps_decimal_places, p.output_dir.as_str()), (16, 2, "cache/thumbnails"));
 
 }
 

@@ -211,18 +211,25 @@ plugins:
     assert_eq!(warnings.len(), 1, "{:?}", warnings);
 
     // The shipped profiles load without warnings. Only the plugins listed per profile set their own
-    // limits (ocr-text ADR 0009, ai-tagging ADR 0010, image-convert ADR 0011, thumbnail in the
-    // 64 GB profile); every other plugin keeps the global limits. A missing field inherits it.
+    // limits (ocr-text ADR 0009, ai-tagging ADR 0010, image-convert ADR 0011, thumbnail with AVIF
+    // on the small profiles, ADR 0012); every other plugin keeps the global limits. A missing field
+    // inherits it.
     const GB: u64 = 1_073_741_824;
     let root = common::repo_root();
     let own: &[(&str, &[(&str, Option<u64>, u64)])] = &[
         ("config.yaml", &[("ocr-text", None, 30_000), ("ai-tagging", Some(GB / 2), 30_000), ("image-convert", Some(GB), 30_000)]),
-        ("config_2cores_4GB.yaml", &[("ocr-text", None, 60_000), ("ai-tagging", Some(GB / 2), 60_000), ("image-convert", Some(GB), 60_000)]),
-        ("config_cpu_8GB.yaml", &[("ocr-text", None, 45_000), ("ai-tagging", Some(GB / 2), 45_000), ("image-convert", Some(GB), 45_000)]),
+        (
+            "config_2cores_4GB.yaml",
+            &[("ocr-text", None, 60_000), ("ai-tagging", Some(GB / 2), 60_000), ("image-convert", Some(GB), 60_000), ("thumbnail", None, 60_000)],
+        ),
+        (
+            "config_cpu_8GB.yaml",
+            &[("ocr-text", None, 45_000), ("ai-tagging", Some(GB / 2), 45_000), ("image-convert", Some(GB), 45_000), ("thumbnail", None, 30_000)],
+        ),
         ("config_mac-studio_32GB.yaml", &[("ocr-text", None, 30_000), ("ai-tagging", Some(GB / 2), 30_000), ("image-convert", Some(4 * GB), 120_000)]),
         (
             "config_mac-studio_64GB.yaml",
-            &[("ocr-text", None, 60_000), ("ai-tagging", Some(GB), 30_000), ("image-convert", Some(6 * GB), 120_000), ("thumbnail", Some(6 * GB), 120_000)],
+            &[("ocr-text", None, 60_000), ("ai-tagging", Some(GB), 30_000), ("image-convert", Some(6 * GB), 120_000)],
         ),
     ];
     assert_eq!(own.len(), common::PROFILES.len());
