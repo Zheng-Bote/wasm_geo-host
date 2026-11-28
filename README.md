@@ -270,15 +270,15 @@ plugins:
 
 `config.yaml` is the default. Four more profiles are tuned to the hardware; all of them enable every plugin, including `image-convert` ([ADR 0011](docs/adr/0011-working-image-pure-rust-decoders.md)).
 
-| Profile | Hardware | Global limit per sandbox | `image-convert` | Recommended `watch --workers` |
-| :--- | :--- | :--- | :--- | :--- |
-| `config.yaml` | default | 256 MB, 10 s | 1 GB, 30 s, up to 50 MP | 4 (default) |
-| `config_2cores_4GB.yaml` | 2 CPU cores, 4 GB RAM (small VM, mini PC, NAS) | 256 MB, 20 s | 1 GB, 60 s, up to 50 MP | 1 (2 for photos up to 24 MP) |
-| `config_cpu_8GB.yaml` | CPU-only, 4–8 cores, 8 GB RAM | 256 MB, 15 s | 1 GB, 45 s, up to 50 MP | 4 |
-| `config_mac-studio_32GB.yaml` | Apple Silicon, 32 GB unified memory | 4 GB, 60 s | 4 GB, 120 s, up to 100 MP | 6 |
-| `config_mac-studio_64GB.yaml` | Mac Studio M5 Max, 64 GB unified memory | 4 GB, 60 s | 6 GB, 120 s, up to 100 MP | 8 |
+| Profile | Hardware | Global limit per sandbox | `image-convert` | Recommended `watch --workers` | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `config.yaml` | default | 256 MB, 10 s | 1 GB, 30 s, up to 50 MP | 4 (default) | Thumbnails 128/512/1024 px |
+| `config_2cores_4GB.yaml` (formerly `config.docker.yaml`) | 2 CPU cores, 4 GB RAM (small VM, mini PC, NAS) | 256 MB, 20 s | 1 GB, 60 s, up to 50 MP | 1 (2 for photos up to 24 MP) | Longer timeouts (OCR, CLIP 60 s); thumbnails 128/512/1024 px at quality 80 |
+| `config_cpu_8GB.yaml` (new) | CPU-only, 4–8 cores, 8 GB RAM (x86-64 or ARM) | 256 MB, 15 s | 1 GB, 45 s, up to 50 MP | 4 | OCR and CLIP 45 s; thumbnails 128/256/512/1024 px |
+| `config_mac-studio_32GB.yaml` (formerly `config.mac-studio.yaml`) | Apple Silicon, 32 GB unified memory | 4 GB, 60 s | 4 GB, 120 s, up to 100 MP | 6 | 2048 px thumbnails; `privacy-redact` blackout, GPS to 4 decimals |
+| `config_mac-studio_64GB.yaml` (new) | Mac Studio M5 Max, 64 GB unified memory | 4 GB, 60 s | 6 GB, 120 s, up to 100 MP | 8 | 2048 px thumbnails with own 6 GB limit; 8 tags; up to 500 OCR lines |
 
-Limits apply per plugin sandbox and are upper bounds, not reservations. Each watcher worker runs one plugin at a time, so the peak memory is about *workers × largest limit* plus ≈ 0.5 GB for the host. The smaller profiles use longer timeouts because inference on few cores is slower; the Mac Studio profiles add 2048 px thumbnails, and the 64 GB profile gives `thumbnail` its own 6 GB limit for 100 MP photos.
+Limits apply per plugin sandbox and are upper bounds, not reservations. Each watcher worker runs one plugin at a time, so the peak memory is about *workers × largest limit* plus ≈ 0.5 GB for the host. The worker count is set only with `flagme-host watch --workers <N>`; every profile names its recommendation in its header comment. The smaller profiles use longer timeouts because inference on few cores is slower. The values of `config_2cores_4GB.yaml`, `config_cpu_8GB.yaml` and `config_mac-studio_64GB.yaml` are derived from the measurements in ADR 0011 and `docs/design/image-convert.md`, not measured on that hardware.
 
 ```bash
 cargo run -p flagme-host -- process /media/photo.heic --config config_cpu_8GB.yaml
